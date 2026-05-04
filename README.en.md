@@ -74,7 +74,7 @@ For production deployment (systemd unit + tarball), grab the [release tarball](h
 - **API token auth** — supports `X-Backup-Token` for external invocation
 
 ### Second Brain
-- **NotebookLM integration** — login management, notebook CRUD, source management, AI chat, research mode, Studio artifacts
+- **NotebookLM integration** — login management, notebook CRUD, source management, AI chat, research mode, Studio artifacts (wraps the `nlm` command from [jacob-bd/notebooklm-mcp-cli](https://github.com/jacob-bd/notebooklm-mcp-cli); the setup flow auto-installs it via `uv tool install`)
 - **Obsidian integration** — headless install (Xvfb + Openbox + x11vnc + websockify), VNC remote access, CouchDB LiveSync sync
 - **Capture skills** — two installable OpenClaw global skills (templates contain hardcoded vault paths)
   - `link-capture` — auto-fetch / summarize / score URL-only messages and store under `{vault}/raw/`

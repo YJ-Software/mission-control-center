@@ -74,7 +74,7 @@ npm run dev
 - **API Token 認證** — 支援 `X-Backup-Token` 外部呼叫
 
 ### 第二大腦（Second Brain）
-- **NotebookLM 整合** — 登入管理、筆記本 CRUD、來源管理、AI 對話、研究功能、Studio 工件
+- **NotebookLM 整合** — 登入管理、筆記本 CRUD、來源管理、AI 對話、研究功能、Studio 工件（底層 wrap [jacob-bd/notebooklm-mcp-cli](https://github.com/jacob-bd/notebooklm-mcp-cli) 的 `nlm` 指令，setup 流程會自動 `uv tool install`）
 - **Obsidian 整合** — Headless 安裝（Xvfb + Openbox + x11vnc + websockify）、VNC 遠端存取、CouchDB LiveSync 同步
 - **Capture Skills** — 兩個可安裝的 OpenClaw 全域 skill，模板內已寫死你的 vault 絕對路徑
   - `link-capture` — URL-only 訊息自動抓取、摘要、評分，存入 `{vault}/raw/`
