@@ -25,6 +25,8 @@ Open `http://localhost:3737` in your browser. On first launch, `.env.local` is a
 
 For production deployment (systemd unit + tarball), grab the [release tarball](https://github.com/YJ-Software/mission-control-center/releases/latest) and run `deploy/release/install.sh` — see the Release / Deployment section below for details.
 
+> 🔒 **Strongly prefer private-network access via [Tailscale](https://tailscale.com/) (or similar)**; do not expose the dashboard on a public IP. It ships with high-privilege features (terminal, Docker control, browser automation) — unauthorized access has serious consequences. If a public endpoint is unavoidable, at minimum use a strong password + fail2ban + reverse proxy + TLS.
+
 ---
 
 ## Feature Overview

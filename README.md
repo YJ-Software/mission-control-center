@@ -25,6 +25,8 @@ npm run dev
 
 正式部署（systemd unit + tarball）：下載 [release tarball](https://github.com/YJ-Software/mission-control-center/releases/latest) 後執行 `deploy/release/install.sh`，詳見下方 Release / 部署 章節。
 
+> 🔒 **強烈建議走 [Tailscale](https://tailscale.com/) 等私網存取**，不要把 dashboard 直接暴露到公網 IP。系統含終端機、Docker 控制、瀏覽器自動化等高權限功能，被未授權存取後果嚴重。如果一定要走公網，至少要：強密碼 + fail2ban + reverse proxy + TLS。
+
 ---
 
 ## 功能總覽
