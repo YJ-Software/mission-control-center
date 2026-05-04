@@ -410,7 +410,7 @@ Failed `/api/auth` logins write `[mc-auth] failed login from <ip>` to the log fo
 Mission Control stands on the shoulders of many open-source projects. The list below covers external tools that the dashboard directly wraps, installs, or depends on (npm packages live in `package.json`):
 
 **Agent / AI foundation**
-- [OpenClaw](https://www.openclaw.tw/) — the core agent runtime; everything from RPC and event streams to cron and skills rides on top of it
+- [OpenClaw](https://openclaw.ai/) — the core agent runtime; everything from RPC and event streams to cron and skills rides on top of it
 - [jacob-bd/notebooklm-mcp-cli](https://github.com/jacob-bd/notebooklm-mcp-cli) — NotebookLM integration (`nlm` CLI)
 - [mem0ai/mem0](https://github.com/mem0ai/mem0) — customer-service long-term memory
 - [Qdrant](https://qdrant.tech/) + [Ollama](https://ollama.com/) (`bge-m3`) — self-hosted vector / embedding backend for mem0

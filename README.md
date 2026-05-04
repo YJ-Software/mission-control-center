@@ -410,7 +410,7 @@ Manifest 公開網址：`https://raw.githubusercontent.com/<owner>/<repo>/main/r
 Mission Control 站在許多開源專案肩上。以下整理 dashboard 直接 wrap、安裝或依賴的外部工具（不含 `package.json` 內的 npm 套件）：
 
 **Agent / AI 基礎**
-- [OpenClaw](https://www.openclaw.tw/) — 核心 agent runtime，dashboard 的 RPC、event stream、cron、skill 等都靠它
+- [OpenClaw](https://openclaw.ai/) — 核心 agent runtime，dashboard 的 RPC、event stream、cron、skill 等都靠它
 - [jacob-bd/notebooklm-mcp-cli](https://github.com/jacob-bd/notebooklm-mcp-cli) — NotebookLM 整合（`nlm` CLI）
 - [mem0ai/mem0](https://github.com/mem0ai/mem0) — 客服長期記憶
 - [Qdrant](https://qdrant.tech/) + [Ollama](https://ollama.com/)（`bge-m3`） — 自架 mem0 向量 / embedding backend
