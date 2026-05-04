@@ -37,7 +37,13 @@ npm run dev
 - 可選：Python 3.10+ 與 [uv](https://github.com/astral-sh/uv) — 只在你想用 `deploy/mcp/` 底下的 OpenClaw MCP 服務（客服 handoff / mem0 客戶記憶等）時才需要
 - 後續一些套件部署流程可能要 sudo 權限，我自己測試時會開免密碼 sudo，你們自己斟酌是否要開
 
-正式部署（systemd unit + tarball）：下載 [release tarball](https://github.com/YJ-Software/mission-control-center/releases/latest) 後執行 `deploy/release/install.sh`，詳見下方 Release / 部署 章節。
+正式部署（systemd unit + tarball），一行安裝：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YJ-Software/mission-control-center/main/install.sh | bash
+```
+
+腳本會抓 `release-manifest.json`、下載對應 tarball、驗證 sha256，然後幫你跑 `install.sh` 建好 `~/mission-control/` 目錄結構與 systemd user unit。詳見下方 Release / 部署 章節。
 
 > 🔒 **強烈建議走 [Tailscale](https://tailscale.com/) 等私網存取**，不要把 dashboard 直接暴露到公網 IP。系統含終端機、Docker 控制、瀏覽器自動化等高權限功能，被未授權存取後果嚴重。如果一定要走公網，至少要：強密碼 + fail2ban + reverse proxy + TLS。
 

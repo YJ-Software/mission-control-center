@@ -37,7 +37,13 @@ Open `http://{tailscale_internal_ip}:3737` in your browser. On first launch, `.e
 - Optional: Python 3.10+ and [uv](https://github.com/astral-sh/uv) — only required if you want to run the OpenClaw MCP servers under `deploy/mcp/` (customer-service handoff, mem0 long-term memory, etc.)
 - Some package install flows need sudo. The author runs the dashboard with passwordless sudo locally — decide for yourself whether that's acceptable in your environment.
 
-For production deployment (systemd unit + tarball), grab the [release tarball](https://github.com/YJ-Software/mission-control-center/releases/latest) and run `deploy/release/install.sh` — see the Release / Deployment section below for details.
+For production deployment (systemd unit + tarball), one-line install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YJ-Software/mission-control-center/main/install.sh | bash
+```
+
+The script fetches `release-manifest.json`, downloads the matching tarball, verifies its sha256, then runs the bundled `install.sh` to create `~/mission-control/` and the systemd user unit. See the Release / Deployment section below for details.
 
 > 🔒 **Strongly prefer private-network access via [Tailscale](https://tailscale.com/) (or similar)**; do not expose the dashboard on a public IP. It ships with high-privilege features (terminal, Docker control, browser automation) — unauthorized access has serious consequences. If a public endpoint is unavoidable, at minimum use a strong password + fail2ban + reverse proxy + TLS.
 
