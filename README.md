@@ -1,5 +1,7 @@
 # Mission Control Center
 
+繁體中文 | [English](README.en.md)
+
 OpenClaw 任務控制面板 — 集中管理 AI Agent 團隊、任務排程、日報產出、備份、瀏覽器自動化與多項營運功能的儀表板系統。
 
 ## 功能總覽
@@ -375,22 +377,6 @@ Manifest 公開網址：`https://raw.githubusercontent.com/<owner>/<repo>/main/r
 ### fail2ban 整合（optional）
 
 `/api/auth` 失敗登入會寫 `[mc-auth] failed login from <ip>` 到 log，供 fail2ban 比對。設定檔模板在 `deploy/fail2ban/`（jail 是 `mission-control.conf.tmpl`，log 路徑以 `__LOGPATH__` 佔位），詳見 `deploy/fail2ban/README.md`。若走 proxy/tunnel，要在 `.env.local` 加 `TRUST_PROXY=1`，才能拿到真實客戶端 IP。
-
----
-
-## TODO
-
-- [ ] GOG cli — Google Gmail、Calendar、Task 整合
-- [ ] 看板任務指派
-- [ ] API KEY 管理介面（先釐清 Secrets Management 運作機制）
-- [ ] 整理可用 Skill
-- [ ] Mobile APP 開發
-- [ ] 整合 RAG-Anything
-- [ ] Search: tavily、searxng、[web-search-plus](https://clawhub.ai/robbyczgw-cla/web-search-plus)
-- [ ] [Agent Reach](https://github.com/Panniantong/Agent-Reach)
-- [X] 記憶強化
-    - [lossless-claw](https://github.com/Martian-Engineering/lossless-claw)
-    - [memory-lancedb-pro](https://github.com/CortexReach/memory-lancedb-pro)
 
 ---
 
