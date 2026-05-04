@@ -18,10 +18,9 @@ npm run dev
 Open `http://localhost:3737` in your browser. On first launch, `.env.local` is auto-generated and the initial login password is printed to the console.
 
 **Prerequisites:**
-- Node.js 20+
+- Node.js 24+
 - Platform: **developed and tested only on Ubuntu Linux**. macOS / Windows / other Linux distributions are unverified — some features (systemd user units, headless Chrome + VNC, apt-based installers) will fail outright on those platforms.
 - Full functionality (agent chat, live feed, cron sync, …) requires OpenClaw running locally on `ws://127.0.0.1:18789`
-- Without OpenClaw the dashboard still works for evaluation: the UI loads and the static modules (tasks, contacts, Docker, terminal, …) are usable
 
 For production deployment (systemd unit + tarball), grab the [release tarball](https://github.com/YJ-Software/mission-control-center/releases/latest) and run `deploy/release/install.sh` — see the Release / Deployment section below for details.
 
