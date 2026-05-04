@@ -4,6 +4,29 @@
 
 OpenClaw mission control dashboard — a centralized panel for managing AI agent teams, scheduled tasks, daily report generation, backups, browser automation, and other operational features.
 
+---
+
+## Quick Start
+
+```bash
+git clone https://github.com/YJ-Software/mission-control-center.git
+cd mission-control-center
+npm install
+npm run dev
+```
+
+Open `http://localhost:3737` in your browser. On first launch, `.env.local` is auto-generated and the initial login password is printed to the console.
+
+**Prerequisites:**
+- Node.js 20+
+- Platform: **developed and tested only on Ubuntu Linux**. macOS / Windows / other Linux distributions are unverified — some features (systemd user units, headless Chrome + VNC, apt-based installers) will fail outright on those platforms.
+- Full functionality (agent chat, live feed, cron sync, …) requires OpenClaw running locally on `ws://127.0.0.1:18789`
+- Without OpenClaw the dashboard still works for evaluation: the UI loads and the static modules (tasks, contacts, Docker, terminal, …) are usable
+
+For production deployment (systemd unit + tarball), grab the [release tarball](https://github.com/YJ-Software/mission-control-center/releases/latest) and run `deploy/release/install.sh` — see the Release / Deployment section below for details.
+
+---
+
 ## Feature Overview
 
 ### Dashboard
@@ -380,6 +403,24 @@ Failed `/api/auth` logins write `[mc-auth] failed login from <ip>` to the log fo
 
 ---
 
+## Disclaimer
+
+This project is provided **as is** (the Apache-2.0 license already covers the legal disclaimer). It is maintained by a single developer in their spare time:
+
+- ❌ **No commercial support or SLA** — no guaranteed response time on issues or pull requests
+- ⚠️ **APIs may break during the 0.x line** — read release notes before upgrading
+- 🛠️ **Not certified production-ready** — evaluate carefully before deploying to a production environment
+- 🐧 **Developed and tested only on Ubuntu Linux** — other operating systems require your own porting effort
+- 💬 Issues and PRs are welcome, but review speed and merge decisions are not guaranteed
+
+If you want to use this code commercially or need customization, forking is more practical than waiting on upstream changes.
+
+---
+
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE). See `NOTICE` for attribution.
+
+---
+
+Built by [遠振資訊 / YJ-Software](https://github.com/YJ-Software).

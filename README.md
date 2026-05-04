@@ -4,6 +4,29 @@
 
 OpenClaw 任務控制面板 — 集中管理 AI Agent 團隊、任務排程、日報產出、備份、瀏覽器自動化與多項營運功能的儀表板系統。
 
+---
+
+## 快速試玩
+
+```bash
+git clone https://github.com/YJ-Software/mission-control-center.git
+cd mission-control-center
+npm install
+npm run dev
+```
+
+開瀏覽器到 `http://localhost:3737`。第一次啟動會自動產生 `.env.local`，初始登入密碼會印在 console。
+
+**前置需求：**
+- Node.js 20+
+- 平台：**只在 Ubuntu Linux 上開發測試**。macOS / Windows / 其他 Linux 發行版未驗證，部分功能（systemd user unit、headless Chrome + VNC、apt-based 安裝流程）會直接失敗
+- 完整功能（Agent 對話、Live Feed、Cron 同步…）需要 OpenClaw 在本機 `ws://127.0.0.1:18789` 跑著
+- 沒裝 OpenClaw 也可以先把 dashboard 開起來看 UI、用靜態模組（任務、聯絡人、Docker、終端機…）
+
+正式部署（systemd unit + tarball）：下載 [release tarball](https://github.com/YJ-Software/mission-control-center/releases/latest) 後執行 `deploy/release/install.sh`，詳見下方 Release / 部署 章節。
+
+---
+
 ## 功能總覽
 
 ### 儀表板
@@ -380,6 +403,24 @@ Manifest 公開網址：`https://raw.githubusercontent.com/<owner>/<repo>/main/r
 
 ---
 
+## 免責聲明
+
+本專案以 **as-is** 提供（已包含於 Apache-2.0 授權的免責條款），由個人開發者業餘維護：
+
+- ❌ **無商業 support / SLA** — 不保證 issue / PR 的回應時間
+- ⚠️ **0.x 期間 API 可能 breaking** — 升級前請看 release notes
+- 🛠️ **不保證 production-ready** — 部署到正式環境前請自行評估
+- 🐧 **僅在 Ubuntu Linux 上開發測試** — 其他作業系統請自行 port
+- 💬 歡迎開 issue / 送 PR，但無法保證 review 速度或 merge 結果
+
+如果你想拿這個 code 做商用、或有客製化需求，自己 fork 走比期待專案維護來得實際。
+
+---
+
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE). See `NOTICE` for attribution.
+
+---
+
+Built by [遠振資訊 / YJ-Software](https://github.com/YJ-Software).
