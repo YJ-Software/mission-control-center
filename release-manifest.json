@@ -1,0 +1,16 @@
+{
+  "latest": {
+    "version": "0.2.0",
+    "releaseDate": "2026-05-04T14:57:54.117Z",
+    "notes": "First public release.\n\n- Open-sourced under Apache-2.0\n- Release pipeline switched from private tunnel to GitHub Releases\n- Internal-only assets and docs removed from public repo",
+    "artifacts": [
+      {
+        "platform": "linux",
+        "arch": "x64",
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.2.0/mission-control-v0.2.0-linux-x64.tar.gz",
+        "sha256": "518d59a2d640e2db5df3ba8224c797c440b9320b66adeab9543cfddb184f7459",
+        "size": 26265904
+      }
+    ]
+  }
+}
