@@ -1,0 +1,14 @@
+{
+  "name": "openclaw-customer-id-injector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Override user_id in customer-memory tool calls (mem0 + wiki) with the actual LINE senderId derived from the session key. Removes the prompt-layer reliance on the LLM passing the right user_id.",
+  "type": "module",
+  "main": "./index.ts",
+  "openclaw": {
+    "extensions": ["./index.ts"],
+    "compat": {
+      "pluginApi": ">=2026.3.0"
+    }
+  }
+}

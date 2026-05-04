@@ -1,0 +1,139 @@
+---
+name: youtube-transcript
+description: Get transcripts from YouTube videos and save summary to Obsidian vault/raw/ while archiving full transcript to vault/transcripts/. Use when the user shares a YouTube link and wants the transcript, summary, or text content of a video.
+---
+
+# youtube-transcript skill
+
+Extract transcripts from YouTube videos via the bundled `fetch-transcript.mjs` script. Supports both `youtube.com` and `youtu.be` URLs.
+
+This skill:
+- fetches captions first (fast)
+- falls back to Whisper transcription via `yt-dlp` + Whisper-compatible API
+- uses async mode for long videos
+- saves a **summary** to `{{raw_dir}}`
+- saves the **full transcript** to `{{transcripts_dir}}`
+
+## Paths (set by Mission Control at install time)
+
+- Summary dir: `{{raw_dir}}`
+- Transcript dir: `{{transcripts_dir}}`
+- Script path: `{{home_dir}}/.agents/skills/youtube-transcript/scripts/fetch-transcript.mjs`
+
+## One-time setup
+
+The script's npm deps install automatically on first use:
+
+```bash
+cd {{home_dir}}/.agents/skills/youtube-transcript/scripts
+npm install --omit=dev
+```
+
+## Default workflow
+
+1. **Start async job** to avoid timeouts:
+
+```bash
+node {{home_dir}}/.agents/skills/youtube-transcript/scripts/fetch-transcript.mjs \
+  "<URL>" --async --save-dir "{{transcripts_dir}}"
+```
+
+This returns `{"jobId":"...","status":"queued"}`.
+
+2. **Poll status** until `succeeded` or `failed`:
+
+```bash
+node {{home_dir}}/.agents/skills/youtube-transcript/scripts/fetch-transcript.mjs \
+  --status <jobId>
+```
+
+3. **Fetch result**:
+
+```bash
+node {{home_dir}}/.agents/skills/youtube-transcript/scripts/fetch-transcript.mjs \
+  --result <jobId>
+```
+
+Result JSON includes `text`, `title`, `videoId`, `source`, `language`, `saved_path` (the full transcript file in `{{transcripts_dir}}`).
+
+## Summary generation
+
+Write a **dynamic-length summary** to `{{raw_dir}}/{sort-prefix}-[{stars}]-{sanitized-title}-{YYYYMMDD}.md` using the heuristic below.
+
+### Filename format
+
+`0-[⭐⭐⭐⭐⭐]-{sanitized-title}-{YYYYMMDD}.md` (same prefix/star convention as link-capture)
+
+### Content format
+
+```markdown
+---
+url: <影片連結>
+videoId: <VIDEO_ID>
+title: <影片標題>
+language: <語言>
+type: youtube
+rating: <1-5>
+source: <captions|whisper>
+transcript: "[[<transcript filename>]]"
+date: YYYY-MM-DD
+tags:
+  - tag1
+  - tag2
+---
+
+# {Video Title}
+
+> [!summary] 一句話結論
+> ...
+
+## 重點整理
+
+- 🎯 核心主題
+- 💡 ...
+
+## 行動 / 建議
+
+- ...
+
+---
+
+完整逐字稿：[[<transcript filename>]]
+```
+
+Do **not** inline the full transcript into the summary file — it would bloat the note and Obsidian search. Link to the transcript file in `{{transcripts_dir}}` via an Obsidian wikilink.
+
+### Length buckets (by transcript length)
+
+- **S** (0–1,500 words / 0–4,000 zh chars): 1-sentence conclusion + ≤5 bullets + 0–3 actions
+- **M** (1,500–4,500 words / 4,000–12,000 zh chars): 2–3 sentence summary + 8–12 bullets in 2–4 sections + 3–7 actions
+- **L** (4,500–12,000 words): exec summary (3–6 sentences) + 3–6 themes × 2–4 bullets + 5–10 notable details + 5–10 actions
+- **XL** (>12,000 words): 6–10 sentence summary + H3 outline with per-section bullets + 10–20 takeaways + ≤10 actions + optional "如果只看 5 分鐘" top-5
+
+Caps: summary ≤ 8% of transcript length AND absolute cap (S: 300, M: 600, L/XL: 1200).
+
+### Rules
+
+- Prefer bullets over paragraphs
+- Do not hallucinate — summarize what is in transcript
+- Numbers/specs kept as-is; mark "可能/未確認" if unsure
+- Whisper errors → summarize at a higher level, avoid quoting exact phrases
+- **All summaries in Traditional Chinese**
+
+## Completion report
+
+Reply to the user with (in Traditional Chinese):
+
+- 📺 Video title + URL
+- 🎯 One-sentence conclusion
+- 💡 3–5 bullet key takeaways
+- 📁 Summary file path (raw_dir)
+- 📁 Transcript file path (transcripts_dir)
+
+## Whisper endpoint configuration
+
+The script reads `WHISPER_BASE_URL` / `WHISPER_API_KEY` from environment.
+Mission Control writes these into `~/.openclaw/openclaw.json` under `skills.entries.youtube-transcript.env`:
+
+- `WHISPER_BASE_URL`: `{{whisper_base_url}}`
+- `WHISPER_API_KEY`: (from Mission Control settings)

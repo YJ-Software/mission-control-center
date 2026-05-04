@@ -1,0 +1,169 @@
+import { execFileSync } from 'child_process'
+import { getServerEnv } from '@/lib/server-env'
+
+const env = getServerEnv()
+
+function runQuiet(cmd: string, args: string[]): string {
+  try {
+    return execFileSync(cmd, args, { encoding: 'utf-8', timeout: 5000, env }).trim()
+  } catch {
+    return ''
+  }
+}
+
+export interface ServiceInfo {
+  name: string
+  active: boolean | null
+  version?: string
+}
+
+function isSystemdActive(unit: string): boolean {
+  for (const args of [
+    ['is-active', '--quiet', unit],
+    ['--user', 'is-active', '--quiet', unit],
+  ]) {
+    try {
+      execFileSync('systemctl', args, { stdio: 'ignore', timeout: 3000, env })
+      return true
+    } catch { /* not active in this scope */ }
+  }
+  return false
+}
+
+function hasProcess(pattern: string): boolean {
+  try {
+    execFileSync('pgrep', ['-fa', '--', pattern], { stdio: 'ignore', timeout: 3000, env })
+    return true
+  } catch {
+    return false
+  }
+}
+
+interface ServiceDetector {
+  name: string
+  systemd: string[]
+  processes: string[]
+  /** Only show if this binary exists on the system */
+  onlyIfInstalled?: string
+  /** Command to get version string */
+  versionCmd?: { cmd: string; args: string[]; regex?: RegExp }
+}
+
+const SERVICE_DETECTORS: ServiceDetector[] = [
+  {
+    name: 'openclaw',
+    systemd: ['openclaw', 'openclaw-gateway', 'openclaw-webhooks'],
+    processes: ['openclaw-gateway', 'openclaw-webhooks'],
+    versionCmd: { cmd: 'openclaw', args: ['--version'], regex: /OpenClaw\s+([\d.]+)/ },
+  },
+  {
+    name: 'tailscaled',
+    systemd: ['tailscaled'],
+    processes: ['tailscaled'],
+  },
+  {
+    name: 'imunify-antivirus',
+    systemd: ['imunify-antivirus', 'imunify-antivirus.socket'],
+    processes: ['imav.run'],
+    onlyIfInstalled: 'imunify-antivirus',
+  },
+]
+
+function isBinaryInstalled(bin: string): boolean {
+  try {
+    execFileSync('which', [bin], { stdio: 'ignore', timeout: 3000, env })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Detect service status: try systemd units first, then process patterns.
+ * Services with `onlyIfInstalled` are skipped if the binary is not found.
+ */
+export function getServicesStatus(): ServiceInfo[] {
+  return SERVICE_DETECTORS
+    .filter(det => !det.onlyIfInstalled || isBinaryInstalled(det.onlyIfInstalled))
+    .map(det => {
+      const active = det.systemd.some(isSystemdActive) || det.processes.some(hasProcess)
+      let version: string | undefined
+      if (det.versionCmd) {
+        const raw = runQuiet(det.versionCmd.cmd, det.versionCmd.args)
+        if (raw) {
+          const match = det.versionCmd.regex ? raw.match(det.versionCmd.regex) : null
+          version = match ? match[1] : raw.split('\n')[0]
+        }
+      }
+      return { name: det.name, active, version }
+    })
+}
+
+export interface OpenClawVersionInfo {
+  installed: string
+  latest: string
+  updateAvailable: boolean
+}
+
+/**
+ * Check OpenClaw installed version vs latest on npm.
+ */
+export function getOpenClawVersionInfo(): OpenClawVersionInfo {
+  const raw = runQuiet('openclaw', ['--version'])
+  const match = raw.match(/OpenClaw\s+([\d.]+)/)
+  const installed = match ? match[1] : ''
+
+  let latest = ''
+  try {
+    latest = runQuiet('npm', ['view', 'openclaw', 'version'])
+  } catch { /* ignore */ }
+
+  return {
+    installed,
+    latest,
+    updateAvailable: !!(installed && latest && installed !== latest),
+  }
+}
+
+export interface TailscaleInfo {
+  hostname: string
+  ip: string
+  online: boolean
+  peers: number
+  routes: string[]
+  error?: string
+}
+
+/**
+ * Get detailed Tailscale status via `tailscale status --json`.
+ */
+export function getTailscaleStatus(): TailscaleInfo {
+  try {
+    const raw = runQuiet('tailscale', ['status', '--json'])
+    if (!raw) {
+      return { hostname: '--', ip: '--', online: false, peers: 0, routes: [], error: 'Tailscale not available' }
+    }
+
+    const status = JSON.parse(raw)
+    const self = status.Self || {}
+    const peers = Object.values(status.Peer || {}).filter((p: any) => p.Online).length
+
+    let routes: string[] = []
+    try {
+      const serveRaw = runQuiet('tailscale', ['serve', 'status'])
+      if (serveRaw && !serveRaw.includes('No serve config')) {
+        routes = serveRaw.split('\n').filter(l => l.includes('http')).map(l => l.trim())
+      }
+    } catch { /* ignore */ }
+
+    return {
+      hostname: self.HostName || 'unknown',
+      ip: self.TailscaleIPs?.[0] || 'unknown',
+      online: self.Online || false,
+      peers,
+      routes,
+    }
+  } catch {
+    return { hostname: '--', ip: '--', online: false, peers: 0, routes: [], error: 'Tailscale not available' }
+  }
+}

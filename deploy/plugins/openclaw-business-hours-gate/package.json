@@ -1,0 +1,14 @@
+{
+  "name": "openclaw-business-hours-gate",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Block AI replies during configured business hours so human agents can take over.",
+  "type": "module",
+  "main": "./index.ts",
+  "openclaw": {
+    "extensions": ["./index.ts"],
+    "compat": {
+      "pluginApi": ">=2026.3.0"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+[project]
+name = "openclaw-handoff-mcp"
+version = "0.2.0"
+description = "Tiny MCP server for human-handoff notifications via Telegram + AgentMail. Wraps Telegram Bot sendMessage and AgentMail messages.send so embedded OpenClaw agents (which lack the built-in `message` tool) can escalate to a team chat and/or email."
+requires-python = ">=3.10"
+dependencies = [
+  "mcp[cli]>=1.2.0",
+  "agentmail>=0.1.0",
+]
+
+[project.scripts]
+openclaw-handoff-mcp = "server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+include = ["server.py"]

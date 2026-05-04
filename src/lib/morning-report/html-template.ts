@@ -1,0 +1,122 @@
+export const HTML_TEMPLATE = `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌅 晨報 {{DATE_HYPHEN}}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent-cyan: #00d4ff;
+            --accent-purple: #a855f7;
+            --accent-pink: #ec4899;
+            --accent-green: #22c55e;
+            --border-color: #30363d;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary); color: var(--text-primary);
+            line-height: 1.7; min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, rgba(0,212,255,0.1) 0%, rgba(168,85,247,0.1) 100%);
+            border-bottom: 1px solid var(--border-color);
+            padding: 3rem 1.5rem; text-align: center;
+            position: relative; overflow: hidden;
+        }
+        .header::before {
+            content:''; position:absolute; top:0; left:0; right:0; bottom:0;
+            background: radial-gradient(circle at 20% 50%, rgba(0,212,255,0.1) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 50%, rgba(168,85,247,0.1) 0%, transparent 50%);
+            pointer-events: none;
+        }
+        .header h1 {
+            font-size: 2.5rem; font-weight: 700;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple), var(--accent-pink));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; margin-bottom: 0.5rem; position: relative;
+        }
+        .header .date { color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; font-size: 1rem; }
+        .container { max-width: 1200px; margin: 0 auto; display: flex; gap: 2rem; padding: 2rem 1.5rem; }
+        .sidebar { width: 280px; flex-shrink: 0; position: sticky; top: 2rem; height: fit-content; }
+        .toc {
+            background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: 12px; padding: 1.5rem; backdrop-filter: blur(10px);
+        }
+        .toc h2 { font-size: 1rem; color: var(--accent-cyan); margin-bottom: 1rem; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.05em; }
+        .toc ul { list-style: none; }
+        .toc li { margin-bottom: 0.5rem; }
+        .toc a { color: var(--text-secondary); text-decoration: none; display: block; padding: 0.5rem 0.75rem; border-radius: 6px; transition: all 0.2s ease; font-size: 0.9rem; }
+        .toc a:hover { background: var(--bg-tertiary); color: var(--accent-cyan); }
+        .content { flex: 1; min-width: 0; }
+        .section {
+            background: var(--bg-secondary); border: 1px solid var(--border-color);
+            border-radius: 12px; padding: 2rem; margin-bottom: 2rem;
+            position: relative; overflow: hidden;
+        }
+        .section::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple)); }
+        .section h2 { font-size: 1.75rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem; }
+        .section h2::after { content:''; flex:1; height:1px; background: linear-gradient(90deg, var(--border-color), transparent); margin-left: 1rem; }
+        .section h3 { font-size: 1.2rem; margin: 1.5rem 0 0.75rem; color: var(--accent-purple); }
+        .section ul { list-style: none; }
+        .section li { margin-bottom: 1.25rem; padding-left: 1.5rem; position: relative; }
+        .section li::before { content:'▸'; position:absolute; left:0; color: var(--accent-cyan); }
+        .section li strong { color: var(--text-primary); font-weight: 600; }
+        .section a { color: var(--accent-cyan); text-decoration: none; border-bottom: 1px dotted var(--accent-cyan); transition: all 0.2s ease; }
+        .section a:hover { color: var(--accent-pink); border-bottom-color: var(--accent-pink); }
+        .section blockquote { border-left: 3px solid var(--accent-purple); padding-left: 1rem; color: var(--text-secondary); font-style: italic; margin: 1rem 0; }
+        .section p { margin-bottom: 0.75rem; }
+        hr { border: none; height: 1px; background: linear-gradient(90deg, transparent, var(--border-color), transparent); margin: 2rem 0; }
+        .footer { text-align: center; padding: 2rem; color: var(--text-secondary); font-size: 0.875rem; border-top: 1px solid var(--border-color); }
+        .footer p { margin-bottom: 0.5rem; }
+        @media (max-width: 900px) {
+            .container { flex-direction: column; }
+            .sidebar { width: 100%; position: static; }
+            .toc { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 1rem; }
+            .toc h2 { width: 100%; margin-bottom: 0.75rem; }
+            .toc ul { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+            .toc li { margin: 0; }
+            .toc a { padding: 0.4rem 0.75rem; font-size: 0.85rem; background: var(--bg-tertiary); border-radius: 20px; }
+            .header h1 { font-size: 1.75rem; }
+            .section { padding: 1.5rem; }
+        }
+        ::-webkit-scrollbar { width:8px; height:8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius:4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+        ::selection { background: rgba(0,212,255,0.3); color: var(--text-primary); }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>🌅 晨報 {{DATE_HYPHEN}}</h1>
+        <p class="date">Morning Report / {{DATE_ENGLISH}}</p>
+    </header>
+
+    <div class="container">
+        <aside class="sidebar">
+            <nav class="toc">
+                <h2>📋 目錄</h2>
+                {{TOC}}
+            </nav>
+        </aside>
+
+        <main class="content">
+            {{CONTENT}}
+        </main>
+    </div>
+
+    <footer class="footer">
+        <p>晨報產生時間：{{GENERATED_AT}}</p>
+        <p>資料來源：AI 整合系統</p>
+    </footer>
+</body>
+</html>`

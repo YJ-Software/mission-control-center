@@ -1,0 +1,34 @@
+# Fail2Ban jail for Mission Control Center.
+#
+# Bans any client IP with 5 failed logins within 10 minutes for 1 hour.
+# Reads lines from the `mission-control` systemd user unit via the journald
+# backend — no log-file path to configure.
+#
+# Requires the `ufw` ban action; it inserts a deny rule at position 1 so
+# the ban takes effect immediately without flushing allow rules.
+
+[mission-control]
+enabled  = true
+# Reads the log file the `mission-control` systemd user service writes via
+# StandardOutput=append (see deploy/release/mission-control.service.tmpl).
+# __LOGPATH__ is substituted at install time to the operator's state dir
+# (default ~/.mission-control/logs/mission-control.log). The systemd
+# backend was tempting but does NOT see user-unit journal entries on
+# Ubuntu 24.04's default fail2ban (systemd Python reader filters by system
+# journal namespace), so we ship a dedicated log file instead.
+backend  = auto
+logpath  = __LOGPATH__
+filter   = mission-control
+port     = 3737
+protocol = tcp
+
+maxretry = 5
+findtime = 600
+bantime  = 3600
+
+# Whole-IP reject via UFW — a banned attacker is cut off from *every* port,
+# not just 3737. Admin note: if your own IP triggers the ban during testing,
+# SSH goes down with the dashboard. Recovery options: wait out `bantime`,
+# unban from a different IP/VPS console (`fail2ban-client set mission-control
+# unbanip <ip>`), or tighten `maxretry` to fit normal usage.
+action   = ufw[application="mission-control", blocktype=reject]

@@ -1,0 +1,63 @@
+# Next.js
+.next/
+out/
+
+# Release build artifacts (produced by `npm run build:release`)
+dist/
+
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# Morning report runtime data (except default templates)
+data/morning-report/*
+!data/morning-report/default-templates/
+
+# Build
+*.tsbuildinfo
+
+# Vercel
+.vercel/
+
+# Testing
+coverage/
+/playwright-report/
+/test-results/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Misc
+.DS_Store
+*.pem
+
+# Local data
+data/db.sqlite
+
+# IDE
+.vscode/
+
+# Agents
+.agents/
+
+# Test scripts
+test-*.js
+
+# Claude Code / Superpowers — local agent state, not part of public repo
+.claude/
+.superpowers/
+CLAUDE.md
+
+# Internal docs (plans, screenshots, design notes — not part of public repo)
+docs/
+
+# Python (for deploy/mcp/* MCP servers)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/

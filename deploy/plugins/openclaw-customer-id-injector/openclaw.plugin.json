@@ -1,0 +1,43 @@
+{
+  "id": "customer-id-injector",
+  "name": "Customer ID Injector",
+  "description": "Forces customer-memory tool calls (mem0 + wiki person pages) to use the actual LINE senderId derived from the session key, removing the prompt-layer reliance on the LLM passing the correct user_id.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "memToolPrefix": {
+        "type": "string",
+        "description": "Prefix that identifies mem0 MCP tools whose user_id should be overridden.",
+        "default": "openclaw-mem0__"
+      },
+      "wikiToolNames": {
+        "type": "array",
+        "description": "Wiki tools that take an entity-pointing argument we should rewrite (e.g. wiki_get, wiki_apply). The argument named in `wikiPathField` is rewritten to the canonical customer entity path.",
+        "items": { "type": "string" },
+        "default": ["wiki_get", "wiki_apply"]
+      },
+      "wikiPathField": {
+        "type": "string",
+        "description": "Field name in wiki tool params that we treat as the entity path/id to rewrite.",
+        "default": "id"
+      },
+      "wikiCustomerPathTemplate": {
+        "type": "string",
+        "description": "Path template for the per-customer wiki entity page. {userId} is replaced with the canonical LINE userId.",
+        "default": "entity.customer-line-{userId}"
+      },
+      "logOverrides": {
+        "type": "boolean",
+        "description": "Log every override decision via runtime.log for debugging.",
+        "default": true
+      },
+      "channels": {
+        "type": "array",
+        "description": "Restrict override to specific channels. Default: [\"line\"]. Empty array = all channels.",
+        "items": { "type": "string" },
+        "default": ["line"]
+      }
+    }
+  }
+}

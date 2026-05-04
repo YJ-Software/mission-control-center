@@ -1,0 +1,65 @@
+{
+  "id": "business-hours-gate",
+  "name": "Business Hours Gate",
+  "description": "Silently drops or canned-replies inbound messages during configured business hours so human staff handle them.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "schedule": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone, e.g. Asia/Taipei",
+            "default": "Asia/Taipei"
+          },
+          "windows": {
+            "type": "array",
+            "description": "Active windows when human staff handles the channel; AI replies are gated.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["days", "start", "end"],
+              "properties": {
+                "days": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+                  }
+                },
+                "start": {
+                  "type": "string",
+                  "description": "HH:MM 24h",
+                  "pattern": "^([01]?\\d|2[0-3]):[0-5]\\d$"
+                },
+                "end": {
+                  "type": "string",
+                  "description": "HH:MM 24h (exclusive)",
+                  "pattern": "^([01]?\\d|2[0-3]):[0-5]\\d$"
+                }
+              }
+            }
+          }
+        }
+      },
+      "replyText": {
+        "type": "string",
+        "description": "Optional canned reply during active windows. Empty / omitted = silent (no reply at all).",
+        "default": ""
+      },
+      "channels": {
+        "type": "array",
+        "description": "Restrict gating to specific channels (e.g. [\"line\"]). Empty / omitted = all channels.",
+        "items": { "type": "string" }
+      },
+      "pauseAi": {
+        "type": "boolean",
+        "description": "Master kill switch. When true, claim every inbound message regardless of schedule (always silent / canned). When false (default), schedule controls when to claim.",
+        "default": false
+      }
+    }
+  }
+}

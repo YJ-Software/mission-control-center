@@ -1,0 +1,37 @@
+[Unit]
+Description=Mission Control Center
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# ExecStart resolves `current` symlink at start, so upgrades that swap the
+# symlink + restart this unit pick up the new version automatically.
+WorkingDirectory=__PREFIX__/current
+ExecStart=__NODE_BIN__ __PREFIX__/current/server.js
+Restart=on-failure
+RestartSec=3
+# Stream stdout to a well-known file so fail2ban (and other log readers)
+# don't need to fight the systemd user-journal plumbing. Lives under the
+# state dir so the running user owns it and can tail without sudo; parent
+# dir is created by install.sh / upgrade.sh.
+StandardOutput=append:__STATE__/logs/mission-control.log
+StandardError=append:__STATE__/logs/mission-control.log
+
+Environment=NODE_ENV=production
+# The dashboard shells out to `openclaw` (device pairing auto-approve) and
+# expects `node`/system tools on PATH. systemd's default PATH for user
+# units is minimal, so prepend common openclaw install locations (npm
+# global + both per-user and shared brew) so `spawn openclaw` resolves.
+Environment=PATH=%h/.npm-global/bin:%h/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# PORT, HOST, AUTH_PASSWORD, AUTH_SECRET, OPENCLAW_TOKEN come from the state
+# .env.local — keeping them there means one source of truth for config.
+EnvironmentFile=__STATE__/.env.local
+
+# No systemd-level hardening: the dashboard's setup flows (Obsidian, browser,
+# CouchDB, etc.) shell out to sudo for apt/dpkg/loginctl/docker/systemctl, and
+# also need to write outside the install/state dirs (e.g. ~/.openclaw/*.json).
+# fail2ban + cookie auth handle the exposed-surface threat model instead.
+
+[Install]
+WantedBy=default.target
