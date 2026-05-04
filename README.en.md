@@ -6,6 +6,18 @@ OpenClaw mission control dashboard — a centralized panel for managing AI agent
 
 ---
 
+## Why This Dashboard
+
+Mission Control is built **for remote VPSes and headless Linux servers**, not for local desktops. The design follows from that:
+
+- 🌐 **Operate the server entirely from a browser** — terminal (xterm.js + node-pty), Chrome (headless + noVNC), Docker, and systemd units are all served from the dashboard. No SSH client or X11 forwarding required.
+- 🖥️ **Headless Chrome + VNC** — runs an actual browser on the server (Xvfb + Openbox + x11vnc + websockify), watch it through in-browser VNC, and connect automation to CDP port 9222. Login state and cookies stay on the server.
+- 📅 **Morning reports, backups, and cron are server-resident** — they run on the VPS 24/7, unaffected by your local machine being asleep or offline.
+- 🔌 **systemd user units, no root, no Docker** — deploy = extract + start the user service. Multiple installs on one box don't conflict.
+- 🔒 **Best paired with Tailscale** — a throwaway VPS + Tailscale lets you reach the dashboard from any device (phone, tablet, someone else's machine) as if it were local.
+
+---
+
 ## Quick Start
 
 ```bash
@@ -423,6 +435,7 @@ Mission Control stands on the shoulders of many open-source projects. The list b
 - [noVNC](https://novnc.com/) — in-browser VNC client (upstream files vendored under `src/lib/novnc/`)
 - [Xvfb](https://en.wikipedia.org/wiki/Xvfb) + [Openbox](http://openbox.org/) + [x11vnc](http://www.karlrunge.com/x11vnc/) + [websockify](https://github.com/novnc/websockify) — headless display stack
 - [Chromium](https://www.chromium.org/) headless — browser automation
+- [@jackwener/opencli](https://github.com/jackwener/opencli) — OpenCLI Chrome extension + daemon; the dashboard drives Chrome automation / capture flows through it
 
 **Second brain**
 - [Obsidian](https://obsidian.md/) — personal knowledge base
