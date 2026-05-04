@@ -74,7 +74,7 @@ For production deployment (systemd unit + tarball), grab the [release tarball](h
 - **API token auth** — supports `X-Backup-Token` for external invocation
 
 ### Second Brain
-- **NotebookLM integration** — login management, notebook CRUD, source management, AI chat, research mode, Studio artifacts (wraps the `nlm` command from [jacob-bd/notebooklm-mcp-cli](https://github.com/jacob-bd/notebooklm-mcp-cli); the setup flow auto-installs it via `uv tool install`)
+- **NotebookLM integration** — login management, notebook CRUD, source management, AI chat, research mode, Studio artifacts (wraps the `nlm` command from `notebooklm-mcp-cli`; see Acknowledgements)
 - **Obsidian integration** — headless install (Xvfb + Openbox + x11vnc + websockify), VNC remote access, CouchDB LiveSync sync
 - **Capture skills** — two installable OpenClaw global skills (templates contain hardcoded vault paths)
   - `link-capture` — auto-fetch / summarize / score URL-only messages and store under `{vault}/raw/`
@@ -402,6 +402,37 @@ Public manifest URL: `https://raw.githubusercontent.com/<owner>/<repo>/main/rele
 ### fail2ban Integration (optional)
 
 Failed `/api/auth` logins write `[mc-auth] failed login from <ip>` to the log for fail2ban to match. Configuration templates live in `deploy/fail2ban/` (the jail is `mission-control.conf.tmpl`, with the log path placeholder `__LOGPATH__`); see `deploy/fail2ban/README.md` for details. When running behind a proxy / tunnel, set `TRUST_PROXY=1` in `.env.local` so the real client IP is recorded.
+
+---
+
+## Acknowledgements
+
+Mission Control stands on the shoulders of many open-source projects. The list below covers external tools that the dashboard directly wraps, installs, or depends on (npm packages live in `package.json`):
+
+**Agent / AI foundation**
+- [OpenClaw](https://www.openclaw.tw/) — the core agent runtime; everything from RPC and event streams to cron and skills rides on top of it
+- [jacob-bd/notebooklm-mcp-cli](https://github.com/jacob-bd/notebooklm-mcp-cli) — NotebookLM integration (`nlm` CLI)
+- [mem0ai/mem0](https://github.com/mem0ai/mem0) — customer-service long-term memory
+- [Qdrant](https://qdrant.tech/) + [Ollama](https://ollama.com/) (`bge-m3`) — self-hosted vector / embedding backend for mem0
+
+**Morning report / podcast**
+- [edge-tts](https://github.com/rany2/edge-tts) — Microsoft Edge TTS speech synthesis
+- [FFmpeg](https://ffmpeg.org/) — podcast audio assembly
+
+**Headless desktop / browser**
+- [noVNC](https://novnc.com/) — in-browser VNC client (upstream files vendored under `src/lib/novnc/`)
+- [Xvfb](https://en.wikipedia.org/wiki/Xvfb) + [Openbox](http://openbox.org/) + [x11vnc](http://www.karlrunge.com/x11vnc/) + [websockify](https://github.com/novnc/websockify) — headless display stack
+- [Chromium](https://www.chromium.org/) headless — browser automation
+
+**Second brain**
+- [Obsidian](https://obsidian.md/) — personal knowledge base
+- [vrtmrz/obsidian-livesync](https://github.com/vrtmrz/obsidian-livesync) — CouchDB-backed cross-device sync plugin
+
+**Setup integrations**
+- [Tailscale](https://tailscale.com/) — private-network access (first-run wizard)
+- [ImunifyAV](https://www.imunify.com/imunifyav/) — malware scan (first-run wizard)
+
+The full npm dependency list lives in `package.json`.
 
 ---
 

@@ -74,7 +74,7 @@ npm run dev
 - **API Token 認證** — 支援 `X-Backup-Token` 外部呼叫
 
 ### 第二大腦（Second Brain）
-- **NotebookLM 整合** — 登入管理、筆記本 CRUD、來源管理、AI 對話、研究功能、Studio 工件（底層 wrap [jacob-bd/notebooklm-mcp-cli](https://github.com/jacob-bd/notebooklm-mcp-cli) 的 `nlm` 指令，setup 流程會自動 `uv tool install`）
+- **NotebookLM 整合** — 登入管理、筆記本 CRUD、來源管理、AI 對話、研究功能、Studio 工件（wrap `notebooklm-mcp-cli` 的 `nlm` 指令，詳見「致謝」）
 - **Obsidian 整合** — Headless 安裝（Xvfb + Openbox + x11vnc + websockify）、VNC 遠端存取、CouchDB LiveSync 同步
 - **Capture Skills** — 兩個可安裝的 OpenClaw 全域 skill，模板內已寫死你的 vault 絕對路徑
   - `link-capture` — URL-only 訊息自動抓取、摘要、評分，存入 `{vault}/raw/`
@@ -402,6 +402,37 @@ Manifest 公開網址：`https://raw.githubusercontent.com/<owner>/<repo>/main/r
 ### fail2ban 整合（optional）
 
 `/api/auth` 失敗登入會寫 `[mc-auth] failed login from <ip>` 到 log，供 fail2ban 比對。設定檔模板在 `deploy/fail2ban/`（jail 是 `mission-control.conf.tmpl`，log 路徑以 `__LOGPATH__` 佔位），詳見 `deploy/fail2ban/README.md`。若走 proxy/tunnel，要在 `.env.local` 加 `TRUST_PROXY=1`，才能拿到真實客戶端 IP。
+
+---
+
+## 致謝
+
+Mission Control 站在許多開源專案肩上。以下整理 dashboard 直接 wrap、安裝或依賴的外部工具（不含 `package.json` 內的 npm 套件）：
+
+**Agent / AI 基礎**
+- [OpenClaw](https://www.openclaw.tw/) — 核心 agent runtime，dashboard 的 RPC、event stream、cron、skill 等都靠它
+- [jacob-bd/notebooklm-mcp-cli](https://github.com/jacob-bd/notebooklm-mcp-cli) — NotebookLM 整合（`nlm` CLI）
+- [mem0ai/mem0](https://github.com/mem0ai/mem0) — 客服長期記憶
+- [Qdrant](https://qdrant.tech/) + [Ollama](https://ollama.com/)（`bge-m3`） — 自架 mem0 向量 / embedding backend
+
+**晨報 / Podcast**
+- [edge-tts](https://github.com/rany2/edge-tts) — Microsoft Edge TTS 語音合成
+- [FFmpeg](https://ffmpeg.org/) — Podcast 音訊合併
+
+**Headless 桌面 / 瀏覽器**
+- [noVNC](https://novnc.com/) — 瀏覽器內 VNC client（`src/lib/novnc/` 內含上游檔案）
+- [Xvfb](https://en.wikipedia.org/wiki/Xvfb) + [Openbox](http://openbox.org/) + [x11vnc](http://www.karlrunge.com/x11vnc/) + [websockify](https://github.com/novnc/websockify) — headless display stack
+- [Chromium](https://www.chromium.org/) headless — 瀏覽器自動化
+
+**第二大腦**
+- [Obsidian](https://obsidian.md/) — 知識管理應用
+- [vrtmrz/obsidian-livesync](https://github.com/vrtmrz/obsidian-livesync) — CouchDB-backed 跨裝置同步插件
+
+**Setup 流程整合**
+- [Tailscale](https://tailscale.com/) — 私網存取（首次安裝引導）
+- [ImunifyAV](https://www.imunify.com/imunifyav/) — 惡意檔案掃描（首次安裝引導）
+
+完整 npm 依賴清單見 `package.json`。
 
 ---
 
