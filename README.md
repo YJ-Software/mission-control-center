@@ -391,3 +391,9 @@ Manifest 公開網址：`https://raw.githubusercontent.com/<owner>/<repo>/main/r
 - [X] 記憶強化
     - [lossless-claw](https://github.com/Martian-Engineering/lossless-claw)
     - [memory-lancedb-pro](https://github.com/CortexReach/memory-lancedb-pro)
+
+---
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE). See `NOTICE` for attribution.

@@ -2,6 +2,7 @@
   "name": "mission-control-wwz",
   "version": "0.1.24",
   "private": true,
+  "license": "Apache-2.0",
   "scripts": {
     "dev": "NODE_ENV=development tsx server.ts",
     "build": "next build",
