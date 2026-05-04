@@ -18,10 +18,10 @@ npm run dev
 開瀏覽器到 `http://localhost:3737`。第一次啟動會自動產生 `.env.local`，初始登入密碼會印在 console。
 
 **前置需求：**
-- Node.js 20+
+- Node.js 24+
 - 平台：**只在 Ubuntu Linux 上開發測試**。macOS / Windows / 其他 Linux 發行版未驗證，部分功能（systemd user unit、headless Chrome + VNC、apt-based 安裝流程）會直接失敗
 - 完整功能（Agent 對話、Live Feed、Cron 同步…）需要 OpenClaw 在本機 `ws://127.0.0.1:18789` 跑著
-- 沒裝 OpenClaw 也可以先把 dashboard 開起來看 UI、用靜態模組（任務、聯絡人、Docker、終端機…）
+- 可選：Python 3.10+ 與 [uv](https://github.com/astral-sh/uv) — 只在你想用 `deploy/mcp/` 底下的 OpenClaw MCP 服務（客服 handoff / mem0 客戶記憶等）時才需要
 
 正式部署（systemd unit + tarball）：下載 [release tarball](https://github.com/YJ-Software/mission-control-center/releases/latest) 後執行 `deploy/release/install.sh`，詳見下方 Release / 部署 章節。
 

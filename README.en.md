@@ -21,6 +21,7 @@ Open `http://localhost:3737` in your browser. On first launch, `.env.local` is a
 - Node.js 24+
 - Platform: **developed and tested only on Ubuntu Linux**. macOS / Windows / other Linux distributions are unverified — some features (systemd user units, headless Chrome + VNC, apt-based installers) will fail outright on those platforms.
 - Full functionality (agent chat, live feed, cron sync, …) requires OpenClaw running locally on `ws://127.0.0.1:18789`
+- Optional: Python 3.10+ and [uv](https://github.com/astral-sh/uv) — only required if you want to run the OpenClaw MCP servers under `deploy/mcp/` (customer-service handoff, mem0 long-term memory, etc.)
 
 For production deployment (systemd unit + tarball), grab the [release tarball](https://github.com/YJ-Software/mission-control-center/releases/latest) and run `deploy/release/install.sh` — see the Release / Deployment section below for details.
 
