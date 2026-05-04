@@ -2,19 +2,20 @@
 
 繁體中文 | [English](README.en.md)
 
-OpenClaw 任務控制面板 — 集中管理 AI Agent 團隊、任務排程、日報產出、備份、瀏覽器自動化與多項營運功能的儀表板系統。
+OpenClaw 任務控制面板 — 集中管理 AI Agent、任務排程、日報產出、備份、瀏覽器自動化與多項營運功能的儀表板系統。
 
 ---
 
 ## 為什麼是這個 dashboard
 
-Mission Control 是 **為遠端 VPS / headless Linux server 量身打造**，不是 local desktop 工具。從這個前提衍生出的設計亮點：
+Mission Control 是 **為遠端 VPS / headless Linux server 量身打造**，不是 local desktop 工具。從這個前提衍生出的設計：
 
-- 🌐 **瀏覽器內直接操作伺服器** — 終端機（xterm.js + node-pty）、Chrome（headless + noVNC）、Docker、systemd unit 全部走 dashboard，不用 SSH 客戶端、不用 X11 forwarding
+- 🌐 **瀏覽器內直接操作伺服器** — 終端機（xterm.js + node-pty）、Chrome（headless + noVNC）、Docker、systemd unit 全部走 dashboard，不用 SSH 客戶端、不用 X11 forwarding，OpenCLI 瀏覽器自動化
 - 🖥️ **Headless Chrome + VNC** — 在 server 上跑真正的瀏覽器（Xvfb + Openbox + x11vnc + websockify），瀏覽器內 VNC 看畫面，CDP port 9222 給自動化腳本接，登入狀態 / cookie 都留在 server 上
 - 📅 **晨報、備份、cron 都是 server-resident** — 跑在 VPS 上 24/7，不卡你的 local 電腦，也不會因為你關電腦而中斷
-- 🔌 **systemd user units，不用 root、不用 Docker** — 部署 = 解壓 + 啟動 user service，一台 VPS 同時跑多份不衝突
 - 🔒 **走 Tailscale 私網最舒服** — 一台 throwaway VPS + Tailscale，從任何裝置（手機、平板、別人的電腦）都能像本機一樣存取
+- **第二大腦 Obsidian / Notebooklm** - 你還在付費給 Notion/Evernote? UI 一鍵安裝 Obsidian + Self-hosted LiveSync +  local CouchDB server(docker) 讓 Agent 瞬間成為你的雲端大腦，同步你電腦/手機上的 Obsidian：免費！
+- **支援 fail2ban** - 避免被密碼暴力破解
 
 ---
 
@@ -27,13 +28,14 @@ npm install
 npm run dev
 ```
 
-開瀏覽器到 `http://localhost:3737`。第一次啟動會自動產生 `.env.local`，初始登入密碼會印在 console。
+開瀏覽器到 `http://{tailscale_內網_ip}:3737`。第一次啟動會自動產生 `.env.local`，初始登入密碼會印在 console。
 
 **前置需求：**
 - Node.js 24+
 - 平台：**只在 Ubuntu Linux 上開發測試**。macOS / Windows / 其他 Linux 發行版未驗證，部分功能（systemd user unit、headless Chrome + VNC、apt-based 安裝流程）會直接失敗
 - 完整功能（Agent 對話、Live Feed、Cron 同步…）需要 OpenClaw 在本機 `ws://127.0.0.1:18789` 跑著
 - 可選：Python 3.10+ 與 [uv](https://github.com/astral-sh/uv) — 只在你想用 `deploy/mcp/` 底下的 OpenClaw MCP 服務（客服 handoff / mem0 客戶記憶等）時才需要
+- 後續一些套件部署流程可能要 sudo 權限，我自己測試時會開免密碼 sudo，你們自己斟酌是否要開
 
 正式部署（systemd unit + tarball）：下載 [release tarball](https://github.com/YJ-Software/mission-control-center/releases/latest) 後執行 `deploy/release/install.sh`，詳見下方 Release / 部署 章節。
 
@@ -78,7 +80,7 @@ npm run dev
 
 ### 備份系統（Backup）
 - **來源管理** — 定義要備份的目錄 / 檔案路徑
-- **目的地管理** — 支援 S3、rsync、local 三種目的地
+- **目的地管理** — 支援 FTP、local 兩種目的地（S3、rsync coming soon）
 - **排程管理** — daily / weekly / monthly / custom cron
 - **Job 管理** — 組合來源 + 目的地 + 排程，設定保留份數
 - **執行紀錄** — 完整的備份歷史、檔案大小、錯誤訊息
@@ -418,6 +420,8 @@ Manifest 公開網址：`https://raw.githubusercontent.com/<owner>/<repo>/main/r
 ---
 
 ## 致謝
+
+部分靈感來自 [tugcantopaloglu/openclaw-dashboard](https://github.com/tugcantopaloglu/openclaw-dashboard)。
 
 Mission Control 站在許多開源專案肩上。以下整理 dashboard 直接 wrap、安裝或依賴的外部工具（不含 `package.json` 內的 npm 套件）：
 

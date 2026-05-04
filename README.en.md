@@ -2,7 +2,7 @@
 
 [繁體中文](README.md) | English
 
-OpenClaw mission control dashboard — a centralized panel for managing AI agent teams, scheduled tasks, daily report generation, backups, browser automation, and other operational features.
+OpenClaw mission control dashboard — a centralized panel for managing AI agents, scheduled tasks, daily report generation, backups, browser automation, and other operational features.
 
 ---
 
@@ -10,11 +10,12 @@ OpenClaw mission control dashboard — a centralized panel for managing AI agent
 
 Mission Control is built **for remote VPSes and headless Linux servers**, not for local desktops. The design follows from that:
 
-- 🌐 **Operate the server entirely from a browser** — terminal (xterm.js + node-pty), Chrome (headless + noVNC), Docker, and systemd units are all served from the dashboard. No SSH client or X11 forwarding required.
+- 🌐 **Operate the server entirely from a browser** — terminal (xterm.js + node-pty), Chrome (headless + noVNC), Docker, and systemd units are all served from the dashboard. No SSH client, no X11 forwarding, browser automation via OpenCLI.
 - 🖥️ **Headless Chrome + VNC** — runs an actual browser on the server (Xvfb + Openbox + x11vnc + websockify), watch it through in-browser VNC, and connect automation to CDP port 9222. Login state and cookies stay on the server.
 - 📅 **Morning reports, backups, and cron are server-resident** — they run on the VPS 24/7, unaffected by your local machine being asleep or offline.
-- 🔌 **systemd user units, no root, no Docker** — deploy = extract + start the user service. Multiple installs on one box don't conflict.
 - 🔒 **Best paired with Tailscale** — a throwaway VPS + Tailscale lets you reach the dashboard from any device (phone, tablet, someone else's machine) as if it were local.
+- 🧠 **Second Brain (Obsidian + NotebookLM)** — still paying Notion / Evernote? One-click install Obsidian + Self-hosted LiveSync + a local CouchDB server (Docker). Your agent gets an instant cloud brain that syncs with the Obsidian apps on your laptop and phone — for free.
+- 🛡️ **fail2ban support** — built-in log format ready for fail2ban to block password brute-force attempts.
 
 ---
 
@@ -27,13 +28,14 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3737` in your browser. On first launch, `.env.local` is auto-generated and the initial login password is printed to the console.
+Open `http://{tailscale_internal_ip}:3737` in your browser. On first launch, `.env.local` is auto-generated and the initial login password is printed to the console.
 
 **Prerequisites:**
 - Node.js 24+
 - Platform: **developed and tested only on Ubuntu Linux**. macOS / Windows / other Linux distributions are unverified — some features (systemd user units, headless Chrome + VNC, apt-based installers) will fail outright on those platforms.
 - Full functionality (agent chat, live feed, cron sync, …) requires OpenClaw running locally on `ws://127.0.0.1:18789`
 - Optional: Python 3.10+ and [uv](https://github.com/astral-sh/uv) — only required if you want to run the OpenClaw MCP servers under `deploy/mcp/` (customer-service handoff, mem0 long-term memory, etc.)
+- Some package install flows need sudo. The author runs the dashboard with passwordless sudo locally — decide for yourself whether that's acceptable in your environment.
 
 For production deployment (systemd unit + tarball), grab the [release tarball](https://github.com/YJ-Software/mission-control-center/releases/latest) and run `deploy/release/install.sh` — see the Release / Deployment section below for details.
 
@@ -78,7 +80,7 @@ For production deployment (systemd unit + tarball), grab the [release tarball](h
 
 ### Backup
 - **Source management** — define directories / file paths to back up
-- **Destination management** — supports S3, rsync, and local destinations
+- **Destination management** — supports FTP and local destinations (S3 and rsync coming soon)
 - **Schedule management** — daily / weekly / monthly / custom cron
 - **Job management** — combine source + destination + schedule with retention count
 - **Execution history** — full backup log with file size and error messages
@@ -418,6 +420,8 @@ Failed `/api/auth` logins write `[mc-auth] failed login from <ip>` to the log fo
 ---
 
 ## Acknowledgements
+
+Inspired in part by [tugcantopaloglu/openclaw-dashboard](https://github.com/tugcantopaloglu/openclaw-dashboard).
 
 Mission Control stands on the shoulders of many open-source projects. The list below covers external tools that the dashboard directly wraps, installs, or depends on (npm packages live in `package.json`):
 
