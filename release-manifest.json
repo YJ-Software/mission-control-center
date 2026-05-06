@@ -1,18 +1,23 @@
 {
   "latest": {
-    "version": "0.2.3",
-    "releaseDate": "2026-05-06T17:09:32.804Z",
+    "version": "0.2.4",
+    "releaseDate": "2026-05-06T17:42:28.640Z",
+    "notes": "- fix(dev): allow Tailscale + LAN origins in Next.js dev server (allowedDevOrigins) — fixes 'Gateway Offline' / hydration failure when opening dashboard via Tailscale on the new Next.js 16.2 base. Prod tarball was unaffected.",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.2.3/mission-control-v0.2.3-linux-x64.tar.gz",
-        "sha256": "88e83b93d65853cc6e6b5654ff2d78eabaf52f8477e14e78f465afe35f642780",
-        "size": 146417170
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.2.4/mission-control-v0.2.4-linux-x64.tar.gz",
+        "sha256": "07a363c179db75611959df5065231bf695e8970ed43e7007b910cc4a47cb7637",
+        "size": 17851237
       }
     ]
   },
   "history": [
+    {
+      "version": "0.2.3",
+      "releaseDate": "2026-05-06T17:09:32.804Z"
+    },
     {
       "version": "0.2.2",
       "releaseDate": "2026-05-06T16:32:11.808Z"
