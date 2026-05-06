@@ -79,7 +79,6 @@ export function TerminalInstance({ sessionId, visible }: TerminalInstanceProps) 
       const { Terminal } = await import('@xterm/xterm')
       const { FitAddon } = await import('@xterm/addon-fit')
       const { WebLinksAddon } = await import('@xterm/addon-web-links')
-      // @ts-expect-error -- CSS import handled by Next.js bundler at runtime
       await import('@xterm/xterm/css/xterm.css')
 
       if (disposedRef.current) return

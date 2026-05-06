@@ -22,6 +22,18 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
+import { tmpdir } from 'node:os'
+
+// NODE_MODULE_VERSION (ABI) targets bundled into every release tarball so the
+// same artifact runs on multiple Node majors without per-host recompile.
+// Each entry maps a Node major to its NMV; better-sqlite3's prebuilt asset
+// naming is `node-v<NMV>-linux-x64`. Update when bumping/dropping support.
+const NATIVE_NMV_TARGETS = [
+  { node: 22, nmv: 127 },
+  { node: 23, nmv: 131 },
+  { node: 24, nmv: 137 },
+  { node: 25, nmv: 141 },
+]
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -123,7 +135,8 @@ async function main() {
   // Strip node-pty prebuilds for other platforms — they ship 50MB+ of
   // darwin/win32 binaries that a linux-x64 tarball will never touch.
   // The linux binary lives in build/Release/pty.node (built from source
-  // during `npm install`), so it's unaffected.
+  // during `npm install`), so it's unaffected. node-pty uses N-API so its
+  // single binary is ABI-stable across all supported Node majors.
   const nodePtyDst = join(STANDALONE, 'node_modules', 'node-pty')
   if (existsSync(nodePtyDst)) {
     for (const junk of ['prebuilds', 'src', 'deps', 'third_party', 'node-addon-api', 'binding.gyp', 'scripts']) {
@@ -131,6 +144,12 @@ async function main() {
       if (existsSync(p)) rmSync(p, { recursive: true, force: true })
     }
   }
+
+  // Bundle better-sqlite3 prebuilts for every supported Node ABI so the same
+  // tarball runs whether the customer's Node is 22, 23, 24, or 25. Without
+  // this, the binary compiled at build time only matches the build host's
+  // Node major and crashes the dashboard on any other major.
+  bundleCrossVersionSqliteBindings(STANDALONE)
 
   // 3. Copy static assets that Next.js doesn't auto-copy in standalone mode
   if (existsSync(NEXT_STATIC)) {
@@ -229,10 +248,64 @@ async function main() {
 
   // Sanity: warn if native modules are missing for the target platform
   const targetArchNote = `${os.platform()}-${os.arch()}`
+  const supportedNodes = NATIVE_NMV_TARGETS.map((t) => t.node).join('/')
   console.log(
-    `\nNote: native modules (better-sqlite3, node-pty) were compiled for ${targetArchNote}.`,
+    `\nNative modules: ${targetArchNote}; better-sqlite3 bundles ABIs for Node ${supportedNodes}; node-pty is N-API (any Node).`,
   )
-  console.log(`  Deploy only to matching platforms, or rebuild on a matching host.`)
+}
+
+function bundleCrossVersionSqliteBindings(standaloneDir) {
+  const bs3Dir = join(standaloneDir, 'node_modules', 'better-sqlite3')
+  if (!existsSync(bs3Dir)) {
+    console.log('\n[cross-abi] skip: standalone has no better-sqlite3 (NFT may have inlined it)')
+    return
+  }
+  const bs3Version = JSON.parse(readFileSync(join(bs3Dir, 'package.json'), 'utf8')).version
+  const arch = process.arch === 'x64' ? 'x64' : process.arch
+  const platform = process.platform === 'linux' ? 'linux' : process.platform
+
+  console.log(`\n[cross-abi] bundling better-sqlite3@${bs3Version} prebuilds for ${NATIVE_NMV_TARGETS.length} ABIs`)
+
+  for (const t of NATIVE_NMV_TARGETS) {
+    const assetName = `better-sqlite3-v${bs3Version}-node-v${t.nmv}-${platform}-${arch}.tar.gz`
+    const url = `https://github.com/WiseLibs/better-sqlite3/releases/download/v${bs3Version}/${assetName}`
+    const tmpTar = join(tmpdir(), `${process.pid}-${assetName}`)
+    const tmpExtract = join(tmpdir(), `${process.pid}-extract-${t.nmv}`)
+    rmSync(tmpExtract, { recursive: true, force: true })
+    mkdirSync(tmpExtract, { recursive: true })
+
+    try {
+      execFileSync('curl', ['-fsSL', '-o', tmpTar, url], { stdio: 'inherit' })
+      execFileSync('tar', ['xzf', tmpTar, '-C', tmpExtract], { stdio: 'inherit' })
+    } catch (err) {
+      throw new Error(
+        `[cross-abi] failed to fetch ${assetName} from upstream — verify the prebuild exists at ${url} (better-sqlite3@${bs3Version} may not publish a binary for Node ${t.node})`,
+      )
+    }
+
+    const srcNode = join(tmpExtract, 'build', 'Release', 'better_sqlite3.node')
+    if (!existsSync(srcNode)) {
+      throw new Error(`[cross-abi] tarball ${assetName} did not contain build/Release/better_sqlite3.node`)
+    }
+    const destDir = join(bs3Dir, 'lib', 'binding', `node-v${t.nmv}-${platform}-${arch}`)
+    mkdirSync(destDir, { recursive: true })
+    cpSync(srcNode, join(destDir, 'better_sqlite3.node'))
+
+    rmSync(tmpTar, { force: true })
+    rmSync(tmpExtract, { recursive: true, force: true })
+    console.log(`  ✓ Node ${t.node} (NMV ${t.nmv}) → lib/binding/node-v${t.nmv}-${platform}-${arch}/`)
+  }
+
+  // The single-Node binary at build/Release/better_sqlite3.node was produced
+  // by the build host's `npm install`. The `bindings` package tries that path
+  // BEFORE lib/binding/node-v<NMV>-..., so leaving it in place would override
+  // the per-ABI binaries on the build host's Node major. Remove it so every
+  // runtime falls through to its matching lib/binding entry.
+  const buildReleaseNode = join(bs3Dir, 'build', 'Release', 'better_sqlite3.node')
+  if (existsSync(buildReleaseNode)) {
+    rmSync(buildReleaseNode, { force: true })
+    console.log(`  ✓ removed build/Release/better_sqlite3.node so 'bindings' resolves per-ABI`)
+  }
 }
 
 main().catch((err) => {
