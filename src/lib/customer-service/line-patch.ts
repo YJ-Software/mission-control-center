@@ -59,55 +59,66 @@ function buildDropinContent(nodeBinDir: string, scriptPath: string): string {
   ].join('\n')
 }
 
-function findOpenclawDistDir(): string | null {
-  // Common install layouts. Take the first that has openclaw/dist with the
-  // expected webhook-bearing monitor file inside.
-  const candidates: string[] = []
+function findLineDistDirs(): string[] {
+  // 5.5+ ships LINE as the external `@openclaw/line` package; legacy 4.x
+  // bundled the LINE handler inside `openclaw/dist`. Look at both.
+  const dirs: string[] = []
+  const roots: string[] = [
+    join(homedir(), '.openclaw', 'npm', 'node_modules'),
+  ]
 
-  // nvm: walk versions/<v*> looking for lib/node_modules/openclaw/dist
   const nvmVersions = join(homedir(), '.nvm', 'versions', 'node')
   if (existsSync(nvmVersions)) {
     try {
       for (const v of readdirSync(nvmVersions)) {
-        candidates.push(join(nvmVersions, v, 'lib', 'node_modules', 'openclaw', 'dist'))
+        roots.push(join(nvmVersions, v, 'lib', 'node_modules'))
       }
     } catch {
       /* ignore */
     }
   }
-  candidates.push(
-    join(homedir(), '.npm-global', 'lib', 'node_modules', 'openclaw', 'dist'),
-    '/usr/lib/node_modules/openclaw/dist',
-    '/usr/local/lib/node_modules/openclaw/dist',
+  roots.push(
+    join(homedir(), '.npm-global', 'lib', 'node_modules'),
+    '/usr/lib/node_modules',
+    '/usr/local/lib/node_modules',
   )
 
-  for (const dir of candidates) {
-    if (!existsSync(dir)) continue
-    return dir
-  }
-  return null
-}
-
-function findOpenclawDistFile(): string | null {
-  const dir = findOpenclawDistDir()
-  if (!dir) return null
-  let entries: string[] = []
-  try {
-    entries = readdirSync(dir)
-  } catch {
-    return null
-  }
-  for (const f of entries) {
-    if (!f.startsWith('monitor-') || !f.endsWith('.js')) continue
-    const path = join(dir, f)
-    try {
-      const content = readFileSync(path, 'utf-8')
-      if (content.includes('line: received')) return path
-    } catch {
-      /* skip unreadable */
+  const seen = new Set<string>()
+  for (const root of roots) {
+    for (const sub of ['@openclaw/line/dist', 'openclaw/dist']) {
+      const dir = join(root, sub)
+      if (!seen.has(dir) && existsSync(dir)) {
+        dirs.push(dir)
+        seen.add(dir)
+      }
     }
   }
-  return null
+  return dirs
+}
+
+function findLineDistFiles(): string[] {
+  const out: string[] = []
+  for (const dir of findLineDistDirs()) {
+    let entries: string[] = []
+    try {
+      entries = readdirSync(dir)
+    } catch {
+      continue
+    }
+    for (const f of entries) {
+      const isMonitor = f.startsWith('monitor-') && f.endsWith('.js')
+      const isRuntimeApi = f === 'runtime-api.js'
+      if (!isMonitor && !isRuntimeApi) continue
+      const path = join(dir, f)
+      try {
+        const content = readFileSync(path, 'utf-8')
+        if (content.includes('line: received')) out.push(path)
+      } catch {
+        /* skip unreadable */
+      }
+    }
+  }
+  return out
 }
 
 export interface LinePatchStatus {
@@ -115,33 +126,37 @@ export interface LinePatchStatus {
   scriptPath: string
   distPatched: boolean
   distPath: string | null
+  distPaths: string[]
   dropinInstalled: boolean
   dropinPath: string
 }
 
 export function getStatus(): LinePatchStatus {
   const scriptInstalled = existsSync(PATCH_SCRIPT)
-  const distPath = findOpenclawDistFile()
+  const distPaths = findLineDistFiles()
   let distPatched = false
-  if (distPath) {
-    try {
-      const content = readFileSync(distPath, 'utf-8')
-      const hasMarker =
-        content.includes('line onEvents bg error:') &&
-        content.includes('line bot.handleWebhook bg error:')
-      const hasUnpatched = /await\s+(onEvents|params\.bot\.handleWebhook|match\.target\.bot\.handleWebhook)\s*\(/.test(
-        content,
-      )
-      distPatched = hasMarker && !hasUnpatched
-    } catch {
-      distPatched = false
-    }
+  if (distPaths.length > 0) {
+    distPatched = distPaths.every((p) => {
+      try {
+        const content = readFileSync(p, 'utf-8')
+        const hasMarker = /line (onEvents|bot\.handleWebhook|plugin-bound) bg error:/.test(
+          content,
+        )
+        const hasUnpatched = /await\s+(onEvents|params\.bot\.handleWebhook|match\.target\.bot\.handleWebhook)\s*\(/.test(
+          content,
+        )
+        return hasMarker && !hasUnpatched
+      } catch {
+        return false
+      }
+    })
   }
   return {
     scriptInstalled,
     scriptPath: PATCH_SCRIPT,
     distPatched,
-    distPath,
+    distPath: distPaths[0] ?? null,
+    distPaths,
     dropinInstalled: existsSync(DROPIN_PATH),
     dropinPath: DROPIN_PATH,
   }

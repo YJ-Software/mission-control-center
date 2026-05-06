@@ -1,41 +1,25 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
-
-type Config = {
-  memToolPrefix?: string;
-  wikiToolNames?: string[];
-  wikiPathField?: string;
-  wikiCustomerPathTemplate?: string;
-  logOverrides?: boolean;
-  channels?: string[];
-  ensureWikiPersonStub?: boolean;
-  wikiEntitiesSubpath?: string;
-  injectWikiPersonContext?: boolean;
-};
+import { join } from "node:path";
 
 const SESSION_KEY_RE = /^agent:([^:]+):([^:]+):direct:(.+)$/;
 
-// LINE userIds canonically: 'U' + 32 hex chars (lowercase).
-function canonicalLineUid(raw: string): string {
+function canonicalLineUid(raw) {
   if (/^[uU][0-9a-f]{32}$/.test(raw)) return "U" + raw.slice(1).toLowerCase();
   return raw;
 }
 
-// Pull (agentId, channel, userId) out of an OpenClaw session key. Returns null
-// when the session isn't a direct customer-channel session.
-function parseSessionKey(sessionKey: string | undefined): { agentId: string; channel: string; userId: string } | null {
+function parseSessionKey(sessionKey) {
   if (!sessionKey) return null;
-  const m = SESSION_KEY_RE.exec(sessionKey);
+  const m = sessionKey.match(SESSION_KEY_RE);
   if (!m) return null;
   return { agentId: m[1], channel: m[2], userId: canonicalLineUid(m[3]) };
 }
 
-// Resolve the workspace dir for a given agentId from openclaw.json.
-function resolveWorkspaceDir(api: { config: any }, agentId: string): string | null {
+function resolveWorkspaceDir(api, agentId) {
   try {
     const list = api.config?.agents?.list ?? [];
-    const entry = (list as any[]).find((a) => a?.id === agentId);
+    const entry = list.find((a) => a?.id === agentId);
     const ws = entry?.workspace;
     if (typeof ws === "string" && ws.length > 0) return ws;
   } catch {
@@ -44,9 +28,7 @@ function resolveWorkspaceDir(api: { config: any }, agentId: string): string | nu
   return null;
 }
 
-// Heuristic: read AGENTS.md and decide whether the wiki-person memory mode is
-// active (managed by the customer-service dashboard via marker block).
-function isWikiPersonMode(workspaceDir: string): boolean {
+function isWikiPersonMode(workspaceDir) {
   const path = join(workspaceDir, "AGENTS.md");
   if (!existsSync(path)) return false;
   try {
@@ -60,7 +42,7 @@ function isWikiPersonMode(workspaceDir: string): boolean {
   }
 }
 
-function buildEntityStub(userId: string): string {
+function buildEntityStub(userId) {
   const now = new Date().toISOString();
   return [
     "---",
@@ -92,7 +74,7 @@ function buildEntityStub(userId: string): string {
   ].join("\n");
 }
 
-function readCustomerEntity(workspaceDir: string, userId: string, entitiesSubpath: string): string | null {
+function readCustomerEntity(workspaceDir, userId, entitiesSubpath) {
   const path = join(workspaceDir, entitiesSubpath, `customer-line-${userId}.md`);
   if (!existsSync(path)) return null;
   try {
@@ -102,7 +84,7 @@ function readCustomerEntity(workspaceDir: string, userId: string, entitiesSubpat
   }
 }
 
-function ensureCustomerStub(workspaceDir: string, userId: string, entitiesSubpath: string, log: boolean): boolean {
+function ensureCustomerStub(workspaceDir, userId, entitiesSubpath, log) {
   try {
     const dir = join(workspaceDir, entitiesSubpath);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -133,17 +115,15 @@ export default definePluginEntry({
       wikiCustomerPathTemplate: { type: "string" },
       logOverrides: { type: "boolean" },
       channels: { type: "array", items: { type: "string" } },
+      ensureWikiPersonStub: { type: "boolean" },
+      wikiEntitiesSubpath: { type: "string" },
+      injectWikiPersonContext: { type: "boolean" },
     },
   },
   register(api) {
-    // On every inbound customer message, if wiki-person mode is active for the
-    // agent, ensure a stub `entity.customer-line-<userId>.md` exists in the
-    // agent's wiki/entities/ folder. This frees the LLM from having to call
-    // wiki_apply just to bootstrap a profile — it can wiki_get on first turn
-    // and only call wiki_apply when there are real facts to write.
     api.on("message_received", (_event, ctx) => {
       try {
-        const cfg = (api.pluginConfig ?? {}) as Config;
+        const cfg = api.pluginConfig ?? {};
         if (cfg.ensureWikiPersonStub === false) return;
         const channelAllow = cfg.channels ?? ["line"];
         const entitiesSubpath = cfg.wikiEntitiesSubpath ?? "wiki/entities";
@@ -163,13 +143,9 @@ export default definePluginEntry({
       }
     });
 
-    // On each agent turn in wiki-person mode, inject the customer's entity
-    // page as appended context so the LLM sees the profile without having to
-    // call wiki_get. Removes prompt-layer reliance on the LLM remembering to
-    // look up the page.
     api.on("before_prompt_build", (_event, ctx) => {
       try {
-        const cfg = (api.pluginConfig ?? {}) as Config;
+        const cfg = api.pluginConfig ?? {};
         const log = cfg.logOverrides !== false;
         if (cfg.injectWikiPersonContext === false) {
           if (log) console.log(`[customer-id-injector] before_prompt_build: disabled by config`);
@@ -229,7 +205,7 @@ export default definePluginEntry({
 
     api.on("before_tool_call", (event, ctx) => {
       try {
-        const cfg = (api.pluginConfig ?? {}) as Config;
+        const cfg = api.pluginConfig ?? {};
         const memPrefix = cfg.memToolPrefix ?? "openclaw-mem0__";
         const wikiTools = cfg.wikiToolNames ?? ["wiki_get", "wiki_apply"];
         const wikiPathField = cfg.wikiPathField ?? "id";
@@ -242,13 +218,9 @@ export default definePluginEntry({
         if (!isMemTool && !isWikiTool) return;
 
         const session = parseSessionKey(ctx.sessionKey);
-        if (!session) return; // not a direct customer session — leave call alone
+        if (!session) return;
         if (channelAllow.length > 0 && !channelAllow.includes(session.channel)) return;
 
-        // Hard mode-enforcement: in wiki-person mode, refuse mem0 calls. The
-        // LLM gets told via blockReason to retry with wiki_apply / wiki_get.
-        // This is the safety net for cases where the AGENTS.md prompt fails
-        // to deter mem0 usage.
         if (isMemTool) {
           const ws = resolveWorkspaceDir(api, session.agentId);
           if (ws && isWikiPersonMode(ws)) {
@@ -260,7 +232,7 @@ export default definePluginEntry({
           }
         }
 
-        const params = { ...event.params } as Record<string, unknown>;
+        const params = { ...event.params };
         let changed = false;
 
         if (isMemTool) {
@@ -278,9 +250,7 @@ export default definePluginEntry({
 
         if (isWikiTool) {
           const expected = pathTemplate.replace("{userId}", session.userId);
-          // Only rewrite when the LLM is clearly asking for *some* customer
-          // entity. Heuristic: param starts with "entity.customer-" prefix.
-          const cur = typeof params[wikiPathField] === "string" ? (params[wikiPathField] as string) : "";
+          const cur = typeof params[wikiPathField] === "string" ? params[wikiPathField] : "";
           if (cur.startsWith("entity.customer-") && cur !== expected) {
             const before = cur;
             params[wikiPathField] = expected;

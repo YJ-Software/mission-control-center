@@ -1,24 +1,6 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
-type Day = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
-
-type Window = {
-  days: Day[];
-  start: string;
-  end: string;
-};
-
-type GateConfig = {
-  schedule?: {
-    timezone?: string;
-    windows?: Window[];
-  };
-  replyText?: string;
-  channels?: string[];
-  pauseAi?: boolean;
-};
-
-const DAY_INDEX: Record<Day, number> = {
+const DAY_INDEX = {
   sun: 0,
   mon: 1,
   tue: 2,
@@ -28,13 +10,13 @@ const DAY_INDEX: Record<Day, number> = {
   sat: 6,
 };
 
-function parseHHMM(value: string): number | null {
+function parseHHMM(value) {
   const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(value);
   if (!m) return null;
   return Number(m[1]) * 60 + Number(m[2]);
 }
 
-function nowInTimezone(tz: string): { dayIdx: number; minutes: number } | null {
+function nowInTimezone(tz) {
   try {
     const fmt = new Intl.DateTimeFormat("en-US", {
       timeZone: tz,
@@ -48,9 +30,7 @@ function nowInTimezone(tz: string): { dayIdx: number; minutes: number } | null {
     const hour = Number(parts.find((p) => p.type === "hour")?.value ?? NaN);
     const minute = Number(parts.find((p) => p.type === "minute")?.value ?? NaN);
     if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
-    const map: Record<string, number> = {
-      Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
-    };
+    const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
     const dayIdx = map[dayShort];
     if (dayIdx === undefined) return null;
     const hourFixed = hour === 24 ? 0 : hour;
@@ -60,7 +40,7 @@ function nowInTimezone(tz: string): { dayIdx: number; minutes: number } | null {
   }
 }
 
-function isWithinWindow(now: { dayIdx: number; minutes: number }, win: Window): boolean {
+function isWithinWindow(now, win) {
   if (!win.days.some((d) => DAY_INDEX[d] === now.dayIdx)) return false;
   const start = parseHHMM(win.start);
   const end = parseHHMM(win.end);
@@ -106,12 +86,13 @@ export default definePluginEntry({
       },
       replyText: { type: "string" },
       channels: { type: "array", items: { type: "string" } },
+      pauseAi: { type: "boolean" },
     },
   },
   register(api) {
-    api.on("inbound_claim", async (event, ctx) => {
+    api.on("before_dispatch", async (event, ctx) => {
       try {
-        const cfg = (api.pluginConfig ?? {}) as GateConfig;
+        const cfg = api.pluginConfig ?? {};
 
         if (cfg.channels && cfg.channels.length > 0) {
           const channelId = ctx.channelId ?? event.channel;
@@ -120,9 +101,7 @@ export default definePluginEntry({
 
         if (cfg.pauseAi === true) {
           const text = cfg.replyText?.trim();
-          return text
-            ? { handled: true, reply: { text } }
-            : { handled: true };
+          return text ? { handled: true, text } : { handled: true };
         }
 
         const windows = cfg.schedule?.windows ?? [];
@@ -136,9 +115,7 @@ export default definePluginEntry({
         if (!inWindow) return;
 
         const text = cfg.replyText?.trim();
-        return text
-          ? { handled: true, reply: { text } }
-          : { handled: true };
+        return text ? { handled: true, text } : { handled: true };
       } catch {
         return;
       }
