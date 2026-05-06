@@ -1,19 +1,22 @@
 {
   "latest": {
-    "version": "0.2.2",
-    "releaseDate": "2026-05-06T16:32:11.808Z",
-    "notes": "- feat(customer-service): split out Overview tab — master switch / LINE webhook patch / plugin status / default reply / channels now live there; Hours tab is schedule-only",
+    "version": "0.2.3",
+    "releaseDate": "2026-05-06T17:09:32.804Z",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.2.2/mission-control-v0.2.2-linux-x64.tar.gz",
-        "sha256": "8a373a326435e69418dfe5e73461f98df666d536e73443dad5cf3bfa7656a6e4",
-        "size": 26271457
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.2.3/mission-control-v0.2.3-linux-x64.tar.gz",
+        "sha256": "88e83b93d65853cc6e6b5654ff2d78eabaf52f8477e14e78f465afe35f642780",
+        "size": 146417170
       }
     ]
   },
   "history": [
+    {
+      "version": "0.2.2",
+      "releaseDate": "2026-05-06T16:32:11.808Z"
+    },
     {
       "version": "0.2.1",
       "releaseDate": "2026-05-06T16:08:21.452Z"
