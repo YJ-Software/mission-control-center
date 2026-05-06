@@ -1386,6 +1386,7 @@
     "title": "客服",
     "subtitle": "時段控制、客戶記憶、知識庫整合",
     "tabs": {
+      "overview": "總覽",
       "hours": "時段控制",
       "memory": "客戶記憶",
       "handoff": "後送",
