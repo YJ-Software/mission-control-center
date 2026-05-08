@@ -225,6 +225,15 @@ async function main() {
     cpSync(mcpSourceDir, join(STANDALONE, 'deploy', 'mcp'), { recursive: true })
   }
 
+  // Restore bundled default templates that the strip step nuked alongside
+  // user runtime data. src/lib/morning-report/default-templates.ts reads
+  // these via readFileSync at module load — without them the morning-report
+  // API throws ENOENT on first import.
+  const tmplSrc = join(ROOT, 'data', 'morning-report', 'default-templates')
+  if (existsSync(tmplSrc)) {
+    cpSync(tmplSrc, join(STANDALONE, 'data', 'morning-report', 'default-templates'), { recursive: true })
+  }
+
   // 4. Tarball
   mkdirSync(DIST, { recursive: true })
   const tarballPath = join(DIST, tarballName)
