@@ -1,18 +1,21 @@
 import { defineConfig } from '@playwright/test'
+import { loadE2eEnv } from './tests/e2e/utils/env-e2e'
 
-// Base URL resolution order:
-// 1. PLAYWRIGHT_BASE_URL env var (highest priority — use when testing a remote env)
-// 2. Default: http://localhost:3737 (for when dev server is running locally)
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3737'
+loadE2eEnv()
+
+const baseURL =
+  process.env.PLAYWRIGHT_BASE_URL ||
+  (process.env.E2E_SSH_HOST ? `http://${process.env.E2E_SSH_HOST}:3737` : 'http://localhost:3737')
 
 export default defineConfig({
   testDir: 'tests/e2e',
-  timeout: 10 * 60 * 1000, // install flows can legitimately take up to ~5min
+  timeout: 10 * 60 * 1000,
   expect: { timeout: 10_000 },
-  fullyParallel: false, // install/uninstall tests mutate shared system state
+  fullyParallel: false,
   workers: 1,
   retries: 0,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  reporter: [['list'], ['html', { open: 'never', outputFolder: 'test-results/html' }]],
+  outputDir: 'test-results/output',
   use: {
     baseURL,
     trace: 'retain-on-failure',
@@ -23,8 +26,23 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'chromium',
+      name: 'twnoc-deploy',
+      testMatch: /tests\/e2e\/twnoc\/.*\.spec\.ts/,
       use: { browserName: 'chromium' },
+    },
+    {
+      name: 'mcc-login',
+      testMatch: /tests\/e2e\/mcc-login\.setup\.ts/,
+      use: { browserName: 'chromium' },
+    },
+    {
+      name: 'mcc',
+      testIgnore: [/tests\/e2e\/twnoc\//, /tests\/e2e\/mcc-login\.setup\.ts/],
+      dependencies: ['mcc-login'],
+      use: {
+        browserName: 'chromium',
+        storageState: 'tests/e2e/storage/mcc-state.json',
+      },
     },
   ],
 })
