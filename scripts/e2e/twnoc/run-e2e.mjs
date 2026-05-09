@@ -52,6 +52,14 @@ const PHASES = {
   telegram: () => run('npx',  ['playwright', 'test', '--project=twnoc-deploy', 'tests/e2e/twnoc/whmcs-telegram-pair.spec.ts']),
 }
 
+const PHASE_NUMBERS = {
+  rebuild:  1,
+  deploy:   2,
+  firewall: 3,
+  specs:    4,
+  telegram: 5,
+}
+
 async function main() {
   const envPath = resolve(process.cwd(), '.env.e2e.local')
   if (!existsSync(envPath)) {
@@ -80,7 +88,7 @@ async function main() {
       await PHASES[phase]()
     } catch (err) {
       console.error(`[run-e2e] ${phase} FAILED: ${err.message}`)
-      writePhaseRecord(phase, { ok: false, error: err.message })
+      writePhaseRecord(PHASE_NUMBERS[phase] ?? phase, { ok: false, error: err.message, phaseName: phase })
       process.exit(1)
     }
     // After Phase 2 writes AUTH_PASSWORD back to .env.e2e.local, refresh process.env
