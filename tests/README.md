@@ -52,3 +52,26 @@ obsidian, morning report, backup). Each should follow the same install →
 verify → uninstall → verify pattern. Give each a generous per-step
 timeout — apt is slow, network downloads are slow, first-time installs
 legitimately take 2–5 minutes.
+
+## Full E2E run on TWNoC throwaway
+
+Beyond the per-flow specs above, there's a one-command full E2E that
+rebuilds a Virtualizor VPS, drives the WHMCS deployer, locks the
+firewall, and runs the entire `mcc` suite. Plus Telegram pairing via
+gramjs.
+
+Prereqs:
+1. Copy `.env.e2e.local.example` → `.env.e2e.local`, fill in.
+2. `npm run e2e:auth-telegram` (one-time, captures `TG_USER_SESSION`).
+
+Common commands:
+
+```bash
+npm run test:e2e:full:dry       # full run, paused between phases
+npm run test:e2e:full           # full unattended
+npm run test:e2e:smoke          # just the mcc project against current dashboard
+npm run test:e2e:firewall       # re-apply ufw rules (e.g. after IP change)
+```
+
+Per-phase records land in `test-results/last-run/phase-N.json`.
+Failure modes: see `.claude/skills/e2e-test/troubleshooting.md`.
