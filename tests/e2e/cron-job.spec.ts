@@ -22,9 +22,9 @@ test('cron-job: create + manual trigger + see run record', async ({ loggedInPage
 
   // Poll API for the run record.
   await expect(async () => {
-    const resp = await request.get(`${baseURL}/api/cron/runs?name=e2e-test-job&limit=1`)
+    const resp = await request.get(`${baseURL}/api/cron/runs?id=e2e-test-job&limit=1`)
     expect(resp.ok()).toBeTruthy()
     const json = await resp.json()
-    expect(json.runs?.[0]?.status, 'last run status').toBe('success')
+    expect(json.entries?.[0]?.status, 'last run status').toBe('ok')
   }).toPass({ timeout: RUN_POLL_TIMEOUT, intervals: [1_000, 2_000, 5_000] })
 })
