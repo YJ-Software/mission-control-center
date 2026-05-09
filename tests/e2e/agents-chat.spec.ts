@@ -16,9 +16,8 @@ test('agents: send a message and receive a reply', async ({ loggedInPage: page, 
   // Send — Enter or button labeled 送出 / Send.
   await page.getByRole('button', { name: /送出|Send|發送/i }).first().click()
 
-  // Reply: a message bubble that contains response text. Match anything non-empty in an
-  // assistant-style container; fall back to "OK" since we asked for it.
-  await expect(
-    page.getByText(/OK/i).or(page.locator('[data-role="assistant"], .assistant-message').last())
-  ).toBeVisible({ timeout: REPLY_TIMEOUT })
+  // Reply: the assistant message container must appear and contain non-empty text.
+  const assistantMsg = page.locator('[data-role="assistant"], .assistant-message').last()
+  await expect(assistantMsg).toBeVisible({ timeout: REPLY_TIMEOUT })
+  await expect(assistantMsg).not.toBeEmpty()
 })
