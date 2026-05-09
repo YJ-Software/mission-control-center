@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { writePhaseRecord } from './lib/phase-record.mjs'
 
 const args = process.argv.slice(2)
@@ -15,7 +15,9 @@ function loadEnv(file) {
     if (!t || t.startsWith('#') || t.startsWith('>>>') || t.startsWith('<<<')) continue
     const eq = t.indexOf('=')
     if (eq < 1) continue
-    env[t.slice(0, eq).trim()] = t.slice(eq + 1).trim()
+    const value = t.slice(eq + 1).trim()
+    if (!value) continue
+    env[t.slice(0, eq).trim()] = value
   }
   return env
 }
@@ -51,7 +53,12 @@ const PHASES = {
 }
 
 async function main() {
-  const env = loadEnv(resolve(process.cwd(), '.env.e2e.local'))
+  const envPath = resolve(process.cwd(), '.env.e2e.local')
+  if (!existsSync(envPath)) {
+    console.error(`[run-e2e] ${envPath} not found. Copy .env.e2e.local.example first.`)
+    process.exit(2)
+  }
+  const env = loadEnv(envPath)
   exportEnv(env)
 
   let plan = []
@@ -75,6 +82,13 @@ async function main() {
       console.error(`[run-e2e] ${phase} FAILED: ${err.message}`)
       writePhaseRecord(phase, { ok: false, error: err.message })
       process.exit(1)
+    }
+    // After Phase 2 writes AUTH_PASSWORD back to .env.e2e.local, refresh process.env
+    if (phase === 'deploy') {
+      const fresh = loadEnv(resolve(process.cwd(), '.env.e2e.local'))
+      for (const [k, v] of Object.entries(fresh)) {
+        process.env[k] = v
+      }
     }
   }
 
