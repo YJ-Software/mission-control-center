@@ -61,3 +61,10 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
+
+# E2E test artifacts
+tmp/discovery/
+tests/e2e/storage/
+test-results/last-run/
+test-results/dry-run/
+.env.e2e.local
