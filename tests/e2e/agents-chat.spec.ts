@@ -2,22 +2,21 @@ import { test, expect } from './fixtures/login'
 
 const REPLY_TIMEOUT = 90_000
 
-test('agents: send a message and receive a reply', async ({ loggedInPage: page, baseURL }) => {
-  await page.goto(`${baseURL}/agents`)
+test('chat: send a message and receive a reply', async ({ loggedInPage: page, baseURL }) => {
+  await page.goto(`${baseURL}/chat`)
 
-  // Wait for agent list to populate; chat panel may load lazily.
-  await expect(page.locator('[data-agent-id], [data-testid="agent-list"]').first())
-    .toBeVisible({ timeout: 15_000 })
-
-  // Find chat input. It may be a textarea inside the chat panel.
-  const input = page.getByRole('textbox', { name: /訊息|Message|問題/i }).or(page.locator('textarea').first())
+  // Wait for chat panel to load (textarea is the main interactive element).
+  const input = page.locator('textarea').first()
+  await expect(input).toBeVisible({ timeout: 15_000 })
   await input.fill('回我一個 OK')
 
-  // Send — Enter or button labeled 送出 / Send.
-  await page.getByRole('button', { name: /送出|Send|發送/i }).first().click()
+  // Send via Enter (chat-input.tsx handles Enter to submit).
+  await input.press('Enter')
 
-  // Reply: the assistant message container must appear and contain non-empty text.
-  const assistantMsg = page.locator('[data-role="assistant"], .assistant-message').last()
-  await expect(assistantMsg).toBeVisible({ timeout: REPLY_TIMEOUT })
-  await expect(assistantMsg).not.toBeEmpty()
+  // Reply: an assistant-side message bubble must appear with non-empty content.
+  // The chat message list usually has structured roles; fall back to "assistant"
+  // text node or a chat-message container.
+  const lastMessage = page.locator('[data-role="assistant"], .chat-message-assistant, [data-message-role="assistant"]').last()
+  await expect(lastMessage).toBeVisible({ timeout: REPLY_TIMEOUT })
+  await expect(lastMessage).not.toBeEmpty()
 })
