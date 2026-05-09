@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { buildSshArgs } from '../../scripts/e2e/twnoc/lib/ssh.mjs'
 
 describe('buildSshArgs', () => {
