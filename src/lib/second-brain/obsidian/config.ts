@@ -28,6 +28,7 @@ const DEFAULTS: Record<string, string> = {
   'obsidian.e2ee_enabled': '',
   'obsidian.e2ee_passphrase': '',
   'obsidian.e2ee_path_obfuscation': '',
+  'obsidian.tailscale_url_enabled': '',
   'obsidian.installed': 'false',
   'obsidian.couchdb_installed': 'false',
 }
