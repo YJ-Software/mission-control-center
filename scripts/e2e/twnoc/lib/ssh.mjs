@@ -12,7 +12,10 @@ export function buildSshArgs({ user, host, keyPath, command, extraOpts = [] }) {
   const args = [
     '-i', expandHome(keyPath),
     '-o', 'BatchMode=yes',
-    '-o', 'StrictHostKeyChecking=accept-new',
+    '-o', 'StrictHostKeyChecking=no',
+    '-o', 'UserKnownHostsFile=/dev/null',
+    '-o', 'GlobalKnownHostsFile=/dev/null',
+    '-o', 'LogLevel=ERROR',
     '-o', 'ConnectTimeout=15',
     ...extraOpts,
     `${user}@${host}`,
@@ -40,7 +43,7 @@ export function sshExec({ user, host, keyPath, command, timeoutMs = 60_000 }) {
 }
 
 /** Wait until SSH accepts connections (used after rebuild). */
-export async function waitForSsh({ user, host, keyPath, timeoutMs = 5 * 60_000 }) {
+export async function waitForSsh({ user, host, keyPath, timeoutMs = 15 * 60_000 }) {
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
     const { code } = await sshExec({ user, host, keyPath, command: 'true', timeoutMs: 15_000 })

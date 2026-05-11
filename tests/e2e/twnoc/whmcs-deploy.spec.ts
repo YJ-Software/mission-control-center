@@ -9,6 +9,7 @@ test('whmcs deploy → capture AUTH_PASSWORD', async ({ page }) => {
   const user = process.env.WHMCS_USER
   const pwd = process.env.WHMCS_PASSWORD
   const loginUrl = process.env.WHMCS_LOGIN_URL
+  const rebuildPwd = process.env.E2E_REBUILD_PASSWORD
   test.skip(!user || !pwd || !loginUrl, 'set WHMCS_USER / WHMCS_PASSWORD / WHMCS_LOGIN_URL')
 
   // Auto-accept the 開始部署 confirm dialog
@@ -25,6 +26,16 @@ test('whmcs deploy → capture AUTH_PASSWORD', async ({ page }) => {
   await page.getByRole('button', { name: /檢視詳情/ }).first().click()
   await page.getByRole('link', { name: /OpenClaw 部署/ }).click()
   await page.getByRole('button', { name: /新增部署/ }).click()
+
+  // Phase 1 reinstall set a new root password (E2E_REBUILD_PASSWORD). Tell the
+  // deployer about it by selecting "已變更" and filling the password box; the
+  // default "未變更 (開通)" path expects the original provisioning password,
+  // which we no longer have after our Virtualizor API reinstall.
+  if (rebuildPwd) {
+    await page.getByRole('radio', { name: /已變更/ }).check()
+    await page.getByRole('textbox', { name: /SSH 密碼/ }).fill(rebuildPwd)
+  }
+
   await page.getByRole('button', { name: /開始部署/ }).click()
 
   // Wait for success

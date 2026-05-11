@@ -7,6 +7,8 @@ import { writePhaseRecord } from './lib/phase-record.mjs'
 const args = process.argv.slice(2)
 const mode = args.find(a => !a.startsWith('--')) ?? 'full'
 const dryRun = args.includes('--dry-run')
+const fromArg = args.find(a => a.startsWith('--from='))
+const fromPhase = fromArg ? fromArg.split('=')[1] : null
 
 function loadEnv(file) {
   const env = {}
@@ -77,6 +79,15 @@ async function main() {
     default:
       console.error(`unknown mode "${mode}". Use: full | smoke | firewall-only`)
       process.exit(2)
+  }
+
+  if (fromPhase) {
+    const idx = plan.indexOf(fromPhase)
+    if (idx < 0) {
+      console.error(`--from=${fromPhase} not in plan (${plan.join(', ')})`)
+      process.exit(2)
+    }
+    plan = plan.slice(idx)
   }
 
   console.log(`[run-e2e] mode=${mode} dry-run=${dryRun} plan=${plan.join(' → ')}`)

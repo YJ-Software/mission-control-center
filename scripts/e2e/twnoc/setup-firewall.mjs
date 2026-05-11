@@ -47,11 +47,13 @@ async function main() {
     if (!env[k]) { console.error(`[phase-3] missing ${k}`); process.exit(2) }
   }
 
-  // Pre-check: SSH source IP from `who`
-  const whoOut = await ssh(env, 'who | head -1')
-  const ipMatch = whoOut.match(/\(([0-9.]+)\)/) || whoOut.match(/([0-9.]+)\s*$/)
-  const observed = ipMatch?.[1]
-  if (!observed) throw new Error(`could not parse source IP from who: "${whoOut}"`)
+  // Pre-check: SSH source IP from sshd's $SSH_CONNECTION (first field = client IP).
+  // `who` is unreliable here — non-interactive SSH commands don't always populate utmp.
+  const conn = await ssh(env, 'echo "$SSH_CONNECTION"')
+  const observed = conn.split(/\s+/)[0]
+  if (!observed || !/^\d+\.\d+\.\d+\.\d+$/.test(observed)) {
+    throw new Error(`could not parse source IP from SSH_CONNECTION: "${conn}"`)
+  }
   if (observed !== env.E2E_LOCAL_PUBLIC_IP) {
     throw new Error(
       `source IP mismatch: who reports ${observed} but E2E_LOCAL_PUBLIC_IP=${env.E2E_LOCAL_PUBLIC_IP}. ` +
