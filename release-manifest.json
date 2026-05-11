@@ -1,18 +1,23 @@
 {
   "latest": {
-    "version": "0.2.5",
-    "releaseDate": "2026-05-08T06:21:23.749Z",
+    "version": "0.2.6",
+    "releaseDate": "2026-05-11T09:42:59.808Z",
+    "notes": "- feat(customer-service): guide users to install business-hours-gate plugin from the Overview tab when the user_id injector is missing (the install bundles customer-id-injector)\n- refactor(customer-service): drop the wiki-person memory storage mode — the UI now shows only the active mem0 mode, scaffolding code is removed (~130 lines net)",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.2.5/mission-control-v0.2.5-linux-x64.tar.gz",
-        "sha256": "8fe90c4b488e10d117caba3e7b0e5a633d26a1791ee2b4a062ec4fda8f3422c4",
-        "size": 146419903
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.2.6/mission-control-v0.2.6-linux-x64.tar.gz",
+        "sha256": "d821cb78ecff5fd372ff05ff06e3647746714d3067063204eeb2aadaca8117a1",
+        "size": 18082205
       }
     ]
   },
   "history": [
+    {
+      "version": "0.2.5",
+      "releaseDate": "2026-05-08T06:21:23.749Z"
+    },
     {
       "version": "0.2.4",
       "releaseDate": "2026-05-06T17:42:28.640Z"
