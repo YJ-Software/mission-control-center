@@ -1561,7 +1561,8 @@
           "label": "user_id 自動注入器",
           "ok": "已就緒",
           "missing": "未安裝（強烈建議裝）",
-          "explain": "customer-id-injector plugin 在 before_tool_call hook 強制把 user_id / wiki entity path 換成正確的 LINE senderId。沒裝的話 LLM 偶發 5% 機率傳錯（記到別人帳上）。"
+          "explain": "customer-id-injector plugin 在 before_tool_call hook 強制把 user_id / wiki entity path 換成正確的 LINE senderId。沒裝的話 LLM 偶發 5% 機率傳錯（記到別人帳上）。",
+          "explainMissing": "請到「概覽」分頁安裝 business-hours-gate plugin，會一併把 customer-id-injector 裝好。沒裝的話 LLM 偶發 5% 機率把 user_id / wiki entity path 傳錯（記到別人帳上）。"
         },
         "modes": {
           "activeBadge": "使用中",

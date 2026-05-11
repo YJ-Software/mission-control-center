@@ -1561,7 +1561,8 @@
           "label": "user_id 自动注入器",
           "ok": "已就绪",
           "missing": "未安装（强烈建议安装）",
-          "explain": "customer-id-injector 插件在 before_tool_call hook 强制用正确的 LINE senderId 覆盖 user_id / wiki entity path。不装的话 LLM 偶尔 5% 传错。"
+          "explain": "customer-id-injector 插件在 before_tool_call hook 强制用正确的 LINE senderId 覆盖 user_id / wiki entity path。不装的话 LLM 偶尔 5% 传错。",
+          "explainMissing": "请到「概览」分页安装 business-hours-gate 插件，会一并把 customer-id-injector 装好。不装的话 LLM 偶尔 5% 机率把 user_id / wiki entity path 传错（记到别人账上）。"
         },
         "modes": {
           "activeBadge": "使用中",

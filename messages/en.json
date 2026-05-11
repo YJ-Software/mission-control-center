@@ -1561,7 +1561,8 @@
           "label": "user_id injector",
           "ok": "Ready",
           "missing": "Not installed (strongly recommended)",
-          "explain": "customer-id-injector plugin overrides user_id / wiki entity path on tool calls with the canonical LINE senderId. Without it the LLM passes the wrong user_id ~5% of the time."
+          "explain": "customer-id-injector plugin overrides user_id / wiki entity path on tool calls with the canonical LINE senderId. Without it the LLM passes the wrong user_id ~5% of the time.",
+          "explainMissing": "Install the business-hours-gate plugin from the Overview tab — it installs customer-id-injector at the same time. Without it the LLM gets the wrong user_id / wiki entity path ~5% of the time (memory lands on the wrong customer)."
         },
         "modes": {
           "activeBadge": "Active",

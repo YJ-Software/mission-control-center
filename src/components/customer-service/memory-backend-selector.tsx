@@ -109,7 +109,9 @@ export function MemoryBackendSelector() {
             <span className="text-white/60">·</span>
             <span className="text-white/70">{injectorOk ? t('injector.ok') : t('injector.missing')}</span>
           </div>
-          <p className="text-[11px] text-white/50 mt-1.5 ml-6 leading-relaxed">{t('injector.explain')}</p>
+          <p className="text-[11px] text-white/50 mt-1.5 ml-6 leading-relaxed">
+            {injectorOk ? t('injector.explain') : t('injector.explainMissing')}
+          </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
