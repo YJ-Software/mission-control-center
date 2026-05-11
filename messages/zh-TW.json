@@ -1554,8 +1554,8 @@
       },
       "backend": {
         "title": "客戶記憶儲存模式",
-        "description": "選擇 AI 客服怎麼存每位客戶的長期記憶。切換會改寫該 agent 的 AGENTS.md 規則段落並重啟 Gateway。**不會自動遷移既有資料**（換 mode = 重新累積）。",
-        "loading": "讀取目前模式中…",
+        "description": "AI 客服用 mem0 把每位客戶的長期記憶存進 Qdrant 向量庫。點下方按鈕會把 AGENTS.md 規則段落重新寫入並重啟 Gateway。",
+        "loading": "讀取目前狀態中…",
         "switchHint": "AGENTS.md memory section 由本頁管理（在 cs:memory-mode 標記之間）。其他段落不動。",
         "injector": {
           "label": "user_id 自動注入器",
@@ -1575,24 +1575,12 @@
               "弱：每次 add 多花 ~3-5s LLM 萃取",
               "弱：真人客服讀不到（向量＋萃取結果）"
             ],
-            "cta": "切換為 mem0 模式"
-          },
-          "wikiPerson": {
-            "title": "wiki person 頁面（OpenClaw 4.29+）",
-            "desc": "每位客戶在 wiki 有專屬 entity 頁，含 personCard、claims、privacyTier。AI 用 wiki_get / wiki_apply 操作。",
-            "bullets": [
-              "強：單客戶讀取 O(1)（直接開檔）",
-              "強：強型別 yaml，真人客服可讀／可手改",
-              "強：privacy tier 內建（confirm-before-use 等）",
-              "弱：跨客戶搜尋要掃所有檔（千客戶內無感）"
-            ],
-            "cta": "切換為 wiki person 模式"
+            "cta": "套用 mem0 模式"
           }
         },
         "messages": {
-          "mem0Applied": "已切換為 mem0 模式，Gateway 已重啟",
-          "wiki-personApplied": "已切換為 wiki person 模式，Gateway 已重啟",
-          "failed": "切換失敗"
+          "mem0Applied": "已套用 mem0 模式，Gateway 已重啟",
+          "failed": "套用失敗"
         }
       },
       "wizard": {

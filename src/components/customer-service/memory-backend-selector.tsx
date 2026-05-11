@@ -6,13 +6,12 @@ import { useTranslations } from 'next-intl'
 import {
   Loader2,
   Database,
-  FileText,
   CheckCircle2,
   XCircle,
   AlertTriangle,
 } from 'lucide-react'
 
-type Mode = 'mem0' | 'wiki-person'
+type Mode = 'mem0'
 
 interface BackendStatus {
   agentId: string | null
@@ -114,7 +113,7 @@ export function MemoryBackendSelector() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3">
           <ModeCard
             icon={<Database className="w-4 h-4" />}
             title={t('modes.mem0.title')}
@@ -125,18 +124,6 @@ export function MemoryBackendSelector() {
             busy={busy === 'mem0'}
             disabled={busy !== null}
             cta={t('modes.mem0.cta')}
-            activeText={t('modes.activeBadge')}
-          />
-          <ModeCard
-            icon={<FileText className="w-4 h-4" />}
-            title={t('modes.wikiPerson.title')}
-            desc={t('modes.wikiPerson.desc')}
-            bullets={t.raw('modes.wikiPerson.bullets') as string[]}
-            active={status.mode === 'wiki-person'}
-            onPick={() => pick('wiki-person')}
-            busy={busy === 'wiki-person'}
-            disabled={busy !== null}
-            cta={t('modes.wikiPerson.cta')}
             activeText={t('modes.activeBadge')}
           />
         </div>

@@ -1554,8 +1554,8 @@
       },
       "backend": {
         "title": "Customer memory storage mode",
-        "description": "Choose how the AI assistant stores per-customer memory. Switching rewrites the bound agent's AGENTS.md memory section and restarts the gateway. Existing data is NOT migrated.",
-        "loading": "Loading current mode…",
+        "description": "The AI assistant stores per-customer memory in mem0 (Qdrant vector store). Clicking the button below rewrites the AGENTS.md memory section and restarts the gateway.",
+        "loading": "Loading current status…",
         "switchHint": "AGENTS.md memory section is managed by this page (between the cs:memory-mode markers). Other sections untouched.",
         "injector": {
           "label": "user_id injector",
@@ -1575,24 +1575,12 @@
               "Weak: every add costs ~3-5s LLM extraction",
               "Weak: human staff can't easily read (binary + extracted text)"
             ],
-            "cta": "Switch to mem0 mode"
-          },
-          "wikiPerson": {
-            "title": "Wiki person pages (OpenClaw 4.29+)",
-            "desc": "Each customer gets a dedicated wiki entity page with personCard, claims, privacyTier. The AI uses wiki_get / wiki_apply.",
-            "bullets": [
-              "Strong: per-customer lookup is O(1) (file open)",
-              "Strong: typed yaml, human-readable and editable",
-              "Strong: built-in privacy tiers (confirm-before-use etc.)",
-              "Weak: cross-customer search scans every file (fine up to thousands)"
-            ],
-            "cta": "Switch to wiki person mode"
+            "cta": "Apply mem0 mode"
           }
         },
         "messages": {
-          "mem0Applied": "Switched to mem0 mode; Gateway restarted",
-          "wiki-personApplied": "Switched to wiki person mode; Gateway restarted",
-          "failed": "Switch failed"
+          "mem0Applied": "mem0 mode applied; Gateway restarted",
+          "failed": "Apply failed"
         }
       },
       "wizard": {

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getStatus, setMode, type MemoryBackend } from '@/lib/customer-service/memory-backend'
+import { getStatus, setMode } from '@/lib/customer-service/memory-backend'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -17,14 +17,13 @@ export async function POST(req: Request) {
   try {
     body = await req.json()
   } catch {
-    return NextResponse.json({ error: 'invalid json' }, { status: 400 })
+    body = {}
   }
-  const mode = body?.mode as MemoryBackend | undefined
-  if (mode !== 'mem0' && mode !== 'wiki-person') {
-    return NextResponse.json({ error: 'mode must be mem0 or wiki-person' }, { status: 400 })
+  if (body?.mode !== undefined && body.mode !== 'mem0') {
+    return NextResponse.json({ error: 'only mem0 mode is supported' }, { status: 400 })
   }
   try {
-    const { output, agentId } = await setMode(mode)
+    const { output, agentId } = await setMode()
     return NextResponse.json({ ok: true, agentId, output })
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? String(err) }, { status: 500 })
