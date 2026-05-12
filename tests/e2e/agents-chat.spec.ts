@@ -14,9 +14,11 @@ test('chat: send a message and receive a reply', async ({ loggedInPage: page, ba
   await input.press('Enter')
 
   // Reply: an assistant-side message bubble must appear with non-empty content.
-  // The chat message list usually has structured roles; fall back to "assistant"
-  // text node or a chat-message container.
-  const lastMessage = page.locator('[data-role="assistant"], .chat-message-assistant, [data-message-role="assistant"]').last()
-  await expect(lastMessage).toBeVisible({ timeout: REPLY_TIMEOUT })
-  await expect(lastMessage).not.toBeEmpty()
+  // chat-message.tsx tags each message with data-role={message.role}; the
+  // assistant streams character by character, so wait for non-empty text too.
+  const lastAssistant = page.locator('[data-role="assistant"]').last()
+  await expect(lastAssistant).toBeVisible({ timeout: REPLY_TIMEOUT })
+  await expect(async () => {
+    expect((await lastAssistant.innerText()).trim().length).toBeGreaterThan(0)
+  }).toPass({ timeout: REPLY_TIMEOUT, intervals: [500, 1_000, 2_000] })
 })

@@ -19,8 +19,10 @@ test('telegram pair via gramjs', async ({ page }) => {
 
   await page.getByRole('button', { name: /檢視詳情/ }).first().click()
   await page.getByRole('link', { name: /OpenClaw 部署/ }).click()
-  // 部署列表頁 → 開啟最近一筆完成的部署的詳情，會顯示 Telegram 配對 form
-  await page.getByRole('row').filter({ hasText: /成功/ }).first().getByRole('link').first().click()
+  // 部署列表頁 → 開啟最近一筆完成的部署的詳情，會顯示 Telegram 配對 form。
+  // The DataTables row has no <a> inside; clicking the <tr> itself navigates
+  // via a JS data-href handler.
+  await page.getByRole('row').filter({ hasText: /成功/ }).first().click()
 
   // Step 1: token → 設定
   await expect(page.locator('#tg-bot-token')).toBeVisible({ timeout: 30_000 })

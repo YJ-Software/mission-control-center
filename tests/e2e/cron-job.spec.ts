@@ -3,26 +3,43 @@ import { test, expect } from './fixtures/login'
 const RUN_POLL_TIMEOUT = 60_000
 
 test('cron-job: create + manual trigger + see run record', async ({ loggedInPage: page, baseURL, request }) => {
+  // Unique name per run avoids interference from leftover jobs of past runs.
+  const jobName = `e2e-test-job-${Date.now()}`
   await page.goto(`${baseURL}/cron-jobs`)
 
-  // Create — UI button labeled "新增" or "Create" depending on locale
-  await page.getByRole('button', { name: /新增|Create|New/i }).first().click()
+  // Open the create dialog — page-level button is "新增排程".
+  await page.getByRole('button', { name: /新增排程|Create|New/i }).first().click()
 
-  // Form: name + cron + command. Adjust if first dry-run reveals different selectors.
-  await page.getByRole('textbox', { name: /名稱|Name/i }).fill('e2e-test-job')
-  await page.getByRole('textbox', { name: /排程|Cron|Schedule/i }).fill('0 0 1 1 *')
-  await page.getByRole('textbox', { name: /命令|Command/i }).fill('echo e2e')
-  await page.getByRole('button', { name: /儲存|Save|Submit/i }).click()
+  // The form's <label>s aren't aria-linked to inputs, so getByRole({ name })
+  // doesn't work. Address fields by their placeholder text instead.
+  await page.getByPlaceholder(/例：每日報告/).fill(jobName)
+  await page.getByPlaceholder(/分 時 日 月 週/).fill('0 0 1 1 *')
+  // cron-jobs run an agent with a prompt, not a shell command.
+  await page.getByPlaceholder(/告訴 agent 要做什麼/).fill('回我一個 OK')
+  // Fresh installs have no channel history, so the default "announce → last"
+  // delivery would always fail. Switch to 不傳送 (none).
+  await page.getByRole('dialog').getByRole('button', { name: /^不傳送$|^None$/ }).click()
 
-  await expect(page.getByText('e2e-test-job')).toBeVisible({ timeout: 10_000 })
+  // Save — the dialog's confirm button mirrors the page button label.
+  await page.getByRole('dialog').getByRole('button', { name: /新增排程|Save|Submit/i }).click()
 
-  // Trigger the job — find row and click 立即執行 / Run-now button.
-  const row = page.getByRole('row', { name: /e2e-test-job/ })
-  await row.getByRole('button', { name: /立即執行|Run\s*Now|Trigger/i }).click()
+  await expect(page.getByText(jobName)).toBeVisible({ timeout: 10_000 })
 
-  // Poll API for the run record.
+  // Cards collapse by default; click to expand, then the 立即執行 button
+  // is revealed in the detail panel.
+  await page.getByText(jobName).first().click()
+  await page.getByRole('button', { name: /立即執行|Run\s*Now|Trigger/i }).first().click()
+
+  // The runs API filters by job UUID, not name; look it up first.
+  const listResp = await request.get(`${baseURL}/api/cron`)
+  expect(listResp.ok()).toBeTruthy()
+  const { jobs } = await listResp.json()
+  const job = jobs?.find((j: { name: string }) => j.name === jobName)
+  expect(job?.id, `job ${jobName} not found in /api/cron list`).toBeTruthy()
+
+  // Poll for a successful run record.
   await expect(async () => {
-    const resp = await request.get(`${baseURL}/api/cron/runs?id=e2e-test-job&limit=1`)
+    const resp = await request.get(`${baseURL}/api/cron/runs?id=${job.id}&limit=1`)
     expect(resp.ok()).toBeTruthy()
     const json = await resp.json()
     expect(json.entries?.[0]?.status, 'last run status').toBe('ok')
