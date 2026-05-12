@@ -66,15 +66,18 @@ export function SettingsPanel({ onUninstallAction, onUninstallStartAction }: { o
   })
 
   const [funnelEnableUrl, setFunnelEnableUrl] = useState<string | null>(null)
+  const [httpsCertEnableUrl, setHttpsCertEnableUrl] = useState<string | null>(null)
   const httpsModeMutation = useMutation({
     mutationFn: async (mode: HttpsMode) => {
       const res = await fetch(`/api/second-brain/obsidian/tailscale?action=https-set&mode=${mode}`, { method: 'POST' })
       const data = await res.json()
       if (!res.ok) {
         setFunnelEnableUrl(typeof data.funnelEnableUrl === 'string' ? data.funnelEnableUrl : null)
+        setHttpsCertEnableUrl(typeof data.httpsCertEnableUrl === 'string' ? data.httpsCertEnableUrl : null)
         throw new Error(data.error || 'https mode change failed')
       }
       setFunnelEnableUrl(null)
+      setHttpsCertEnableUrl(null)
       return data
     },
     onSuccess: () => refetchTailscale(),
@@ -391,7 +394,15 @@ export function SettingsPanel({ onUninstallAction, onUninstallStartAction }: { o
                     <div className="flex items-start gap-2">
                       <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                       <div className="flex-1 break-words">
-                        {funnelEnableUrl ? (
+                        {httpsCertEnableUrl ? (
+                          <>
+                            <div>{t('httpsCertsNotEnabledOnTailnet')}</div>
+                            <a href={httpsCertEnableUrl} target="_blank" rel="noopener noreferrer"
+                              className="font-mono underline text-cyan-300 hover:text-cyan-200 break-all">
+                              {httpsCertEnableUrl}
+                            </a>
+                          </>
+                        ) : funnelEnableUrl ? (
                           <>
                             <div>{t('funnelNotEnabledOnTailnet')}</div>
                             <a href={funnelEnableUrl} target="_blank" rel="noopener noreferrer"

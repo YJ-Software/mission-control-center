@@ -32,7 +32,11 @@ export async function POST(req: NextRequest) {
     const result = await setHttpsMode(modeParam, port)
     if (!result.ok) {
       return NextResponse.json(
-        { error: result.error, funnelEnableUrl: result.funnelEnableUrl ?? null },
+        {
+          error: result.error,
+          funnelEnableUrl: result.funnelEnableUrl ?? null,
+          httpsCertEnableUrl: result.httpsCertEnableUrl ?? null,
+        },
         { status: 500 },
       )
     }

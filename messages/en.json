@@ -995,6 +995,7 @@
         "httpsServeUrlLabel": "Serve (HTTPS, tailnet)",
         "httpsFunnelUrlLabel": "Funnel (HTTPS, public)",
         "funnelNotEnabledOnTailnet": "Funnel is not yet enabled on your tailnet. Open the link below to enable it, then try again:",
+        "httpsCertsNotEnabledOnTailnet": "HTTPS certificates are not enabled for your tailnet, so the browser sees a self-signed cert. Enable it in the admin DNS settings, then try again:",
         "copy": "Copy"
       },
       "uninstall": {

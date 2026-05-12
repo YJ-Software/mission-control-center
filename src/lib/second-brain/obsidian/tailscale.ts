@@ -105,14 +105,53 @@ async function runTailscale(args: string[], timeoutMs = 10000): Promise<{ ok: tr
   }
 }
 
+/**
+ * Pre-provision a Let's Encrypt cert for the node's MagicDNS name.
+ * `tailscale serve` and `tailscale funnel` will trigger cert issuance lazily
+ * on first TLS request anyway, but that first request often fails with a
+ * self-signed-cert browser warning while issuance is still in flight.
+ * Calling `tailscale cert` upfront makes the first browser hit clean.
+ *
+ * Common failure: the tailnet hasn't enabled "HTTPS Certificates" in the
+ * admin DNS panel. The CLI prints an admin URL in stderr; surface it.
+ */
+async function provisionCert(dnsName: string): Promise<
+  | { ok: true }
+  | { ok: false; error: string; httpsCertEnableUrl?: string }
+> {
+  // Cert issuance hits Let's Encrypt; allow up to 60s.
+  const r = await runTailscale(['cert', dnsName], 60_000)
+  if (r.ok) return { ok: true }
+  const match = r.error.match(/https:\/\/login\.tailscale\.com\/[^\s]+/)
+  return {
+    ok: false,
+    error: r.error.trim(),
+    ...(match ? { httpsCertEnableUrl: match[0] } : {}),
+  }
+}
+
 export async function setHttpsMode(mode: HttpsMode, port: number): Promise<
   | { ok: true; status: HttpsStatus }
-  | { ok: false; error: string; funnelEnableUrl?: string }
+  | { ok: false; error: string; funnelEnableUrl?: string; httpsCertEnableUrl?: string }
 > {
   if (mode === 'off') {
     const r = await runTailscale(['serve', 'reset'])
     if (!r.ok) return { ok: false, error: r.error }
     return { ok: true, status: getHttpsStatus(port) }
+  }
+
+  // Both serve and funnel need a valid TLS cert for the node's MagicDNS name.
+  // Issue it now so the first browser hit doesn't get a self-signed warning.
+  const info = getTailscaleInfo()
+  if (info.dnsName) {
+    const cert = await provisionCert(info.dnsName)
+    if (!cert.ok) {
+      return {
+        ok: false,
+        error: cert.error,
+        ...(cert.httpsCertEnableUrl ? { httpsCertEnableUrl: cert.httpsCertEnableUrl } : {}),
+      }
+    }
   }
 
   if (mode === 'serve') {
