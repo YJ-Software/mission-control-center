@@ -1,19 +1,22 @@
 {
   "latest": {
-    "version": "0.2.9",
-    "releaseDate": "2026-05-12T07:15:02.330Z",
-    "notes": "- feat(second-brain): pre-provision Tailscale Let's Encrypt cert before serve/funnel so first browser visit doesn't see a self-signed cert warning; surfaces admin URL when tailnet hasn't enabled HTTPS Certificates",
+    "version": "0.3.0",
+    "releaseDate": "2026-05-12T07:20:01.368Z",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.2.9/mission-control-v0.2.9-linux-x64.tar.gz",
-        "sha256": "0ce220961431cad7db28371cd99a17a761761c42f1e04643fc3e9df0ceb693e3",
-        "size": 18425558
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.0/mission-control-v0.3.0-linux-x64.tar.gz",
+        "sha256": "5e699e9f932713f1b2dc24d5c7baffc0ae199d21ac9c11c51f63a5bd779b0e5e",
+        "size": 146444367
       }
     ]
   },
   "history": [
+    {
+      "version": "0.2.9",
+      "releaseDate": "2026-05-12T07:15:02.330Z"
+    },
     {
       "version": "0.2.8",
       "releaseDate": "2026-05-12T02:29:25.395Z"
