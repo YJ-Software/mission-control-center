@@ -5,7 +5,12 @@ import { sshExec } from './lib/ssh.mjs'
 import { writePhaseRecord } from './lib/phase-record.mjs'
 import { request } from 'node:http'
 
-const ALWAYS_ALLOW = '122.146.90.137'
+// IPs always allowed past ufw:
+// - 202.12.76.145: WHMCS deployer (Ansible) — verified from sshd journal.
+//   Without this, deploy / redeploy / Telegram pair (which need a fresh
+//   SSH session from WHMCS to read state on the dashboard) all fail.
+// - 122.146.90.137: legacy operator IP, kept for backward compatibility.
+const ALWAYS_ALLOW = ['202.12.76.145', '122.146.90.137']
 
 function loadEnv(file) {
   const env = {}
@@ -75,7 +80,9 @@ async function main() {
   await ssh(env, 'ufw default deny incoming')
   await ssh(env, 'ufw default allow outgoing')
   await ssh(env, `ufw allow from ${env.E2E_LOCAL_PUBLIC_IP}`)
-  await ssh(env, `ufw allow from ${ALWAYS_ALLOW}`)
+  for (const ip of ALWAYS_ALLOW) {
+    await ssh(env, `ufw allow from ${ip}`)
+  }
   await ssh(env, 'ufw --force enable')
 
   const ruleList = await ssh(env, 'ufw status numbered')
