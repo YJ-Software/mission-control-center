@@ -1,19 +1,23 @@
 {
   "latest": {
-    "version": "0.2.8",
-    "releaseDate": "2026-05-12T02:29:25.395Z",
-    "notes": "- fix(e2e): twnoc pipeline now works end-to-end — switched to enduser act=ostemplate with POSTed form body, inject saved SSH key by panel ID, parse source IP from $SSH_CONNECTION, added --from=<phase> resume; whmcs-deploy spec handles 已變更 password path\n- fix(e2e): repair chat / cron-job / telegram-pair spec selectors to match current UI\n- chore(chat): tag chat-message wrapper with data-role for testability",
+    "version": "0.2.9",
+    "releaseDate": "2026-05-12T07:15:02.330Z",
+    "notes": "- feat(second-brain): pre-provision Tailscale Let's Encrypt cert before serve/funnel so first browser visit doesn't see a self-signed cert warning; surfaces admin URL when tailnet hasn't enabled HTTPS Certificates",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.2.8/mission-control-v0.2.8-linux-x64.tar.gz",
-        "sha256": "f06ae1481f901d6a877548d027aaa30c25bccd14e1791da00539286c76ed751d",
-        "size": 26568436
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.2.9/mission-control-v0.2.9-linux-x64.tar.gz",
+        "sha256": "0ce220961431cad7db28371cd99a17a761761c42f1e04643fc3e9df0ceb693e3",
+        "size": 18425558
       }
     ]
   },
   "history": [
+    {
+      "version": "0.2.8",
+      "releaseDate": "2026-05-12T02:29:25.395Z"
+    },
     {
       "version": "0.2.7",
       "releaseDate": "2026-05-11T17:12:14.581Z"
