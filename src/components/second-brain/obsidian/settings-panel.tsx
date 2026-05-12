@@ -67,6 +67,7 @@ export function SettingsPanel({ onUninstallAction, onUninstallStartAction }: { o
 
   const [funnelEnableUrl, setFunnelEnableUrl] = useState<string | null>(null)
   const [httpsCertEnableUrl, setHttpsCertEnableUrl] = useState<string | null>(null)
+  const [operatorSetup, setOperatorSetup] = useState<{ needed: boolean; user: string | null }>({ needed: false, user: null })
   const httpsModeMutation = useMutation({
     mutationFn: async (mode: HttpsMode) => {
       const res = await fetch(`/api/second-brain/obsidian/tailscale?action=https-set&mode=${mode}`, { method: 'POST' })
@@ -74,10 +75,15 @@ export function SettingsPanel({ onUninstallAction, onUninstallStartAction }: { o
       if (!res.ok) {
         setFunnelEnableUrl(typeof data.funnelEnableUrl === 'string' ? data.funnelEnableUrl : null)
         setHttpsCertEnableUrl(typeof data.httpsCertEnableUrl === 'string' ? data.httpsCertEnableUrl : null)
+        setOperatorSetup({
+          needed: data.needsOperatorSetup === true,
+          user: typeof data.operatorUser === 'string' ? data.operatorUser : null,
+        })
         throw new Error(data.error || 'https mode change failed')
       }
       setFunnelEnableUrl(null)
       setHttpsCertEnableUrl(null)
+      setOperatorSetup({ needed: false, user: null })
       return data
     },
     onSuccess: () => refetchTailscale(),
@@ -394,7 +400,21 @@ export function SettingsPanel({ onUninstallAction, onUninstallStartAction }: { o
                     <div className="flex items-start gap-2">
                       <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                       <div className="flex-1 break-words">
-                        {httpsCertEnableUrl ? (
+                        {operatorSetup.needed ? (
+                          <>
+                            <div>{t('operatorSetupNeeded')}</div>
+                            <div className="mt-1.5 px-2 py-1.5 rounded bg-black/40 border border-white/10 font-mono text-cyan-300 select-all break-all">
+                              sudo tailscale set --operator={operatorSetup.user ?? '$USER'}
+                            </div>
+                            <button type="button"
+                              onClick={() => copyUrl(`sudo tailscale set --operator=${operatorSetup.user ?? '$USER'}`)}
+                              className="mt-1.5 inline-flex items-center gap-1 px-2 py-1 rounded bg-white/[0.06] hover:bg-white/[0.1] text-white/60 hover:text-white/80 transition-colors text-[10px]">
+                              {copiedUrl === `sudo tailscale set --operator=${operatorSetup.user ?? '$USER'}`
+                                ? <><Check className="w-3 h-3 text-green-400" /> {t('copied')}</>
+                                : <><Copy className="w-3 h-3" /> {t('copy')}</>}
+                            </button>
+                          </>
+                        ) : httpsCertEnableUrl ? (
                           <>
                             <div>{t('httpsCertsNotEnabledOnTailnet')}</div>
                             <a href={httpsCertEnableUrl} target="_blank" rel="noopener noreferrer"

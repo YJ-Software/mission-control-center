@@ -133,6 +133,26 @@ if ! loginctl show-user "$USER" 2>/dev/null | grep -q "Linger=yes"; then
   fi
 fi
 
+# Tailscale operator: lets the service user run `tailscale serve / funnel`
+# without sudo. Required for the dashboard's Obsidian → Tailscale HTTPS
+# (Serve / Funnel) feature. Skipped silently if tailscale isn't installed.
+if command -v tailscale >/dev/null 2>&1; then
+  CURRENT_OPERATOR="$(tailscale debug prefs 2>/dev/null | sed -En 's/.*"OperatorUser": *"([^"]*)".*/\1/p' | head -1)"
+  if [[ "$CURRENT_OPERATOR" != "$USER" ]]; then
+    log "setting tailscale operator to $USER (may prompt for sudo)"
+    if sudo -n true 2>/dev/null || sudo true 2>/dev/null; then
+      if ! sudo tailscale set --operator="$USER" 2>/dev/null; then
+        log "  (non-fatal) sudo tailscale set --operator failed"
+        log "  → run manually on the server: sudo tailscale set --operator=$USER"
+      fi
+    else
+      log "  (non-fatal) sudo not available for tailscale operator setup"
+      log "  → run manually on the server when convenient:"
+      log "      sudo tailscale set --operator=$USER"
+    fi
+  fi
+fi
+
 # --- 6. Health check ---
 log "waiting for /api/health …"
 PORT="$(grep -E '^PORT=' "$ENV_FILE" | head -1 | cut -d= -f2)"

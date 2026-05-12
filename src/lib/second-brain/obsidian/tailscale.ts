@@ -130,13 +130,26 @@ async function provisionCert(dnsName: string): Promise<
   }
 }
 
+function looksLikeOperatorDenied(error: string): boolean {
+  // tailscale prints "Access denied: serve config denied" / "funnel config denied"
+  // when the calling user isn't the registered operator. Surface that case so
+  // the dashboard can render a "run this sudo command on the server" hint.
+  return /Access denied:.*denied/i.test(error) || /\boperator\b/i.test(error)
+}
+
 export async function setHttpsMode(mode: HttpsMode, port: number): Promise<
   | { ok: true; status: HttpsStatus }
-  | { ok: false; error: string; funnelEnableUrl?: string; httpsCertEnableUrl?: string }
+  | { ok: false; error: string; funnelEnableUrl?: string; httpsCertEnableUrl?: string; needsOperatorSetup?: boolean }
 > {
   if (mode === 'off') {
     const r = await runTailscale(['serve', 'reset'])
-    if (!r.ok) return { ok: false, error: r.error }
+    if (!r.ok) {
+      return {
+        ok: false,
+        error: r.error,
+        ...(looksLikeOperatorDenied(r.error) ? { needsOperatorSetup: true } : {}),
+      }
+    }
     return { ok: true, status: getHttpsStatus(port) }
   }
 
@@ -150,6 +163,7 @@ export async function setHttpsMode(mode: HttpsMode, port: number): Promise<
         ok: false,
         error: cert.error,
         ...(cert.httpsCertEnableUrl ? { httpsCertEnableUrl: cert.httpsCertEnableUrl } : {}),
+        ...(looksLikeOperatorDenied(cert.error) ? { needsOperatorSetup: true } : {}),
       }
     }
   }
@@ -163,7 +177,13 @@ export async function setHttpsMode(mode: HttpsMode, port: number): Promise<
       if (!reset.ok) return { ok: false, error: reset.error }
     }
     const r = await runTailscale(['serve', '--bg', String(port)])
-    if (!r.ok) return { ok: false, error: r.error }
+    if (!r.ok) {
+      return {
+        ok: false,
+        error: r.error,
+        ...(looksLikeOperatorDenied(r.error) ? { needsOperatorSetup: true } : {}),
+      }
+    }
     return { ok: true, status: getHttpsStatus(port) }
   }
 
@@ -177,6 +197,7 @@ export async function setHttpsMode(mode: HttpsMode, port: number): Promise<
       ok: false,
       error: r.error.trim(),
       ...(match ? { funnelEnableUrl: match[0] } : {}),
+      ...(looksLikeOperatorDenied(r.error) ? { needsOperatorSetup: true } : {}),
     }
   }
   return { ok: true, status: getHttpsStatus(port) }

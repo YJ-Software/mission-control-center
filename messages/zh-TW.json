@@ -996,7 +996,9 @@
         "httpsFunnelUrlLabel": "Funnel (HTTPS, 公網)",
         "funnelNotEnabledOnTailnet": "Funnel 尚未在你的 tailnet 啟用。請先到下方連結啟用後再試一次：",
         "httpsCertsNotEnabledOnTailnet": "你的 tailnet 還沒啟用 HTTPS 憑證，瀏覽器會看到自簽憑證。請先到下方連結的 admin DNS 設定啟用後再試一次：",
-        "copy": "複製"
+        "operatorSetupNeeded": "Tailscale 拒絕：mission-control 沒有操作 tailscale 的權限。請 SSH 進伺服器執行下列指令一次（設定後永久生效）：",
+        "copy": "複製",
+        "copied": "已複製"
       },
       "uninstall": {
         "button": "解除安裝全部",

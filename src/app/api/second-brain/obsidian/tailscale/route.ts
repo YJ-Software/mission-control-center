@@ -36,6 +36,8 @@ export async function POST(req: NextRequest) {
           error: result.error,
           funnelEnableUrl: result.funnelEnableUrl ?? null,
           httpsCertEnableUrl: result.httpsCertEnableUrl ?? null,
+          needsOperatorSetup: result.needsOperatorSetup ?? false,
+          operatorUser: process.env.USER ?? null,
         },
         { status: 500 },
       )

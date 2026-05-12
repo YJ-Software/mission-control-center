@@ -996,7 +996,9 @@
         "httpsFunnelUrlLabel": "Funnel (HTTPS, public)",
         "funnelNotEnabledOnTailnet": "Funnel is not yet enabled on your tailnet. Open the link below to enable it, then try again:",
         "httpsCertsNotEnabledOnTailnet": "HTTPS certificates are not enabled for your tailnet, so the browser sees a self-signed cert. Enable it in the admin DNS settings, then try again:",
-        "copy": "Copy"
+        "operatorSetupNeeded": "Tailscale denied access: mission-control isn't authorised to operate tailscale. SSH into the server and run this once (it's remembered permanently):",
+        "copy": "Copy",
+        "copied": "Copied"
       },
       "uninstall": {
         "button": "Uninstall All",
