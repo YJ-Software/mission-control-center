@@ -977,7 +977,6 @@
         "e2eePathObfuscation": "Path Obfuscation",
         "e2eePathObfuscationDesc": "Obfuscate file paths in the remote database. Requires rebuilding the database if changed.",
         "remoteAccessTitle": "Remote Access URLs",
-        "localUrlLabel": "Local (localhost)",
         "tailscaleEnable": "Enable Tailscale URL",
         "tailscaleEnableDesc": "Lets devices signed into the same Tailscale account (phone, other computers) reach this CouchDB.",
         "tailscaleNotInstalled": "Tailscale not detected. Install and sign into Tailscale first.",

@@ -252,24 +252,6 @@ export function SettingsPanel({ onUninstallAction, onUninstallStartAction }: { o
           </div>
         </div>
 
-        {/* Localhost URL (read-only) */}
-        <div className="col-span-2">
-          <label className="block text-[11px] text-white/40 mb-1">{t('localUrlLabel')}</label>
-          <div className="flex items-center gap-2">
-            <div className="flex-1 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06] text-sm font-mono text-white/70">
-              {`http://localhost:${tailscale?.port ?? 5984}`}
-            </div>
-            <button type="button"
-              onClick={() => copyUrl(`http://localhost:${tailscale?.port ?? 5984}`)}
-              className="px-2 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-white/40 hover:text-white/70 transition-colors"
-              title={t('copy')}>
-              {copiedUrl === `http://localhost:${tailscale?.port ?? 5984}`
-                ? <Check className="w-3.5 h-3.5 text-green-400" />
-                : <Copy className="w-3.5 h-3.5" />}
-            </button>
-          </div>
-        </div>
-
         {/* Tailscale toggle */}
         <div className="col-span-2">
           <label className="flex items-center gap-2 text-sm text-white/60 cursor-pointer">

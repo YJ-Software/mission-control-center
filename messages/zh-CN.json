@@ -977,7 +977,6 @@
         "e2eePathObfuscation": "路径混淆 (Path Obfuscation)",
         "e2eePathObfuscationDesc": "混淆远程数据库中的文件路径，启用后需重建数据库",
         "remoteAccessTitle": "远端访问网址",
-        "localUrlLabel": "本机 (localhost)",
         "tailscaleEnable": "启用 Tailscale 网址",
         "tailscaleEnableDesc": "让登录同一个 Tailscale 账号的设备（手机、其他电脑）可以连到此 CouchDB",
         "tailscaleNotInstalled": "未检测到 Tailscale。请先安装并登录 Tailscale。",
