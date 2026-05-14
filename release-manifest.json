@@ -1,19 +1,23 @@
 {
   "latest": {
-    "version": "0.3.2",
-    "releaseDate": "2026-05-14T05:35:53.274Z",
-    "notes": "- feat(second-brain): live-sync 插件安裝動作現在無條件啟用 E2EE + 路徑混淆；passphrase 沒有時自動生成、有則保留（避免毀掉既存加密 DB）\n- refactor(second-brain): 移除遠端存取網址區塊中重複顯示的本機 localhost URL（上方 CouchDB URL 欄位已經有了）",
+    "version": "0.3.3",
+    "releaseDate": "2026-05-14T19:42:35.305Z",
+    "notes": "- fix(setup): notebooklm 安裝改用 'uv tool install --force'，避免上次中斷殘留的 notebooklm-mcp 執行檔讓 install 卡住\n- fix(e2e): notebooklm spec 修對 locator（之前用 '尚未安裝' 但 UI 是 '未安裝'，整支 spec vacuously pass 沒實際測試）；新增 idempotency 驗證\n- fix(e2e): telegram pair spec 主動 ack 上一次 deploy 的 執行中 row 才按新增部署（WHMCS 不允許併行 deploy，且 ack 不跨 Playwright session）",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.2/mission-control-v0.3.2-linux-x64.tar.gz",
-        "sha256": "2391dd9ccc1a56134fa1ead5e207b2ace5119db09901fb2213555d2c03b93ed8",
-        "size": 18430470
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.3/mission-control-v0.3.3-linux-x64.tar.gz",
+        "sha256": "d24a4a4ff4fa400b0df0db6253e588dae4f8c07c2b4a26ac0821fd3a4cc4c0a6",
+        "size": 18435302
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.2",
+      "releaseDate": "2026-05-14T05:35:53.274Z"
+    },
     {
       "version": "0.3.1",
       "releaseDate": "2026-05-12T07:55:50.251Z"
@@ -49,10 +53,6 @@
     {
       "version": "0.2.3",
       "releaseDate": "2026-05-06T17:09:32.804Z"
-    },
-    {
-      "version": "0.2.2",
-      "releaseDate": "2026-05-06T16:32:11.808Z"
     }
   ]
 }
