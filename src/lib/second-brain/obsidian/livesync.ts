@@ -38,24 +38,18 @@ export async function installLiveSyncPlugin(): Promise<{ success: boolean; error
     const couchdbPassword = getObsidianConfig('couchdb_password')
     const couchdbDatabase = getObsidianConfig('couchdb_database')
 
-    // E2EE configuration — for new installs, default to enabled with auto-generated passphrase
-    let e2eeEnabled = getObsidianConfig('e2ee_enabled')
+    // E2EE configuration — installing LiveSync always enables E2EE + path
+    // obfuscation. A previously-stored passphrase is preserved so we don't
+    // strand an existing encrypted DB; only generate one when missing.
+    setObsidianConfig('e2ee_enabled', 'true')
+    setObsidianConfig('e2ee_path_obfuscation', 'true')
+    const e2eeEnabled = 'true'
     let passphrase = getObsidianConfig('e2ee_passphrase')
-    let pathObfuscation = getObsidianConfig('e2ee_path_obfuscation')
-
-    // First-time: generate passphrase and enable E2EE by default
-    if (!e2eeEnabled) {
-      e2eeEnabled = 'true'
-      setObsidianConfig('e2ee_enabled', 'true')
-    }
-    if (!passphrase && e2eeEnabled === 'true') {
+    if (!passphrase) {
       passphrase = crypto.randomBytes(24).toString('base64url')
       setObsidianConfig('e2ee_passphrase', passphrase)
     }
-    if (!pathObfuscation) {
-      pathObfuscation = 'true'
-      setObsidianConfig('e2ee_path_obfuscation', 'true')
-    }
+    const pathObfuscation = 'true'
 
     const liveSyncConfig: Record<string, unknown> = {
       couchDB_URI: couchdbUrl,
