@@ -1,18 +1,23 @@
 {
   "latest": {
-    "version": "0.3.1",
-    "releaseDate": "2026-05-12T07:55:50.251Z",
+    "version": "0.3.2",
+    "releaseDate": "2026-05-14T05:35:53.274Z",
+    "notes": "- feat(second-brain): live-sync 插件安裝動作現在無條件啟用 E2EE + 路徑混淆；passphrase 沒有時自動生成、有則保留（避免毀掉既存加密 DB）\n- refactor(second-brain): 移除遠端存取網址區塊中重複顯示的本機 localhost URL（上方 CouchDB URL 欄位已經有了）",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.1/mission-control-v0.3.1-linux-x64.tar.gz",
-        "sha256": "328d91670d45a6638b810be9c29a36ff10a3c8ad3a56daab75bc803546bbac8d",
-        "size": 146429309
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.2/mission-control-v0.3.2-linux-x64.tar.gz",
+        "sha256": "2391dd9ccc1a56134fa1ead5e207b2ace5119db09901fb2213555d2c03b93ed8",
+        "size": 18430470
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.1",
+      "releaseDate": "2026-05-12T07:55:50.251Z"
+    },
     {
       "version": "0.3.0",
       "releaseDate": "2026-05-12T07:20:01.368Z"
@@ -48,10 +53,6 @@
     {
       "version": "0.2.2",
       "releaseDate": "2026-05-06T16:32:11.808Z"
-    },
-    {
-      "version": "0.2.1",
-      "releaseDate": "2026-05-06T16:08:21.452Z"
     }
   ]
 }
