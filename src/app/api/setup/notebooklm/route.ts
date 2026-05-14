@@ -209,7 +209,11 @@ export async function POST(req: Request) {
         try {
           // Use full path to uv in case it was just installed
           const uvBin = await which('uv') || join(homedir(), '.local/bin/uv')
-          await execFileAsync(uvBin, ['tool', 'install', 'notebooklm-mcp-cli'], {
+          // --force overwrites a stale `notebooklm-mcp` executable left over
+          // from a prior incomplete install. Without it, `uv tool install`
+          // bails with "Executable already exists" and the whole install
+          // step fails.
+          await execFileAsync(uvBin, ['tool', 'install', '--force', 'notebooklm-mcp-cli'], {
             timeout: 120000,
             env: { ...process.env, HOME: homedir(), PATH: `${join(homedir(), '.local/bin')}:${process.env.PATH}` },
           })
