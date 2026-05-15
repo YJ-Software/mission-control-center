@@ -1,19 +1,23 @@
 {
   "latest": {
-    "version": "0.3.4",
-    "releaseDate": "2026-05-15T05:33:21.596Z",
-    "notes": "- refactor(settings): /settings 移除「整合狀態」/「Google (gogcli)」/「代理設定」三個 section（資訊在別處已有 / 從未被讀取 / 與 Gateway card 重複）",
+    "version": "0.3.5",
+    "releaseDate": "2026-05-15T09:05:45.073Z",
+    "notes": "- feat(dashboard): 儀表板 Quick Actions 新增「Update MCC」按鈕，緊接 Update OpenClaw 旁邊，按下會自動跑 manifest 比版 → 下載 tarball → applyUpgrade → systemd restart 同一條 release upgrade pipeline",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.4/mission-control-v0.3.4-linux-x64.tar.gz",
-        "sha256": "446a80276c0a600b68bd0a6e290f9c1de6e4d805812307aa3cb69e48fc282639",
-        "size": 18435129
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.5/mission-control-v0.3.5-linux-x64.tar.gz",
+        "sha256": "d6d155f5b72156ee6f15d20acc1ba888695d52c910532116f86afd54b2b30a97",
+        "size": 18446792
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.4",
+      "releaseDate": "2026-05-15T05:33:21.596Z"
+    },
     {
       "version": "0.3.3",
       "releaseDate": "2026-05-14T19:42:35.305Z"
@@ -49,10 +53,6 @@
     {
       "version": "0.2.5",
       "releaseDate": "2026-05-08T06:21:23.749Z"
-    },
-    {
-      "version": "0.2.4",
-      "releaseDate": "2026-05-06T17:42:28.640Z"
     }
   ]
 }
