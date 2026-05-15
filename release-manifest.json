@@ -1,19 +1,23 @@
 {
   "latest": {
-    "version": "0.3.3",
-    "releaseDate": "2026-05-14T19:42:35.305Z",
-    "notes": "- fix(setup): notebooklm 安裝改用 'uv tool install --force'，避免上次中斷殘留的 notebooklm-mcp 執行檔讓 install 卡住\n- fix(e2e): notebooklm spec 修對 locator（之前用 '尚未安裝' 但 UI 是 '未安裝'，整支 spec vacuously pass 沒實際測試）；新增 idempotency 驗證\n- fix(e2e): telegram pair spec 主動 ack 上一次 deploy 的 執行中 row 才按新增部署（WHMCS 不允許併行 deploy，且 ack 不跨 Playwright session）",
+    "version": "0.3.4",
+    "releaseDate": "2026-05-15T05:33:21.596Z",
+    "notes": "- refactor(settings): /settings 移除「整合狀態」/「Google (gogcli)」/「代理設定」三個 section（資訊在別處已有 / 從未被讀取 / 與 Gateway card 重複）",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.3/mission-control-v0.3.3-linux-x64.tar.gz",
-        "sha256": "d24a4a4ff4fa400b0df0db6253e588dae4f8c07c2b4a26ac0821fd3a4cc4c0a6",
-        "size": 18435302
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.4/mission-control-v0.3.4-linux-x64.tar.gz",
+        "sha256": "446a80276c0a600b68bd0a6e290f9c1de6e4d805812307aa3cb69e48fc282639",
+        "size": 18435129
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.3",
+      "releaseDate": "2026-05-14T19:42:35.305Z"
+    },
     {
       "version": "0.3.2",
       "releaseDate": "2026-05-14T05:35:53.274Z"
@@ -49,10 +53,6 @@
     {
       "version": "0.2.4",
       "releaseDate": "2026-05-06T17:42:28.640Z"
-    },
-    {
-      "version": "0.2.3",
-      "releaseDate": "2026-05-06T17:09:32.804Z"
     }
   ]
 }
