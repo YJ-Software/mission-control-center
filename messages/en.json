@@ -252,6 +252,7 @@
     "restartDashboard": "Restart Dashboard",
     "clearCache": "Clear Cache",
     "updateOpenclaw": "Update OpenClaw",
+    "updateMcc": "Update MCC",
     "restartTailscale": "Restart Tailscale",
     "killTmux": "Kill Tmux Sessions",
     "gitGc": "Git GC All",
@@ -274,7 +275,8 @@
     "confirmRestartDashboard": "Restart Dashboard? Page will reload.",
     "confirmRestartTailscale": "Restart Tailscale? Network may drop briefly.",
     "confirmKillTmux": "Kill all tmux sessions? (including Claude persistent session)",
-    "confirmSysUpdate": "Run apt update + upgrade? This may take several minutes."
+    "confirmSysUpdate": "Run apt update + upgrade? This may take several minutes.",
+    "confirmUpdateMcc": "Upgrade Mission Control? The dashboard will restart automatically when the new version is in place."
   },
   "tasks": {
     "title": "Tasks Board",

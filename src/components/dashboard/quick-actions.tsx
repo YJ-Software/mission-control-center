@@ -18,6 +18,7 @@ const actionDefs: ActionDef[] = [
   { id: 'restart-dashboard', emoji: '🔄', labelKey: 'restartDashboard', loadingKey: 'restarting', confirm: 'confirmRestartDashboard' },
   { id: 'clear-cache', emoji: '🗑️', labelKey: 'clearCache', loadingKey: 'clearing' },
   { id: 'update-openclaw', emoji: '⬆️', labelKey: 'updateOpenclaw', loadingKey: 'updating', danger: true },
+  { id: 'update-mcc', emoji: '⬆️', labelKey: 'updateMcc', loadingKey: 'updating', danger: true, confirm: 'confirmUpdateMcc' },
   { id: 'restart-tailscale', emoji: '🌐', labelKey: 'restartTailscale', loadingKey: 'restarting', confirm: 'confirmRestartTailscale' },
   { id: 'kill-tmux', emoji: '🧹', labelKey: 'killTmux', loadingKey: 'killing', confirm: 'confirmKillTmux' },
   { id: 'gc', emoji: '♻️', labelKey: 'gitGc', loadingKey: 'runningGc' },

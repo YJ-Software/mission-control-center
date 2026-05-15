@@ -252,6 +252,7 @@
     "restartDashboard": "Restart Dashboard",
     "clearCache": "Clear Cache",
     "updateOpenclaw": "Update OpenClaw",
+    "updateMcc": "Update MCC",
     "restartTailscale": "Restart Tailscale",
     "killTmux": "Kill Tmux Sessions",
     "gitGc": "Git GC All",
@@ -274,7 +275,8 @@
     "confirmRestartDashboard": "确定要重启 Dashboard？页面将会重新加载。",
     "confirmRestartTailscale": "确定要重启 Tailscale？网络可能会短暂中断。",
     "confirmKillTmux": "确定要关闭所有 tmux session？（包含 Claude persistent session）",
-    "confirmSysUpdate": "确定要执行 apt update + upgrade？这可能需要几分钟。"
+    "confirmSysUpdate": "确定要执行 apt update + upgrade？这可能需要几分钟。",
+    "confirmUpdateMcc": "确定要升级 Mission Control？升级完成后 dashboard 会自动重启。"
   },
   "tasks": {
     "title": "任务看板",

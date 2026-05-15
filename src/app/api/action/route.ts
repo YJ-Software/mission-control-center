@@ -52,6 +52,55 @@ const actions: Record<string, () => Promise<{ success: boolean; output?: string;
     return run('npm update -g openclaw 2>&1', 120000)
   },
 
+  'update-mcc': async () => {
+    // Mirror /api/upgrade/check + /api/upgrade/apply, but inline so the
+    // quick-action returns one consolidated result. Auth gating already
+    // happened at this route's proxy layer.
+    const { getInstallInfo, fetchManifest, getConfiguredManifestUrl, pickArtifact, downloadArtifact, applyUpgrade, scheduleServiceRestart } = await import('@/lib/upgrade/manager')
+    const { getVersionInfo } = await import('@/lib/version')
+
+    const info = getInstallInfo()
+    if (info.mode !== 'release') {
+      return { success: false, error: `upgrade requires release-mode install (current mode: ${info.mode})` }
+    }
+
+    const manifestUrl = getConfiguredManifestUrl()
+    if (!manifestUrl) return { success: false, error: 'no manifest URL configured' }
+
+    let manifest
+    try {
+      manifest = await fetchManifest(manifestUrl)
+    } catch (err) {
+      return { success: false, error: `manifest fetch failed: ${err instanceof Error ? err.message : String(err)}` }
+    }
+
+    const current = getVersionInfo().version
+    const cmp = (a: string, b: string) => {
+      const pa = a.split('.').map(n => parseInt(n, 10) || 0)
+      const pb = b.split('.').map(n => parseInt(n, 10) || 0)
+      for (let i = 0; i < 3; i++) {
+        const d = (pa[i] || 0) - (pb[i] || 0)
+        if (d !== 0) return d
+      }
+      return 0
+    }
+    if (cmp(manifest.latest.version, current) <= 0) {
+      return { success: true, output: `Already at latest v${current}` }
+    }
+
+    const artifact = pickArtifact(manifest)
+    if (!artifact) return { success: false, error: 'no matching artifact for this platform' }
+
+    try {
+      const tarballPath = await downloadArtifact(artifact.url)
+      const result = await applyUpgrade({ tarballPath, expectedSha256: artifact.sha256 || undefined })
+      scheduleServiceRestart(info.service)
+      return { success: true, output: `Upgrading to v${result.version} — service restart scheduled` }
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  },
+
   'kill-tmux': async () => {
     return run('tmux kill-session -t claude-persistent 2>/dev/null; echo "Tmux sessions cleaned"')
   },

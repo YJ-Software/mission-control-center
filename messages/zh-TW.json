@@ -252,6 +252,7 @@
     "restartDashboard": "Restart Dashboard",
     "clearCache": "Clear Cache",
     "updateOpenclaw": "Update OpenClaw",
+    "updateMcc": "Update MCC",
     "restartTailscale": "Restart Tailscale",
     "killTmux": "Kill Tmux Sessions",
     "gitGc": "Git GC All",
@@ -274,7 +275,8 @@
     "confirmRestartDashboard": "確定要重啟 Dashboard？頁面將會重新載入。",
     "confirmRestartTailscale": "確定要重啟 Tailscale？網路可能會短暫中斷。",
     "confirmKillTmux": "確定要關閉所有 tmux session？（包含 Claude persistent session）",
-    "confirmSysUpdate": "確定要執行 apt update + upgrade？這可能需要幾分鐘。"
+    "confirmSysUpdate": "確定要執行 apt update + upgrade？這可能需要幾分鐘。",
+    "confirmUpdateMcc": "確定要升級 Mission Control？升級完成後 dashboard 會自動重啟。"
   },
   "sessions": {
     "title": "Sessions",
