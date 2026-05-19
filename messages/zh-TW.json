@@ -1403,9 +1403,29 @@
     "tabs": {
       "overview": "總覽",
       "hours": "時段控制",
+      "wiki": "知識庫",
       "memory": "客戶記憶",
       "handoff": "後送",
       "settings": "設定"
+    },
+    "wiki": {
+      "title": "知識庫條目",
+      "description": "新增、編輯、刪除客服 agent 會用到的知識條目。儲存後 OpenClaw wiki 索引會自動 recompile。",
+      "addNew": "新增條目",
+      "loading": "讀取中…",
+      "empty": "尚無條目。點「新增條目」開始建立。",
+      "delete": "刪除",
+      "createTitle": "新增條目",
+      "editTitle": "編輯條目",
+      "fieldTitle": "標題",
+      "fieldContent": "內容",
+      "titlePlaceholder": "例如：營業時間 / 退費政策",
+      "contentPlaceholder": "用 Markdown 撰寫…",
+      "contentHint": "支援 Markdown。標題會用來生成檔名與 page id，建議簡短清楚。",
+      "save": "儲存",
+      "cancel": "取消",
+      "deleteConfirmTitle": "確定刪除這筆條目？",
+      "deleteConfirmBody": "刪除後檔案 {name} 會從 wiki vault 移除，無法復原。"
     },
     "handoff": {
       "title": "真人後送通道",

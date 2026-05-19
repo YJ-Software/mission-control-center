@@ -1403,9 +1403,29 @@
     "tabs": {
       "overview": "Overview",
       "hours": "Hours",
+      "wiki": "Knowledge",
       "memory": "Memory",
       "handoff": "Handoff",
       "settings": "Settings"
+    },
+    "wiki": {
+      "title": "Knowledge entries",
+      "description": "Create, edit, and delete knowledge entries used by the customer-service agent. The OpenClaw wiki index recompiles automatically after each save.",
+      "addNew": "Add entry",
+      "loading": "Loading…",
+      "empty": "No entries yet. Click \"Add entry\" to create one.",
+      "delete": "Delete",
+      "createTitle": "Create entry",
+      "editTitle": "Edit entry",
+      "fieldTitle": "Title",
+      "fieldContent": "Content",
+      "titlePlaceholder": "e.g. Business hours / Refund policy",
+      "contentPlaceholder": "Write in Markdown…",
+      "contentHint": "Markdown supported. The title is used to generate the filename and page id — keep it short and clear.",
+      "save": "Save",
+      "cancel": "Cancel",
+      "deleteConfirmTitle": "Delete this entry?",
+      "deleteConfirmBody": "The file {name} will be removed from the wiki vault. This cannot be undone."
     },
     "handoff": {
       "title": "Human handoff destinations",
