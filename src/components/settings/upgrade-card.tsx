@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Download, Loader2, CheckCircle2, AlertCircle, ArrowUpCircle, Package, Settings, Save } from 'lucide-react'
+import { Download, Loader2, CheckCircle2, AlertCircle, ArrowUpCircle, Package, Settings, Save, Terminal, Copy, Check } from 'lucide-react'
 
 interface UpgradeStatus {
   mode: 'release' | 'dev' | 'unknown'
@@ -22,6 +22,16 @@ interface CheckResult {
   error?: string
 }
 
+interface OpenclawCheck {
+  installed: boolean
+  current: string | null
+  latest: string | null
+  latestPublishedAt?: string | null
+  hasUpdate: boolean
+  installCommand: string
+  error?: string
+}
+
 type Phase = 'idle' | 'checking' | 'uploading' | 'applying' | 'restarting' | 'done' | 'error'
 
 export function UpgradeCard() {
@@ -33,6 +43,41 @@ export function UpgradeCard() {
   const [manifestUrlDraft, setManifestUrlDraft] = useState('')
   const [manifestSaved, setManifestSaved] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [openclaw, setOpenclaw] = useState<OpenclawCheck | null>(null)
+  const [openclawChecking, setOpenclawChecking] = useState(false)
+  const [openclawCopied, setOpenclawCopied] = useState(false)
+
+  const loadOpenclawCheck = useCallback(async () => {
+    setOpenclawChecking(true)
+    try {
+      const res = await fetch('/api/upgrade/openclaw-check')
+      const data = (await res.json()) as OpenclawCheck
+      setOpenclaw(data)
+    } catch (e) {
+      setOpenclaw({
+        installed: false,
+        current: null,
+        latest: null,
+        hasUpdate: false,
+        installCommand: 'npm install -g openclaw@latest',
+        error: e instanceof Error ? e.message : String(e),
+      })
+    } finally {
+      setOpenclawChecking(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadOpenclawCheck()
+  }, [loadOpenclawCheck])
+
+  const copyOpenclawCommand = () => {
+    if (!openclaw) return
+    navigator.clipboard.writeText(openclaw.installCommand).then(() => {
+      setOpenclawCopied(true)
+      setTimeout(() => setOpenclawCopied(false), 2000)
+    })
+  }
 
   const loadStatus = useCallback(() => {
     fetch('/api/upgrade/status')
@@ -322,6 +367,75 @@ export function UpgradeCard() {
           </div>
         </div>
       )}
+
+      {/* OpenClaw upgrade check (detection only — no one-click) */}
+      <div className="pt-3 border-t border-white/[0.05] space-y-2">
+        <div className="flex items-center gap-2">
+          <Terminal className="w-3.5 h-3.5 text-purple-400/70" />
+          <span className="text-sm text-white/80 font-medium">OpenClaw CLI</span>
+          {openclawChecking && <Loader2 className="w-3 h-3 animate-spin text-white/40" />}
+          <button
+            onClick={loadOpenclawCheck}
+            disabled={openclawChecking}
+            className="ml-auto text-[10px] font-mono text-white/40 hover:text-white/70 transition-colors disabled:opacity-50"
+          >
+            Re-check
+          </button>
+        </div>
+
+        {openclaw && !openclaw.error && !openclaw.installed && (
+          <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[12px] text-amber-300">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>OpenClaw CLI not found on this host. Install it once with the command below.</span>
+          </div>
+        )}
+
+        {openclaw && openclaw.error && (
+          <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-[12px] text-red-300">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span className="break-all">{openclaw.error}</span>
+          </div>
+        )}
+
+        {openclaw && openclaw.installed && !openclaw.error && (
+          <div className="font-mono text-[11px] text-white/55">
+            <div>current: <span className="text-white/85">{openclaw.current}</span></div>
+            <div>latest:&nbsp; <span className="text-white/85">{openclaw.latest}</span>{openclaw.latestPublishedAt && (
+              <span className="text-white/30"> ({new Date(openclaw.latestPublishedAt).toISOString().slice(0, 10)})</span>
+            )}</div>
+          </div>
+        )}
+
+        {openclaw && openclaw.hasUpdate && (
+          <div className="rounded-xl border border-purple-400/25 bg-purple-400/[0.04] p-3 space-y-2">
+            <p className="text-sm text-white/85">
+              OpenClaw v{openclaw.latest} available
+              <span className="text-white/30 text-xs"> (from v{openclaw.current})</span>
+            </p>
+            <p className="text-[11px] text-white/55">
+              Run this on the server (SSH) to upgrade. The dashboard service doesn&apos;t have npm in its PATH so it can&apos;t install for you.
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-[12px] font-mono text-cyan-300 select-all break-all">
+                {openclaw.installCommand}
+              </code>
+              <button
+                onClick={copyOpenclawCommand}
+                className="px-2 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-white/40 hover:text-white/80 transition-colors"
+                title="Copy"
+              >
+                {openclawCopied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {openclaw && openclaw.installed && !openclaw.hasUpdate && !openclaw.error && (
+          <p className="text-[11px] text-white/40">
+            OpenClaw is up to date (v{openclaw.current}).
+          </p>
+        )}
+      </div>
 
       {/* Phase indicator */}
       {phase !== 'idle' && (
