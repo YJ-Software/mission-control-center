@@ -6,7 +6,7 @@
  * so we use the CLI which works in all modes.
  */
 
-import { existsSync } from 'fs'
+import { existsSync, readdirSync } from 'fs'
 import { execSync, execFile } from 'child_process'
 import { join } from 'path'
 import { homedir } from 'os'
@@ -23,6 +23,26 @@ export function findOpenclawBin(): string {
     '/usr/bin/openclaw',
   ]
   for (const p of candidates) {
+    if (existsSync(p)) return p
+  }
+
+  // nvm: ~/.nvm/versions/node/<version>/bin/openclaw. systemd user units
+  // don't get nvm's PATH because nvm only initialises in interactive shells,
+  // so a server install via `npm i -g openclaw` from a Node managed by nvm
+  // is invisible to a service running with the default user PATH.
+  const nvmRoot = join(homedir(), '.nvm', 'versions', 'node')
+  if (existsSync(nvmRoot)) {
+    try {
+      for (const ver of readdirSync(nvmRoot)) {
+        const p = join(nvmRoot, ver, 'bin', 'openclaw')
+        if (existsSync(p)) return p
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Linuxbrew / Homebrew on Linux.
+  for (const root of ['/home/linuxbrew/.linuxbrew', join(homedir(), '.linuxbrew')]) {
+    const p = join(root, 'bin', 'openclaw')
     if (existsSync(p)) return p
   }
 
