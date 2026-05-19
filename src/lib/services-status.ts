@@ -1,5 +1,6 @@
 import { execFileSync } from 'child_process'
 import { getServerEnv } from '@/lib/server-env'
+import { findOpenclawBin } from '@/lib/morning-report/openclaw'
 
 const env = getServerEnv()
 
@@ -107,15 +108,28 @@ export interface OpenClawVersionInfo {
 
 /**
  * Check OpenClaw installed version vs latest on npm.
+ *
+ * The systemd user service runs without nvm's PATH so a bare `openclaw` /
+ * `npm` won't resolve when openclaw lives under ~/.nvm/versions/node/<ver>/bin.
+ * Resolve openclaw via findOpenclawBin() and hit the npm registry directly
+ * instead of relying on the `npm` CLI being on PATH.
  */
-export function getOpenClawVersionInfo(): OpenClawVersionInfo {
-  const raw = runQuiet('openclaw', ['--version'])
-  const match = raw.match(/OpenClaw\s+([\d.]+)/)
+export async function getOpenClawVersionInfo(): Promise<OpenClawVersionInfo> {
+  const bin = findOpenclawBin()
+  const raw = runQuiet(bin, ['--version'])
+  const match = raw.match(/OpenClaw\s+([\d.]+)/) || raw.match(/\b(\d+\.\d+(?:\.\d+)?)\b/)
   const installed = match ? match[1] : ''
 
   let latest = ''
   try {
-    latest = runQuiet('npm', ['view', 'openclaw', 'version'])
+    const res = await fetch('https://registry.npmjs.org/openclaw/latest', {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(5000),
+    })
+    if (res.ok) {
+      const data = (await res.json()) as { version?: string }
+      if (typeof data.version === 'string') latest = data.version
+    }
   } catch { /* ignore */ }
 
   return {

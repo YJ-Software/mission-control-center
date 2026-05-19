@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const services = getServicesStatus()
     const tailscale = getTailscaleStatus()
-    const openclawVersion = getOpenClawVersionInfo()
+    const openclawVersion = await getOpenClawVersionInfo()
     return NextResponse.json({ services, tailscale, openclawVersion })
   } catch (err) {
     return NextResponse.json(
