@@ -392,7 +392,7 @@ function SynthesisCard({ settings, onChanged }: { settings: WikiSettings; onChan
             type="text"
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            placeholder="例：openai-codex/gpt-5.4"
+            placeholder="例：openai/gpt-5.4-mini"
             className="w-full mt-1 bg-black/40 border border-white/[0.08] rounded px-2 py-1.5 text-sm text-white/90"
           />
         </label>
