@@ -1,19 +1,22 @@
 {
   "latest": {
-    "version": "0.3.5",
-    "releaseDate": "2026-05-15T09:05:45.073Z",
-    "notes": "- feat(dashboard): 儀表板 Quick Actions 新增「Update MCC」按鈕，緊接 Update OpenClaw 旁邊，按下會自動跑 manifest 比版 → 下載 tarball → applyUpgrade → systemd restart 同一條 release upgrade pipeline",
+    "version": "0.3.6",
+    "releaseDate": "2026-05-19T06:30:13.241Z",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.5/mission-control-v0.3.5-linux-x64.tar.gz",
-        "sha256": "d6d155f5b72156ee6f15d20acc1ba888695d52c910532116f86afd54b2b30a97",
-        "size": 18446792
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.6/mission-control-v0.3.6-linux-x64.tar.gz",
+        "sha256": "4f63b63cc785cbcbf34e69bab1319476dc3266d192ec7bc74eead2cec68b92a1",
+        "size": 146444105
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.5",
+      "releaseDate": "2026-05-15T09:05:45.073Z"
+    },
     {
       "version": "0.3.4",
       "releaseDate": "2026-05-15T05:33:21.596Z"
@@ -49,10 +52,6 @@
     {
       "version": "0.2.6",
       "releaseDate": "2026-05-11T09:42:59.808Z"
-    },
-    {
-      "version": "0.2.5",
-      "releaseDate": "2026-05-08T06:21:23.749Z"
     }
   ]
 }
