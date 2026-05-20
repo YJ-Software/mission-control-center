@@ -336,8 +336,11 @@ function connectGateway(wss: WebSocketServer) {
             id: reqId,
             method: 'connect',
             params: {
+              // OpenClaw 2026.5.18 raised the gateway WS wire to v4 and
+              // rejects v3-only clients with "protocol-mismatch". Advertise
+              // 3–4 so we still negotiate cleanly against older gateways.
               minProtocol: 3,
-              maxProtocol: 3,
+              maxProtocol: 4,
               client: {
                 id: clientId,
                 version: '1.0.0',
