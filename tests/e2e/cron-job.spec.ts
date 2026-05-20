@@ -1,6 +1,9 @@
 import { test, expect } from './fixtures/login'
 
-const RUN_POLL_TIMEOUT = 60_000
+// Agent responses go through the local model (qwen-portal/coder-model on
+// twnoc deploys) and have been observed at ~65s end-to-end. 3 min gives
+// enough headroom without making a real hang silently linger forever.
+const RUN_POLL_TIMEOUT = 3 * 60_000
 
 test('cron-job: create + manual trigger + see run record', async ({ loggedInPage: page, baseURL, request }) => {
   // Unique name per run avoids interference from leftover jobs of past runs.
