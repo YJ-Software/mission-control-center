@@ -1,19 +1,22 @@
 {
   "latest": {
-    "version": "0.3.10",
-    "releaseDate": "2026-05-20T09:35:11.820Z",
-    "notes": "- fix(gateway): bump WS client maxProtocol to 4 — OpenClaw 2026.5.18 raised the wire version and was silently rejecting MCC's cron.add / cron.update RPCs with 'protocol mismatch'. /cron-jobs 上「新增排程」對話框會看似成功但 jobs.json 完全沒寫入。",
+    "version": "0.3.11",
+    "releaseDate": "2026-05-21T09:11:21.860Z",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.10/mission-control-v0.3.10-linux-x64.tar.gz",
-        "sha256": "a7d462756d8885f2bb1243ba38c30cd810a2c7dd0b82cae2e9de2de5cb25e1fd",
-        "size": 24358756
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.11/mission-control-v0.3.11-linux-x64.tar.gz",
+        "sha256": "36a78ce25f01b8eb9e6287f903ba7647eb3c2a0b90c8fd1f15a3675573881e96",
+        "size": 146454210
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.10",
+      "releaseDate": "2026-05-20T09:35:11.820Z"
+    },
     {
       "version": "0.3.9",
       "releaseDate": "2026-05-19T08:52:41.084Z"
@@ -49,10 +52,6 @@
     {
       "version": "0.3.1",
       "releaseDate": "2026-05-12T07:55:50.251Z"
-    },
-    {
-      "version": "0.3.0",
-      "releaseDate": "2026-05-12T07:20:01.368Z"
     }
   ]
 }
