@@ -96,7 +96,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
   const connect = useCallback(() => {
     try {
-      const wsUrl = `ws://${window.location.host}/ws`
+      const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const wsUrl = `${wsProto}//${window.location.host}/ws`
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
