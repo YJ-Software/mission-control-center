@@ -139,13 +139,20 @@ export function getStatus(): LinePatchStatus {
     distPatched = distPaths.every((p) => {
       try {
         const content = readFileSync(p, 'utf-8')
-        const hasMarker = /line (onEvents|bot\.handleWebhook|plugin-bound) bg error:/.test(
+        // Legacy marker — only present when our script applied the patch.
+        const hasScriptMarker = /line (onEvents|bot\.handleWebhook|plugin-bound) bg error:/.test(
+          content,
+        )
+        // openclaw 2026.5.5+ ships the async-ack flow natively. The script
+        // correctly skips these files, but the file ends up without our
+        // marker — so we also accept the upstream fire-and-forget pattern.
+        const hasNativeAsync = /Promise\.resolve\(\)\s*\.then\(\s*\(\s*\)\s*=>\s*(onEvents|[\w.]+\.handleWebhook)\s*\(/.test(
           content,
         )
         const hasUnpatched = /await\s+(onEvents|params\.bot\.handleWebhook|match\.target\.bot\.handleWebhook)\s*\(/.test(
           content,
         )
-        return hasMarker && !hasUnpatched
+        return (hasScriptMarker || hasNativeAsync) && !hasUnpatched
       } catch {
         return false
       }
