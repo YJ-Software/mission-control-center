@@ -1,7 +1,7 @@
 'use client'
 
 import * as Tabs from '@radix-ui/react-tabs'
-import { LayoutDashboard, Clock, BrainCircuit, Settings as SettingsIcon, Send, BookText } from 'lucide-react'
+import { LayoutDashboard, Clock, BrainCircuit, Settings as SettingsIcon, Send, BookText, MessageSquare } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { BusinessHoursProvider } from './business-hours-context'
 import { OverviewTab } from './overview-tab'
@@ -10,6 +10,7 @@ import { MemoryTab } from './memory-tab'
 import { SettingsTab } from './settings-tab'
 import { HandoffTab } from './handoff-tab'
 import { WikiTab } from './wiki-tab'
+import { ConversationsTab } from './conversations-tab'
 import { WikiConflictBanner } from './wiki-conflict-banner'
 
 export function CustomerServiceContent() {
@@ -19,6 +20,7 @@ export function CustomerServiceContent() {
     { value: 'overview', icon: LayoutDashboard, label: t('tabs.overview') },
     { value: 'hours', icon: Clock, label: t('tabs.hours') },
     { value: 'wiki', icon: BookText, label: t('tabs.wiki') },
+    { value: 'conversations', icon: MessageSquare, label: t('tabs.conversations') },
     { value: 'memory', icon: BrainCircuit, label: t('tabs.memory') },
     { value: 'handoff', icon: Send, label: t('tabs.handoff') },
     { value: 'settings', icon: SettingsIcon, label: t('tabs.settings') },
@@ -53,6 +55,9 @@ export function CustomerServiceContent() {
           </Tabs.Content>
           <Tabs.Content value="wiki">
             <WikiTab />
+          </Tabs.Content>
+          <Tabs.Content value="conversations">
+            <ConversationsTab />
           </Tabs.Content>
           <Tabs.Content value="memory">
             <MemoryTab />

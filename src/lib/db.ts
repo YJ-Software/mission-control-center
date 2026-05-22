@@ -139,6 +139,39 @@ export function initDb() {
       content TEXT NOT NULL DEFAULT '',
       updated_at INTEGER DEFAULT (unixepoch())
     );
+
+    CREATE TABLE IF NOT EXISTS cs_conversations (
+      user_id TEXT PRIMARY KEY,
+      display_name TEXT,
+      picture_url TEXT,
+      language TEXT,
+      last_message_at INTEGER,
+      last_message_preview TEXT,
+      last_direction TEXT,
+      profile_fetched_at INTEGER,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_cs_conv_last ON cs_conversations(last_message_at DESC);
+
+    CREATE TABLE IF NOT EXISTS cs_messages (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'text',
+      text TEXT,
+      payload TEXT,
+      line_message_id TEXT,
+      operator_id TEXT,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_cs_msg_user_created ON cs_messages(user_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS cs_agent_pause (
+      user_id TEXT PRIMARY KEY,
+      paused_at INTEGER NOT NULL,
+      resume_at INTEGER NOT NULL,
+      operator_id TEXT
+    );
   `)
 
   // Create backup tables

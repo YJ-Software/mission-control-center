@@ -106,6 +106,49 @@ export const morningReportFormatTemplate = sqliteTable('morning_report_format_te
   updatedAt: integer('updated_at').default(sql`(unixepoch())`),
 })
 
+// Customer Service — live conversation feature
+//
+// One row per LINE user the bot has interacted with. Profile fields are
+// hydrated from LINE's getProfile API on first sighting and refreshed lazily
+// (>24h). Display rendering falls back to user_id when display_name is empty.
+export const csConversations = sqliteTable('cs_conversations', {
+  userId: text('user_id').primaryKey(),
+  displayName: text('display_name'),
+  pictureUrl: text('picture_url'),
+  language: text('language'),
+  lastMessageAt: integer('last_message_at'),
+  lastMessagePreview: text('last_message_preview'),
+  lastDirection: text('last_direction'),    // 'user' | 'bot' | 'operator'
+  profileFetchedAt: integer('profile_fetched_at'),
+  createdAt: integer('created_at').default(sql`(unixepoch())`),
+})
+
+// Append-only message log. We treat LINE-side message_id as optional because
+// our own operator sends are echoed back from LINE asynchronously; the
+// authoritative id is whichever the LINE API hands us in the push response.
+export const csMessages = sqliteTable('cs_messages', {
+  id: text('id').primaryKey(),               // local uuid
+  userId: text('user_id').notNull(),
+  direction: text('direction').notNull(),    // 'user' | 'bot' | 'operator'
+  type: text('type').notNull().default('text'),  // 'text' | 'image' | 'sticker' | 'quick_reply' | 'other'
+  text: text('text'),
+  payload: text('payload'),                  // JSON for rich types (image url, quick reply items, ...)
+  lineMessageId: text('line_message_id'),
+  operatorId: text('operator_id'),           // who sent it (op user id), nullable
+  createdAt: integer('created_at').default(sql`(unixepoch())`),
+})
+
+// Per-user "operator has taken over" flag. Resume timer is the auto-resume
+// timestamp; gate-plugin treats a row as paused while now() < resume_at.
+// Boot restoration loops over rows and schedules setTimeout for any
+// resume_at still in the future.
+export const csAgentPause = sqliteTable('cs_agent_pause', {
+  userId: text('user_id').primaryKey(),
+  pausedAt: integer('paused_at').notNull(),
+  resumeAt: integer('resume_at').notNull(),
+  operatorId: text('operator_id'),
+})
+
 export {
   backupDestinations,
   backupSources,
