@@ -15,11 +15,6 @@ import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { homedir } from 'os'
 import { getServerEnv } from '@/lib/server-env'
-import {
-  applyPatch as applyLinePatch,
-  installDropin as installLineDropin,
-  getStatus as getLinePatchStatus,
-} from './line-patch'
 
 const execFileAsync = promisify(execFile)
 
@@ -186,30 +181,6 @@ export async function installPlugin(): Promise<{ output: string }> {
     output += '\n' + (await runOpenclaw(['plugins', 'enable', PLUGIN_ID], 30000))
   } catch (err: any) {
     output += '\n' + (err?.stderr ?? err?.message ?? '')
-  }
-
-  // Ensure the LINE async-ack patch + the systemd drop-in that re-applies it
-  // are in place. Without these, the gateway will time out LINE webhooks (1s
-  // budget vs 30-120s agent turns) and customers get duplicate replies.
-  // Both are idempotent — safe to call on every install.
-  try {
-    const before = getLinePatchStatus()
-    if (!before.distPatched && before.distPath) {
-      const r = await applyLinePatch()
-      output += '\n[line-patch] ' + r.output.trim()
-    } else if (before.distPatched) {
-      output += '\n[line-patch] dist already patched, skipping'
-    } else {
-      output += '\n[line-patch] WARN: dist file not located; skipping patch'
-    }
-    if (!before.dropinInstalled) {
-      const r = installLineDropin()
-      output += '\n[line-patch] ' + r.output
-    } else {
-      output += '\n[line-patch] systemd drop-in already in place'
-    }
-  } catch (err: any) {
-    output += '\n[line-patch] WARN: ' + (err?.message ?? String(err))
   }
 
   // Ensure the customer-id-injector plugin is installed + enabled. Without it,

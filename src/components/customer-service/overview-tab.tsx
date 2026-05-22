@@ -13,7 +13,6 @@ import {
   Pause,
   Play,
 } from 'lucide-react'
-import { LinePatchCard } from './line-patch-card'
 import { useBusinessHours } from './business-hours-context'
 
 const KNOWN_CHANNELS = ['line', 'telegram', 'discord', 'slack', 'whatsapp', 'messenger']
@@ -92,9 +91,6 @@ export function OverviewTab() {
           <p className="text-xs text-white/40 mt-3 ml-16">{t('master.needsInstall')}</p>
         )}
       </div>
-
-      {/* LINE async-ack patch + drop-in status */}
-      <LinePatchCard />
 
       {/* Status + install controls */}
       <div className="cyber-card p-5">
