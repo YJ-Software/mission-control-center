@@ -33,6 +33,8 @@ interface Customer {
   sessionKey: string | null
   source: ('session' | 'memory')[]
   memoryCount?: number
+  displayName?: string | null
+  pictureUrl?: string | null
 }
 
 function unwrapResults(result: unknown): MemoryItem[] {
@@ -87,7 +89,10 @@ export function MemoryBrowser() {
     const list = customersData?.customers ?? []
     if (!filter.trim()) return list
     const q = filter.trim().toLowerCase()
-    return list.filter((c) => c.userId.toLowerCase().includes(q))
+    return list.filter((c) =>
+      c.userId.toLowerCase().includes(q)
+      || (c.displayName?.toLowerCase().includes(q) ?? false),
+    )
   }, [customersData, filter])
 
   // Auto-load when picking a customer
@@ -231,6 +236,8 @@ export function MemoryBrowser() {
             {customers.map((c) => {
               const active = userId === c.userId
               const hasMem = (c.memoryCount ?? 0) > 0
+              const primary = c.displayName?.trim() || shortId(c.userId)
+              const isAnon = !c.displayName
               return (
                 <button
                   key={c.userId}
@@ -239,11 +246,20 @@ export function MemoryBrowser() {
                     active ? 'bg-cyan-500/[0.08]' : 'hover:bg-white/[0.03]'
                   }`}
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className={`text-xs font-mono truncate ${active ? 'text-cyan-200' : 'text-white/85'}`}>
-                      {shortId(c.userId)}
+                  {c.pictureUrl ? (
+                    <img src={c.pictureUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-cyan-600 to-purple-600 flex items-center justify-center text-[11px] font-semibold text-white shrink-0">
+                      {(primary[0] ?? '?').toUpperCase()}
                     </div>
-                    <div className="flex items-center gap-3 mt-0.5 text-[10.5px] text-white/40">
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-sm truncate ${active ? 'text-cyan-200' : 'text-white/90'} ${isAnon ? 'font-mono text-xs' : ''}`}>
+                      {primary}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5 text-[10.5px] text-white/40">
+                      <span className="font-mono">{shortId(c.userId)}</span>
+                      <span className="text-white/20">·</span>
                       <span className="inline-flex items-center gap-1">
                         <Clock className="w-2.5 h-2.5" />
                         {formatRelative(c.lastSeen)}

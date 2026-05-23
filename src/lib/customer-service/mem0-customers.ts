@@ -15,6 +15,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { db } from '@/lib/db'
+import { csConversations } from '@/lib/schema'
 
 const OPENCLAW_CONFIG = join(homedir(), '.openclaw', 'openclaw.json')
 const AGENTS_DIR = join(homedir(), '.openclaw', 'agents')
@@ -56,6 +58,28 @@ export interface Customer {
   sessionKey: string | null
   source: ('session' | 'memory')[]
   memoryCount?: number
+  /** From cs_conversations (hydrated via LINE Profile API on first sighting). */
+  displayName?: string | null
+  pictureUrl?: string | null
+}
+
+/** Pull display name + avatar for every customer in one go so listCustomers
+ *  doesn't make N point reads. */
+function loadProfileMap(): Map<string, { displayName: string | null; pictureUrl: string | null }> {
+  const map = new Map<string, { displayName: string | null; pictureUrl: string | null }>()
+  try {
+    const rows = db.select({
+      userId: csConversations.userId,
+      displayName: csConversations.displayName,
+      pictureUrl: csConversations.pictureUrl,
+    }).from(csConversations).all() as Array<{ userId: string; displayName: string | null; pictureUrl: string | null }>
+    for (const r of rows) {
+      map.set(r.userId, { displayName: r.displayName, pictureUrl: r.pictureUrl })
+    }
+  } catch {
+    /* table may not exist yet on legacy DBs — fall through to empty map */
+  }
+  return map
 }
 
 const SESSION_KEY_RE = /^agent:[^:]+:line:direct:(.+)$/
@@ -186,6 +210,18 @@ export function listCustomers(): Customer[] {
         source: ['memory'],
         memoryCount: t.count,
       })
+    }
+  }
+
+  // Decorate with displayName / pictureUrl from cs_conversations so the
+  // browser can show "Moni" instead of "U6f8aef…" without an extra
+  // round-trip per row.
+  const profiles = loadProfileMap()
+  for (const c of map.values()) {
+    const p = profiles.get(c.userId)
+    if (p) {
+      c.displayName = p.displayName
+      c.pictureUrl = p.pictureUrl
     }
   }
 
