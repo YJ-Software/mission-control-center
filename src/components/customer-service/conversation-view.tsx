@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { Loader2, RefreshCw, X, Send, Image as ImageIcon, Plus, AlertCircle, Upload, Paperclip, FileText } from 'lucide-react'
+import { Loader2, RefreshCw, X, Send, Image as ImageIcon, Plus, AlertCircle, Upload, Paperclip, FileText, Sparkles, HelpCircle } from 'lucide-react'
 
 interface ConversationRow {
   userId: string
@@ -111,6 +111,56 @@ export function ConversationView({ userId, initial }: Props) {
   const [fileName, setFileName] = useState('')
   const [quickReplies, setQuickReplies] = useState<string[]>([])
   const [qrInput, setQrInput] = useState('')
+
+  // AI quick-reply suggestions — toggle is per-browser via localStorage,
+  // suggestions live as ephemeral state.
+  const [aiEnabled, setAiEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem('cs-quick-reply-ai') === '1'
+  })
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([])
+  const [aiLoading, setAiLoading] = useState(false)
+  const [showAiHelp, setShowAiHelp] = useState(false)
+  const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('cs-quick-reply-ai', aiEnabled ? '1' : '0')
+    }
+  }, [aiEnabled])
+
+  // Fetch suggestions on debounced draft change when AI is enabled.
+  // Reusable so the manual refresh button can hit it immediately.
+  const fetchSuggestions = async () => {
+    if (!draft.trim() || draft.trim().length < 3) {
+      setAiSuggestions([])
+      return
+    }
+    setAiLoading(true)
+    try {
+      const res = await fetch('/api/customer-service/quick-replies/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, draft }),
+      })
+      if (!res.ok) throw new Error('suggest failed')
+      const data = await res.json() as { suggestions?: string[] }
+      setAiSuggestions(Array.isArray(data.suggestions) ? data.suggestions : [])
+    } catch {
+      setAiSuggestions([])
+    } finally {
+      setAiLoading(false)
+    }
+  }
+  useEffect(() => {
+    if (!aiEnabled) {
+      setAiSuggestions([])
+      return
+    }
+    if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current)
+    aiDebounceRef.current = setTimeout(() => { void fetchSuggestions() }, 1500)
+    return () => { if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiEnabled, draft, userId])
 
   const sendMutation = useMutation({
     mutationFn: async (mode: 'text' | 'image' | 'file') => {
@@ -240,6 +290,65 @@ export function ConversationView({ userId, initial }: Props) {
             ))}
           </div>
         )}
+
+        {/* AI suggestion bar — toggle + help + manual refresh + suggested chips */}
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 text-[11px]">
+            <label className="flex items-center gap-1.5 cursor-pointer text-white/60 hover:text-white/85">
+              <input
+                type="checkbox"
+                checked={aiEnabled}
+                onChange={e => setAiEnabled(e.target.checked)}
+                className="accent-purple-500"
+              />
+              <Sparkles className="w-3 h-3 text-purple-300" />
+              {t('aiQuickReplyEnable')}
+            </label>
+            <div className="relative inline-flex">
+              <button
+                onMouseEnter={() => setShowAiHelp(true)}
+                onMouseLeave={() => setShowAiHelp(false)}
+                onClick={() => setShowAiHelp(v => !v)}
+                className="text-white/40 hover:text-white/80"
+              >
+                <HelpCircle className="w-3 h-3" />
+              </button>
+              {showAiHelp && (
+                <div className="absolute bottom-full mb-1 left-0 z-10 w-72 p-2.5 rounded-md bg-[#0a0a1a] border border-white/[0.1] shadow-xl text-[11px] text-white/70 leading-relaxed">
+                  {t('aiQuickReplyHelp')}
+                </div>
+              )}
+            </div>
+            {aiEnabled && (
+              <button
+                onClick={() => void fetchSuggestions()}
+                disabled={aiLoading || draft.trim().length < 3}
+                className="ml-auto p-1 rounded text-white/40 hover:text-purple-300 disabled:opacity-30"
+                title={t('aiQuickReplyRefresh')}
+              >
+                {aiLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+              </button>
+            )}
+          </div>
+
+          {aiEnabled && aiSuggestions.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {aiSuggestions.map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    setQuickReplies(arr => arr.includes(s) ? arr : [...arr, s].slice(0, 13))
+                  }}
+                  className="text-[11px] px-2 py-1 rounded-full bg-purple-500/[0.04] border border-dashed border-purple-400/40 text-purple-200/85 hover:bg-purple-500/15 hover:text-purple-100"
+                  title={t('aiQuickReplyAdd')}
+                >
+                  + {s}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="flex gap-1.5">
           <input
             value={qrInput}
