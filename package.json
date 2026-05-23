@@ -1,6 +1,6 @@
 {
   "name": "mission-control-wwz",
-  "version": "0.3.24",
+  "version": "0.3.25",
   "private": true,
   "license": "Apache-2.0",
   "scripts": {

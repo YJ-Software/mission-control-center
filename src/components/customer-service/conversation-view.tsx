@@ -222,7 +222,7 @@ export function ConversationView({ userId, initial }: Props) {
         {messages.length === 0 ? (
           <div className="text-center text-white/30 text-xs py-8">{t('noMessages')}</div>
         ) : (
-          messages.map(m => <MessageBubble key={m.id} msg={m} />)
+          messages.map(m => <MessageBubble key={m.id} msg={m} userDisplayName={conv.displayName} userId={userId} />)
         )}
       </div>
 
@@ -367,7 +367,7 @@ export function ConversationView({ userId, initial }: Props) {
   )
 }
 
-function MessageBubble({ msg }: { msg: MessageRow }) {
+function MessageBubble({ msg, userDisplayName, userId }: { msg: MessageRow; userDisplayName: string | null; userId: string }) {
   const isUser = msg.direction === 'user'
   const isBot = msg.direction === 'bot'
   const isOp = msg.direction === 'operator'
@@ -378,7 +378,10 @@ function MessageBubble({ msg }: { msg: MessageRow }) {
       ? 'bg-cyan-500/[0.08] border-cyan-500/25'
       : 'bg-purple-500/[0.10] border-purple-500/35'
   const tagClass = isUser ? 'text-white/40' : isBot ? 'text-cyan-300' : 'text-purple-300'
-  const tag = isUser ? 'USER' : isBot ? 'BOT' : 'OPERATOR'
+  // Prefer the LINE display name for inbound bubbles; fall back to a
+  // shortened userId so something always renders.
+  const userLabel = userDisplayName?.trim() || `${userId.slice(0, 8)}…`
+  const tag = isUser ? userLabel : isBot ? 'BOT' : 'OPERATOR'
 
   let body: React.ReactNode = msg.text
   let imageUrl: string | null = null
