@@ -9,6 +9,7 @@ import { StorageCard } from './storage-card'
 import { MemoryProviderForm } from './memory-provider-form'
 import { QuickReplyLlmCard } from './quick-reply-llm-card'
 import { WikiConflictBanner } from './wiki-conflict-banner'
+import { PluginConfigCard } from './plugin-config-card'
 
 interface AgentInfo {
   id: string
@@ -125,6 +126,8 @@ export function SettingsTab() {
           )}
         </div>
       </div>
+
+      <PluginConfigCard />
 
       <LineChannelCard />
 
