@@ -1457,7 +1457,10 @@
       "storedHint": "(已保存，留空不变)",
       "save": "保存",
       "statusMem0": "目前使用：mem0 共用设置",
-      "statusOverride": "目前使用：独立设置"
+      "statusOverride": "目前使用：独立设置",
+      "countLabel": "默认建议数量",
+      "countUnit": "个",
+      "countHint": "AI 每次自动建议的 quick reply 数量（{min}–{max}）。LINE 上限是 13 个。"
     },
     "storage": {
       "title": "存储空间",

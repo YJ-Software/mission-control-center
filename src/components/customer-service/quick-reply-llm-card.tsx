@@ -11,6 +11,9 @@ interface QrLlmStatus {
   baseUrl: string
   apiKey: string         // masked
   hasApiKey: boolean
+  count: number
+  countMin: number
+  countMax: number
 }
 
 export function QuickReplyLlmCard() {
@@ -28,6 +31,7 @@ export function QuickReplyLlmCard() {
   const [apiKey, setApiKey] = useState('')
   const [apiKeyTouched, setApiKeyTouched] = useState(false)
   const [showKey, setShowKey] = useState(false)
+  const [count, setCount] = useState<number>(3)
   const [touched, setTouched] = useState(false)
 
   useEffect(() => {
@@ -35,11 +39,15 @@ export function QuickReplyLlmCard() {
     setUseMem0(status.useMem0)
     setModel(status.model)
     setBaseUrl(status.baseUrl)
+    setCount(status.count)
   }, [status, touched])
+
+  const countMin = status?.countMin ?? 1
+  const countMax = status?.countMax ?? 13
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const body: Record<string, unknown> = { useMem0, model, baseUrl }
+      const body: Record<string, unknown> = { useMem0, model, baseUrl, count }
       if (apiKeyTouched) body.apiKey = apiKey
       const res = await fetch('/api/customer-service/quick-reply-llm', {
         method: 'PUT',
@@ -64,6 +72,28 @@ export function QuickReplyLlmCard() {
         <h3 className="text-sm font-semibold text-white/90">{t('title')}</h3>
       </div>
       <p className="text-xs text-white/50 leading-relaxed mb-4">{t('description')}</p>
+
+      <div className="mb-4">
+        <label className="block text-[11px] text-white/40 mb-1">{t('countLabel')}</label>
+        <div className="flex items-center gap-2 max-w-[200px]">
+          <input
+            type="number"
+            min={countMin}
+            max={countMax}
+            value={count}
+            onChange={e => {
+              const v = Number(e.target.value)
+              if (Number.isFinite(v)) {
+                setCount(Math.min(countMax, Math.max(countMin, Math.floor(v))))
+                setTouched(true)
+              }
+            }}
+            className="flex-1 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-sm text-white font-mono focus:outline-none focus:border-purple-500/40"
+          />
+          <span className="text-xs text-white/55 font-mono">{t('countUnit')}</span>
+        </div>
+        <p className="text-[10px] text-white/30 mt-1">{t('countHint', { min: countMin, max: countMax })}</p>
+      </div>
 
       <label className="flex items-start gap-2 cursor-pointer mb-4">
         <input

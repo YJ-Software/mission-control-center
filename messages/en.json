@@ -1457,7 +1457,10 @@
       "storedHint": "(stored — leave blank to keep)",
       "save": "Save",
       "statusMem0": "Active: shared with mem0",
-      "statusOverride": "Active: independent config"
+      "statusOverride": "Active: independent config",
+      "countLabel": "Default suggestions per draft",
+      "countUnit": "",
+      "countHint": "How many quick-reply buttons the AI generates per draft ({min}–{max}). LINE's hard limit is 13."
     },
     "storage": {
       "title": "Storage",

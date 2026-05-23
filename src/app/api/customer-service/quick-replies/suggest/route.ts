@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listMessages } from '@/lib/customer-service/cs-store'
-import { suggestQuickReplies, type HistoryMessage } from '@/lib/customer-service/quick-reply-llm'
+import { suggestQuickReplies, readSuggestionCount, type HistoryMessage } from '@/lib/customer-service/quick-reply-llm'
 
 export const runtime = 'nodejs'
 
@@ -29,6 +29,10 @@ export async function POST(req: NextRequest) {
     type: m.type,
   }))
 
-  const suggestions = await suggestQuickReplies({ draft: body.draft, history })
+  const suggestions = await suggestQuickReplies({
+    draft: body.draft,
+    history,
+    count: readSuggestionCount(),
+  })
   return NextResponse.json({ suggestions })
 }

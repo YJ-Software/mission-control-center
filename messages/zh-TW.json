@@ -1457,7 +1457,10 @@
       "storedHint": "(已儲存，留白不變)",
       "save": "儲存",
       "statusMem0": "目前使用：mem0 共用設定",
-      "statusOverride": "目前使用：獨立設定"
+      "statusOverride": "目前使用：獨立設定",
+      "countLabel": "預設建議數量",
+      "countUnit": "個",
+      "countHint": "AI 每次自動建議的 quick reply 數量（{min}–{max}）。LINE 上限是 13 個。"
     },
     "storage": {
       "title": "儲存空間",

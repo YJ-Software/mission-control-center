@@ -75,16 +75,27 @@ function cacheKey(draft: string, history: HistoryMessage[]): string {
   return `${draft.trim().toLowerCase()}::${histHash}`
 }
 
+const COUNT_KEY = 'customer-service.quickReply.count'
+
+export function readSuggestionCount(): number {
+  const v = Number(readSetting(COUNT_KEY))
+  if (!Number.isFinite(v) || v <= 0) return 3
+  return Math.min(13, Math.max(1, Math.floor(v)))
+}
+
 /**
- * Generate 3 short follow-up-button labels appropriate to attach as LINE
- * quick replies to the operator's pending message. Designed to be cheap
- * (gemini-flash-lite) and forgiving: if the LLM call fails for any
- * reason we return an empty array — the operator never sees an error,
- * they just don't get suggestions for that draft.
+ * Generate N short follow-up-button labels appropriate to attach as LINE
+ * quick replies to the operator's pending message. N is the number the
+ * operator picked in Settings → Quick Reply LLM (defaults to 3, capped
+ * at LINE's 13 limit). Designed to be cheap (gemini-flash-lite) and
+ * forgiving: if the LLM call fails for any reason we return an empty
+ * array — the operator never sees an error, they just don't get
+ * suggestions for that draft.
  */
 export async function suggestQuickReplies(input: {
   draft: string
   history: HistoryMessage[]
+  count?: number
 }): Promise<string[]> {
   const llm = readLlmConfig()
   if (!llm) return []
@@ -92,7 +103,8 @@ export async function suggestQuickReplies(input: {
   const draft = input.draft.trim()
   if (draft.length < 3) return []
 
-  const ckey = cacheKey(draft, input.history)
+  const wantCount = Math.min(13, Math.max(1, input.count ?? readSuggestionCount()))
+  const ckey = `${cacheKey(draft, input.history)}::${wantCount}`
   const cached = cache.get(ckey)
   if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.suggestions
 
@@ -108,10 +120,10 @@ export async function suggestQuickReplies(input: {
 
   const systemPrompt = `你是 LINE 客服 quick-reply 建議生成器。
 
-任務：根據對話脈絡 + 客服將要送出的訊息，生成 3 個簡短的「客戶可能會想點」的快速回覆按鈕文字。
+任務：根據對話脈絡 + 客服將要送出的訊息，生成 ${wantCount} 個簡短的「客戶可能會想點」的快速回覆按鈕文字。
 
 規則：
-- 回 JSON object: { "suggestions": ["按鈕1", "按鈕2", "按鈕3"] }
+- 回 JSON object: { "suggestions": ["按鈕1", "按鈕2", ...] }（長度 ${wantCount}）
 - 每個按鈕最多 20 字（LINE quick reply 上限）
 - 用客戶在歷史對話中使用的語言（中/英/日...）
 - 簡短、口語化、像客戶自己會打的話
@@ -124,7 +136,7 @@ ${recent || '(無歷史)'}
 客服將要送出的訊息：
 ${draft}
 
-請生成 3 個 quick reply 按鈕。`
+請生成 ${wantCount} 個 quick reply 按鈕。`
 
   try {
     const res = await fetch(`${llm.baseUrl.replace(/\/$/, '')}/chat/completions`, {
@@ -159,7 +171,7 @@ ${draft}
       ? parsed.suggestions
         .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
         .map(x => x.trim().slice(0, 20))
-        .slice(0, 3)
+        .slice(0, wantCount)
       : []
     cache.set(ckey, { ts: Date.now(), suggestions: list })
     return list
