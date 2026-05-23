@@ -130,11 +130,12 @@ export function ConversationView({ userId, initial }: Props) {
 
   // Fetch suggestions on debounced draft change when AI is enabled.
   // Reusable so the manual refresh button can hit it immediately.
-  const fetchSuggestions = async () => {
-    if (!draft.trim() || draft.trim().length < 3) {
-      setAiSuggestions([])
-      return
-    }
+  // Per operator's preference, suggestions are AUTO-merged into the
+  // staging row — they edit (× to remove) what they don't want rather
+  // than tapping each chip to accept. Manual refresh REPLACES the
+  // previously-suggested set so it's a clean regen.
+  const fetchSuggestions = async (forceReplace = false) => {
+    if (!draft.trim() || draft.trim().length < 3) return
     setAiLoading(true)
     try {
       const res = await fetch('/api/customer-service/quick-replies/suggest', {
@@ -144,9 +145,25 @@ export function ConversationView({ userId, initial }: Props) {
       })
       if (!res.ok) throw new Error('suggest failed')
       const data = await res.json() as { suggestions?: string[] }
-      setAiSuggestions(Array.isArray(data.suggestions) ? data.suggestions : [])
+      const fresh = Array.isArray(data.suggestions) ? data.suggestions : []
+      // For manual refresh, drop the previous AI set first; for the
+      // debounced fetch we just additively merge.
+      setQuickReplies(prev => {
+        let base = prev
+        if (forceReplace) base = prev.filter(x => !aiSuggestions.includes(x))
+        const seen = new Set(base)
+        const merged = [...base]
+        for (const s of fresh) {
+          if (!seen.has(s) && merged.length < 13) {
+            merged.push(s)
+            seen.add(s)
+          }
+        }
+        return merged
+      })
+      setAiSuggestions(fresh)
     } catch {
-      setAiSuggestions([])
+      /* fail-open */
     } finally {
       setAiLoading(false)
     }
@@ -157,7 +174,7 @@ export function ConversationView({ userId, initial }: Props) {
       return
     }
     if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current)
-    aiDebounceRef.current = setTimeout(() => { void fetchSuggestions() }, 1500)
+    aiDebounceRef.current = setTimeout(() => { void fetchSuggestions(false) }, 1500)
     return () => { if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiEnabled, draft, userId])
@@ -321,7 +338,7 @@ export function ConversationView({ userId, initial }: Props) {
             </div>
             {aiEnabled && (
               <button
-                onClick={() => void fetchSuggestions()}
+                onClick={() => void fetchSuggestions(true)}
                 disabled={aiLoading || draft.trim().length < 3}
                 className="ml-auto p-1 rounded text-white/40 hover:text-purple-300 disabled:opacity-30"
                 title={t('aiQuickReplyRefresh')}
@@ -330,23 +347,6 @@ export function ConversationView({ userId, initial }: Props) {
               </button>
             )}
           </div>
-
-          {aiEnabled && aiSuggestions.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {aiSuggestions.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setQuickReplies(arr => arr.includes(s) ? arr : [...arr, s].slice(0, 13))
-                  }}
-                  className="text-[11px] px-2 py-1 rounded-full bg-purple-500/[0.04] border border-dashed border-purple-400/40 text-purple-200/85 hover:bg-purple-500/15 hover:text-purple-100"
-                  title={t('aiQuickReplyAdd')}
-                >
-                  + {s}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
 
         <div className="flex gap-1.5">
