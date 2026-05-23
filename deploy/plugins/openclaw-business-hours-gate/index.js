@@ -74,8 +74,17 @@ function extractText(event) {
 }
 
 function extractType(event) {
+  // Prefer the LINE-side type discriminator if openclaw forwards it.
+  const lineType = event?.messageType ?? event?.message?.type;
+  if (typeof lineType === "string") {
+    if (["image", "video", "audio", "file", "sticker", "location"].includes(lineType)) return lineType;
+  }
   if (typeof event?.content === "string" || typeof event?.body === "string") return "text";
-  return event?.message?.type ?? event?.type ?? "other";
+  return event?.type ?? "other";
+}
+
+function extractMessageId(event) {
+  return event?.messageId ?? event?.message?.id ?? event?.id ?? null;
 }
 
 async function fetchWithTimeout(url, init, timeoutMs) {
@@ -182,7 +191,7 @@ export default definePluginEntry({
           direction: "bot",
           type: extractType(event),
           text: extractText(event),
-          lineMessageId: event?.message?.id ?? null,
+          lineMessageId: extractMessageId(event),
           channelId: ctx?.channelId ?? event?.channel ?? null,
         });
       } catch {
@@ -207,8 +216,9 @@ export default definePluginEntry({
             direction: "user",
             type: extractType(event),
             text: extractText(event),
-            lineMessageId: event?.message?.id ?? null,
+            lineMessageId: extractMessageId(event),
             channelId,
+            rawEvent: event,   // server-side parses non-text types from here
           });
         }
 

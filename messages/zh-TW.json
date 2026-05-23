@@ -6,6 +6,13 @@
     "updateMccFailed": "MCC 升級失敗：{error}",
     "updating": "更新中..."
   },
+  "notifications": {
+    "title": "通知",
+    "empty": "目前沒有通知",
+    "markAllRead": "全部標為已讀",
+    "clearAll": "清空",
+    "open": "開啟"
+  },
   "nav": {
     "dashboard": "儀表板",
     "tasks": "任務看板",
@@ -1427,9 +1434,25 @@
       "agentReplying": "agent 自動回應中",
       "messagePlaceholder": "輸入訊息以 operator 身分發送...",
       "quickReplyPlaceholder": "新增 quick reply (按 Enter 加入，最多 13 個)",
-      "attachImage": "附加圖片",
+      "attachImage": "附加檔案／圖片",
       "imageUrlPrompt": "圖片 URL (https://...)：",
+      "fileWillBeSentAsLink": "LINE 沒有原生 file 訊息，會用「📎 檔名 + 連結」的文字訊息送出",
       "send": "發送"
+    },
+    "storage": {
+      "title": "儲存空間",
+      "description": "管理客戶傳送的圖片、文件、音訊保存期限。文字訊息永遠保留、不會被清。",
+      "files": "個檔案",
+      "oldest": "最舊檔案",
+      "sweepNow": "立即清理",
+      "sweepResult": "已清理 {tombstoned} 筆，釋放 {freed}",
+      "retentionLabel": "媒體檔保存期限",
+      "retentionHelp": "超過此期限的圖片／文件／音訊會自動刪除，對話歷史保留但內容會替換為「[檔案已逾保存期限]」。",
+      "thresholdLabel": "容量警告閾值",
+      "thresholdHelp": "佔用超過此值，dashboard 右上鈴鐺會冒紅點 + 跳通知。",
+      "days": "{n} 天",
+      "never": "永不刪除",
+      "save": "儲存"
     },
     "lineChannel": {
       "title": "LINE Channel 憑證",

@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { saveImage } from '@/lib/customer-service/cs-media'
+import { saveImage, saveFile } from '@/lib/customer-service/cs-media'
 
 export const runtime = 'nodejs'
 
 /**
- * Operator uploads an image for the Conversations composer. We persist
- * locally and return both an id and a "public" URL the operator's send
- * action can hand to LINE's pushMessage (LINE will fetch from that URL
- * once on send and cache).
+ * Operator uploads media for the Conversations composer.
  *
- * Public URL is built from the request's host header; works as long as
- * the same hostname is reachable from LINE's servers (and not gated
- * behind CF Access for the /cs-media/<id> path).
+ * - Images go through saveImage (strict mime check; UI sends as LINE
+ *   image message via originalContentUrl).
+ * - Other files (PDF, docx, audio, video) go through saveFile and the
+ *   operator's send action wraps the URL in a text message — LINE has
+ *   no native generic-file message type.
+ *
+ * Returns { id, url, mime, size, kind }.
  */
 export async function POST(req: NextRequest) {
   const formData = await req.formData().catch(() => null)
@@ -21,16 +22,21 @@ export async function POST(req: NextRequest) {
 
   try {
     const buf = Buffer.from(await file.arrayBuffer())
-    const saved = saveImage(buf, file.type)
+    const isImage = file.type.startsWith('image/')
+    const saved = isImage
+      ? saveImage(buf, file.type)
+      : saveFile(buf, file.type, file.name)
     const host = req.headers.get('host') ?? '127.0.0.1:3737'
     const proto = req.headers.get('x-forwarded-proto') ?? (host.startsWith('127.0.0.1') ? 'http' : 'https')
     const url = `${proto}://${host}/api/customer-service/cs-media/${saved.id}`
     return NextResponse.json({
       ok: true,
+      kind: isImage ? 'image' : 'file',
       id: saved.id,
       url,
       mime: saved.mime,
       size: saved.size,
+      originalName: isImage ? undefined : file.name,
     })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })

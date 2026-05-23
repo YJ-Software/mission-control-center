@@ -6,6 +6,13 @@
     "updateMccFailed": "MCC upgrade failed: {error}",
     "updating": "Updating..."
   },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "No notifications yet",
+    "markAllRead": "Mark all read",
+    "clearAll": "Clear all",
+    "open": "Open"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "tasks": "Tasks",
@@ -1427,9 +1434,25 @@
       "agentReplying": "Agent is replying",
       "messagePlaceholder": "Type a message to send as operator...",
       "quickReplyPlaceholder": "Add quick reply (press Enter to add, max 13)",
-      "attachImage": "Attach image",
+      "attachImage": "Attach file / image",
       "imageUrlPrompt": "Image URL (https://...):",
+      "fileWillBeSentAsLink": "LINE has no native file message — sent as text with filename + link",
       "send": "Send"
+    },
+    "storage": {
+      "title": "Storage",
+      "description": "Retention policy for customer-sent images, files, and audio. Text messages are kept forever and are never swept.",
+      "files": "files",
+      "oldest": "Oldest file",
+      "sweepNow": "Run sweep",
+      "sweepResult": "Tombstoned {tombstoned}, freed {freed}",
+      "retentionLabel": "Media retention",
+      "retentionHelp": "Files older than this are deleted. The message row is kept as a placeholder reading \"[file expired]\".",
+      "thresholdLabel": "Warning threshold",
+      "thresholdHelp": "When usage exceeds this, the bell icon shows a red badge and a toast is dispatched.",
+      "days": "{n} days",
+      "never": "Never delete",
+      "save": "Save"
     },
     "lineChannel": {
       "title": "LINE Channel credentials",

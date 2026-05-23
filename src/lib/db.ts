@@ -172,6 +172,20 @@ export function initDb() {
       resume_at INTEGER NOT NULL,
       operator_id TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'info',
+      title TEXT NOT NULL,
+      body TEXT,
+      link TEXT,
+      dedup_key TEXT,
+      created_at INTEGER DEFAULT (unixepoch()),
+      read_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_notif_created ON notifications(created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_dedup ON notifications(dedup_key) WHERE dedup_key IS NOT NULL AND read_at IS NULL;
   `)
 
   // Create backup tables

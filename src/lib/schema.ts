@@ -149,6 +149,23 @@ export const csAgentPause = sqliteTable('cs_agent_pause', {
   operatorId: text('operator_id'),
 })
 
+// Dashboard-wide notification feed (header bell + toast). Producers:
+// MCC upgrade check, OpenClaw upgrade, cs storage threshold, future
+// alerts. Read-state is per-row; "cleared" = deleted.
+export const notifications = sqliteTable('notifications', {
+  id: text('id').primaryKey(),
+  type: text('type').notNull(),                  // 'mcc-upgrade' | 'openclaw-upgrade' | 'cs-storage' | 'system'
+  severity: text('severity').notNull().default('info'),  // 'info' | 'warning' | 'error'
+  title: text('title').notNull(),
+  body: text('body'),
+  link: text('link'),
+  // Dedup key — producers set this to avoid spamming the bell. Pair with
+  // a unique index so an upsert behaves like "create-once-until-cleared".
+  dedupKey: text('dedup_key'),
+  createdAt: integer('created_at').default(sql`(unixepoch())`),
+  readAt: integer('read_at'),
+})
+
 export {
   backupDestinations,
   backupSources,

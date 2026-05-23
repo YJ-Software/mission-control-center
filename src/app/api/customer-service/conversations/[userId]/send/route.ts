@@ -8,10 +8,14 @@ export const runtime = 'nodejs'
 const PAUSE_MS = 30 * 60 * 1000
 
 interface SendBody {
-  type: 'text' | 'image'
+  type: 'text' | 'image' | 'file'
   text?: string
   imageUrl?: string
   previewImageUrl?: string
+  /** For type=file: public URL we built at upload time + the original
+   *  filename, so we can compose a "📎 contract.pdf  https://..." text. */
+  fileUrl?: string
+  fileName?: string
   quickReplies?: string[]
   operatorId?: string
   /** When true (default), starts/refreshes the 30-min agent pause window. */
@@ -34,6 +38,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
   if (body.type === 'image') {
     if (!body.imageUrl) return NextResponse.json({ error: 'imageUrl required for image type' }, { status: 400 })
     msg = buildImageMessage(body.imageUrl, body.previewImageUrl)
+  } else if (body.type === 'file') {
+    // LINE has no native file-message type; wrap as text with the public
+    // URL so the customer can tap to download. Operator can prefix custom
+    // text via body.text — if blank we autogenerate "📎 <name>\n<url>".
+    if (!body.fileUrl) return NextResponse.json({ error: 'fileUrl required for file type' }, { status: 400 })
+    const name = body.fileName ?? 'file'
+    const lead = (body.text ?? '').trim()
+    const composed = lead
+      ? `${lead}\n\n📎 ${name}\n${body.fileUrl}`
+      : `📎 ${name}\n${body.fileUrl}`
+    msg = buildTextMessage(composed, body.quickReplies)
   } else {
     const t = (body.text ?? '').trim()
     if (!t) return NextResponse.json({ error: 'text required' }, { status: 400 })
@@ -48,17 +63,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status: 502 })
   }
 
-  // Persist locally
+  // Persist locally — bot/operator-side files are stored with their URL
+  // so the conversation view can offer the download link back to the
+  // operator too (e.g. for a paper trail of what was sent).
   const stored = recordMessage({
     userId,
     direction: 'operator',
     type: body.type,
-    text: body.type === 'text' ? body.text : undefined,
+    text: body.type === 'text' ? body.text : (body.type === 'file' ? body.text : undefined),
     payload: body.type === 'image'
-      ? { imageUrl: body.imageUrl, previewImageUrl: body.previewImageUrl }
-      : body.quickReplies && body.quickReplies.length > 0
-        ? { quickReplies: body.quickReplies }
-        : undefined,
+      ? { imageUrl: body.imageUrl, previewImageUrl: body.previewImageUrl, quickReplies: body.quickReplies }
+      : body.type === 'file'
+        ? { fileUrl: body.fileUrl, fileName: body.fileName, quickReplies: body.quickReplies }
+        : body.quickReplies && body.quickReplies.length > 0
+          ? { quickReplies: body.quickReplies }
+          : undefined,
     lineMessageId,
     operatorId: body.operatorId,
   })

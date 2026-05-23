@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { Loader2, RefreshCw, X, Send, Image as ImageIcon, Plus, AlertCircle, Upload } from 'lucide-react'
+import { Loader2, RefreshCw, X, Send, Image as ImageIcon, Plus, AlertCircle, Upload, Paperclip, FileText } from 'lucide-react'
 
 interface ConversationRow {
   userId: string
@@ -107,14 +107,21 @@ export function ConversationView({ userId, initial }: Props) {
 
   const [draft, setDraft] = useState('')
   const [imageUrl, setImageUrl] = useState('')
+  const [fileUrl, setFileUrl] = useState('')
+  const [fileName, setFileName] = useState('')
   const [quickReplies, setQuickReplies] = useState<string[]>([])
   const [qrInput, setQrInput] = useState('')
 
   const sendMutation = useMutation({
-    mutationFn: async (mode: 'text' | 'image') => {
+    mutationFn: async (mode: 'text' | 'image' | 'file') => {
       const body: Record<string, unknown> = { type: mode, quickReplies: quickReplies.length > 0 ? quickReplies : undefined }
       if (mode === 'text') body.text = draft
-      else body.imageUrl = imageUrl
+      else if (mode === 'image') body.imageUrl = imageUrl
+      else if (mode === 'file') {
+        body.fileUrl = fileUrl
+        body.fileName = fileName
+        body.text = draft  // optional leading text composed with the link
+      }
       const res = await fetch(`/api/customer-service/conversations/${encodeURIComponent(userId)}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -127,6 +134,8 @@ export function ConversationView({ userId, initial }: Props) {
     onSuccess: () => {
       setDraft('')
       setImageUrl('')
+      setFileUrl('')
+      setFileName('')
       setQuickReplies([])
       qc.invalidateQueries({ queryKey: ['cs-messages', userId] })
       qc.invalidateQueries({ queryKey: ['cs-conversations'] })
@@ -266,6 +275,18 @@ export function ConversationView({ userId, initial }: Props) {
             </button>
           </div>
         )}
+        {fileUrl && (
+          <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-amber-500/[0.06] border border-amber-500/25 text-[11px]">
+            <FileText className="w-4 h-4 text-amber-300" />
+            <div className="flex-1 min-w-0">
+              <div className="text-amber-200/90 truncate">{fileName}</div>
+              <div className="text-[9px] text-amber-200/50 font-mono">{t('fileWillBeSentAsLink')}</div>
+            </div>
+            <button onClick={() => { setFileUrl(''); setFileName('') }} className="text-white/40 hover:text-white/80">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
         {uploadError && (
           <div className="flex items-start gap-2 px-2 py-1.5 rounded-md bg-red-500/10 border border-red-500/25 text-[11px] text-red-300">
             <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
@@ -284,7 +305,7 @@ export function ConversationView({ userId, initial }: Props) {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
+            accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv,application/zip,video/mp4,audio/*"
             className="hidden"
             onChange={async (e) => {
               const file = e.target.files?.[0]
@@ -298,7 +319,15 @@ export function ConversationView({ userId, initial }: Props) {
                 const res = await fetch('/api/customer-service/cs-media/upload', { method: 'POST', body: fd })
                 const data = await res.json()
                 if (!res.ok) throw new Error(data.error ?? 'upload failed')
-                setImageUrl(data.url as string)
+                if (data.kind === 'image') {
+                  setImageUrl(data.url as string)
+                  setFileUrl('')
+                  setFileName('')
+                } else {
+                  setFileUrl(data.url as string)
+                  setFileName(data.originalName || file.name)
+                  setImageUrl('')
+                }
               } catch (err) {
                 setUploadError(err instanceof Error ? err.message : String(err))
               } finally {
@@ -312,11 +341,14 @@ export function ConversationView({ userId, initial }: Props) {
             className="px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/60 hover:text-white/90 disabled:opacity-40 flex items-center gap-1.5"
             title={t('attachImage')}
           >
-            {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
           </button>
           <button
-            onClick={() => sendMutation.mutate(imageUrl ? 'image' : 'text')}
-            disabled={sendMutation.isPending || (!draft.trim() && !imageUrl)}
+            onClick={() => {
+              const mode: 'text' | 'image' | 'file' = fileUrl ? 'file' : imageUrl ? 'image' : 'text'
+              sendMutation.mutate(mode)
+            }}
+            disabled={sendMutation.isPending || (!draft.trim() && !imageUrl && !fileUrl)}
             className="px-4 py-2 rounded-lg bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/25 disabled:opacity-40 flex items-center gap-1.5"
           >
             {sendMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
@@ -350,16 +382,41 @@ function MessageBubble({ msg }: { msg: MessageRow }) {
 
   let body: React.ReactNode = msg.text
   let imageUrl: string | null = null
+  let fileUrl: string | null = null
+  let fileName: string | null = null
+  let mime: string | null = null
   let quickReplies: string[] = []
   if (msg.payload) {
     try {
-      const p = JSON.parse(msg.payload) as { imageUrl?: string; previewImageUrl?: string; quickReplies?: string[] }
+      const p = JSON.parse(msg.payload) as { imageUrl?: string; fileUrl?: string; fileName?: string; mime?: string; quickReplies?: string[] }
       if (p.imageUrl) imageUrl = p.imageUrl
+      if (p.fileUrl) fileUrl = p.fileUrl
+      if (p.fileName) fileName = p.fileName
+      if (p.mime) mime = p.mime
       if (Array.isArray(p.quickReplies)) quickReplies = p.quickReplies
     } catch { /* ignore */ }
   }
   if (msg.type === 'image' && imageUrl) {
-    body = <img src={imageUrl} alt="" className="rounded-md max-w-[220px]" />
+    body = <a href={imageUrl} target="_blank" rel="noreferrer"><img src={imageUrl} alt="" className="rounded-md max-w-[220px]" /></a>
+  } else if (msg.type === 'video' && imageUrl) {
+    body = <video src={imageUrl} controls className="rounded-md max-w-[220px]" />
+  } else if (msg.type === 'audio' && imageUrl) {
+    body = <audio src={imageUrl} controls className="w-[220px]" />
+  } else if (msg.type === 'file') {
+    const href = fileUrl ?? imageUrl
+    if (href) {
+      body = (
+        <a href={href} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-cyan-300 hover:text-cyan-200 underline-offset-2 hover:underline">
+          <span>📎</span>
+          <span className="truncate max-w-[180px]">{fileName ?? href.split('/').pop()}</span>
+          {mime && <span className="text-[9px] text-white/30 font-mono">{mime.split('/')[1]}</span>}
+        </a>
+      )
+    }
+  } else if (msg.type === 'sticker') {
+    body = <span className="text-2xl">🏷️ sticker</span>
+  } else if (msg.type === 'deleted_media') {
+    body = <span className="text-white/40 italic text-[12px]">{msg.text || '[已逾保存期限]'}</span>
   }
 
   return (

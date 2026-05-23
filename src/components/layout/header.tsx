@@ -1,11 +1,12 @@
 'use client'
 
-import { Bell, Globe, Menu, RefreshCw, ArrowUpCircle, Loader2 } from 'lucide-react'
+import { Globe, Menu, RefreshCw, ArrowUpCircle, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import type { OpenClawVersionInfo } from '@/lib/services-status'
+import { NotificationCenter } from './notification-center'
 
 const locales = [
   { code: 'zh-TW', label: '繁' },
@@ -182,11 +183,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
 
         <div className="hidden sm:block w-px h-4 bg-white/[0.12]" />
 
-        <button className="relative p-2.5 sm:p-1.5 text-white/35 hover:text-white/70 transition-colors rounded-lg hover:bg-white/[0.05]"
-          style={{ minWidth: 'var(--touch-min, 44px)', minHeight: 'var(--touch-min, 44px)' }}>
-          <Bell className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-          <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-purple-400" />
-        </button>
+        <NotificationCenter />
 
         <button
           onClick={handleRefresh}

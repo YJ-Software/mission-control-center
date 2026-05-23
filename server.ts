@@ -526,17 +526,26 @@ app.prepare().then(() => {
     })
   })
 
-  // Forward Customer Service bus events (new message, pause toggle) to all
-  // dashboard clients so the Conversations tab updates in real time instead
-  // of waiting on the every-3-5s polling tick.
-  import('./src/lib/customer-service/cs-store').then(({ csEventBus }) => {
-    csEventBus.on('cs', (event) => {
+  // Forward dashboard-wide bus events (cs:*, notification:*) to all
+  // connected /ws clients so the UI can update in real time instead of
+  // polling. Single subscription point — every producer (cs-store,
+  // notifications, future channels) emits onto src/lib/event-bus.
+  import('./src/lib/event-bus').then(({ appBus }) => {
+    appBus.on('bus', (event) => {
       try {
         broadcast(wss, JSON.stringify(event))
       } catch { /* never crash the bus listener */ }
     })
   }).catch(err => {
-    console.error('[cs-bus] failed to attach listener:', err)
+    console.error('[app-bus] failed to attach listener:', err)
+  })
+
+  // Daily customer-service storage retention + threshold check. First tick
+  // ~60s after boot so we don't fight DB init; subsequent ticks every 24h.
+  import('./src/lib/customer-service/cs-storage-scheduler').then(({ startCsStorageScheduler }) => {
+    startCsStorageScheduler()
+  }).catch(err => {
+    console.error('[cs-storage] scheduler init failed:', err)
   })
 
   // Only handle upgrade for our /ws paths; let Next.js handle HMR upgrades
