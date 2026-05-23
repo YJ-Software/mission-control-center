@@ -168,6 +168,28 @@ export default definePluginEntry({
     },
   },
   register(api) {
+    // Outbound bot reply mirror — fires when openclaw is about to send a
+    // message to the channel (LINE, Telegram, etc). Capture text content
+    // so the Conversations tab shows what the agent answered.
+    api.on("message_sending", async (event, ctx) => {
+      try {
+        const cfg = api.pluginConfig ?? {};
+        const mccBaseUrl = cfg.mccBaseUrl ?? "http://127.0.0.1:3737";
+        const userId = extractUserId(event, ctx);
+        if (!userId || !mccBaseUrl) return;
+        mirrorInbound(mccBaseUrl, {
+          userId,
+          direction: "bot",
+          type: extractType(event),
+          text: extractText(event),
+          lineMessageId: event?.message?.id ?? null,
+          channelId: ctx?.channelId ?? event?.channel ?? null,
+        });
+      } catch {
+        // best-effort — never block the send
+      }
+    });
+
     api.on("before_dispatch", async (event, ctx) => {
       try {
         const cfg = api.pluginConfig ?? {};

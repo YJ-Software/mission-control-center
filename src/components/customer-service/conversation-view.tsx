@@ -116,7 +116,10 @@ export function ConversationView({ userId, initial }: Props) {
       if (!res.ok) throw new Error((await res.json()).error || 'toggle failed')
       return res.json()
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['cs-conversations'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cs-conversations'] })
+      qc.invalidateQueries({ queryKey: ['cs-messages', userId] })
+    },
   })
 
   const refreshProfileMutation = useMutation({
