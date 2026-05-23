@@ -1443,6 +1443,22 @@
       "aiQuickReplyAdd": "加入此 quick reply",
       "send": "发送"
     },
+    "quickReplyLlm": {
+      "title": "Quick Reply LLM",
+      "description": "对话中的 AI 自动建议 quick reply 使用的 LLM。默认与 mem0 共用同一组设置（便宜又快），需要切到别的 model / 端点时取消勾选下方选项并填入自定义值。",
+      "useMem0": "与 mem0 设置相同 LLM",
+      "useMem0Hint": "勾选时直接读 ~/.openclaw/openclaw.json 里的 openclaw-mem0 MCP env (默认 gemini-2.5-flash-lite)",
+      "model": "Model",
+      "baseUrl": "Base URL",
+      "baseUrlHint": "OpenAI-compatible endpoint，结尾通常是 /v1 或 /v1beta/openai/",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "贴上 API key（不会显示在 UI）",
+      "apiKeyHint": "留空时 fallback 用 mem0 的 key",
+      "storedHint": "(已保存，留空不变)",
+      "save": "保存",
+      "statusMem0": "目前使用：mem0 共用设置",
+      "statusOverride": "目前使用：独立设置"
+    },
     "storage": {
       "title": "存储空间",
       "description": "管理客户传送的图片、文件、音频保存期限。文字讯息永远保留、不会被清。",

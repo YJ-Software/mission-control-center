@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server'
 import { fetchManifest, getConfiguredManifestUrl, pickArtifact } from '@/lib/upgrade/manager'
 import { getVersionInfo } from '@/lib/version'
 
+// Always evaluate this route on each call. Without this Next.js may
+// statically cache the response, masking new releases until the server
+// restarts.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 function compareSemver(a: string, b: string): number {
   const pa = a.split('.').map((n) => parseInt(n, 10) || 0)
   const pb = b.split('.').map((n) => parseInt(n, 10) || 0)

@@ -4,13 +4,12 @@ import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { BrainCircuit } from 'lucide-react'
 import { MemoryInstallWizard } from './memory-install-wizard'
-import { MemoryProviderForm } from './memory-provider-form'
 import { MemoryBrowser } from './memory-browser'
 import { MemoryUsageStats } from './memory-usage-stats'
 import { MemoryNeo4jPanel } from './memory-neo4j-panel'
 import { MemoryBackendSelector } from './memory-backend-selector'
 
-type Section = 'backend' | 'wizard' | 'provider' | 'browser' | 'stats' | 'neo4j'
+type Section = 'backend' | 'wizard' | 'browser' | 'stats' | 'neo4j'
 
 export function MemoryTab() {
   const t = useTranslations('customerService.memory')
@@ -19,7 +18,6 @@ export function MemoryTab() {
   const sections: { key: Section; label: string }[] = [
     { key: 'backend', label: t('sections.backend') },
     { key: 'wizard', label: t('sections.wizard') },
-    { key: 'provider', label: t('sections.provider') },
     { key: 'browser', label: t('sections.browser') },
     { key: 'stats', label: t('sections.stats') },
     { key: 'neo4j', label: t('sections.neo4j') },
@@ -55,7 +53,6 @@ export function MemoryTab() {
 
       {section === 'backend' && <MemoryBackendSelector />}
       {section === 'wizard' && <MemoryInstallWizard />}
-      {section === 'provider' && <MemoryProviderForm />}
       {section === 'browser' && <MemoryBrowser />}
       {section === 'stats' && <MemoryUsageStats />}
       {section === 'neo4j' && <MemoryNeo4jPanel />}

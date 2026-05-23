@@ -6,6 +6,8 @@ import { Bot, Settings as SettingsIcon, Info, ArrowUpRight } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { LineChannelCard } from './line-channel-card'
 import { StorageCard } from './storage-card'
+import { MemoryProviderForm } from './memory-provider-form'
+import { QuickReplyLlmCard } from './quick-reply-llm-card'
 
 interface AgentInfo {
   id: string
@@ -122,6 +124,10 @@ export function SettingsTab() {
       </div>
 
       <LineChannelCard />
+
+      <MemoryProviderForm />
+
+      <QuickReplyLlmCard />
 
       <StorageCard />
     </div>

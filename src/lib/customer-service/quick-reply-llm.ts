@@ -1,6 +1,9 @@
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { db } from '@/lib/db'
+import { settings } from '@/lib/schema'
+import { eq } from 'drizzle-orm'
 
 const OPENCLAW_JSON = join(homedir(), '.openclaw', 'openclaw.json')
 
@@ -10,13 +13,7 @@ interface LlmConfig {
   model: string
 }
 
-/**
- * Borrow the LLM config from the mem0 MCP server entry in openclaw.json.
- * Keeps the customer-service quick-reply feature on the same cheap
- * provider (gemini-2.5-flash-lite via OpenAI-compatible endpoint) and
- * avoids asking the operator to configure a second API key.
- */
-export function readLlmConfig(): LlmConfig | null {
+function readMem0Config(): LlmConfig | null {
   if (!existsSync(OPENCLAW_JSON)) return null
   try {
     const cfg = JSON.parse(readFileSync(OPENCLAW_JSON, 'utf-8')) as {
@@ -32,6 +29,36 @@ export function readLlmConfig(): LlmConfig | null {
   } catch {
     return null
   }
+}
+
+function readSetting(key: string): string {
+  return db.select().from(settings).where(eq(settings.key, key)).get()?.value ?? ''
+}
+
+/**
+ * Resolve which LLM the quick-reply suggester should call.
+ *
+ * Default behaviour ("與 mem0 設定相同 LLM"): mirror the gemini-flash-lite
+ * config from the openclaw-mem0 MCP entry — no second API key to manage.
+ *
+ * When the operator unchecks that toggle in CS Settings → Quick Reply
+ * LLM, fields stored under `customer-service.quickReply.llm.*` take
+ * over. Empty fields fall back to the mem0 entry so partial configs
+ * still produce something workable.
+ */
+export function readLlmConfig(): LlmConfig | null {
+  const useMem0 = (readSetting('customer-service.quickReply.llm.useMem0') || 'true') === 'true'
+  const mem0 = readMem0Config()
+
+  if (useMem0) return mem0
+
+  const override: LlmConfig = {
+    baseUrl: readSetting('customer-service.quickReply.llm.baseUrl') || mem0?.baseUrl || '',
+    apiKey: readSetting('customer-service.quickReply.llm.apiKey') || mem0?.apiKey || '',
+    model: readSetting('customer-service.quickReply.llm.model') || mem0?.model || 'gemini-2.5-flash-lite',
+  }
+  if (!override.baseUrl || !override.apiKey) return null
+  return override
 }
 
 export interface HistoryMessage {
