@@ -74,17 +74,42 @@ function extractText(event) {
 }
 
 function extractType(event) {
-  // Prefer the LINE-side type discriminator if openclaw forwards it.
+  // openclaw normalises rich LINE events to a "<media:<kind>>" placeholder
+  // in `content`. Pull the kind back out.
+  const content = event?.content ?? event?.body;
+  if (typeof content === "string") {
+    const m = content.match(/^<media:([a-z]+)>$/);
+    if (m) {
+      const kind = m[1];
+      if (kind === "document") return "file";
+      if (["image", "video", "audio", "file", "sticker", "location"].includes(kind)) return kind;
+      return "file";
+    }
+  }
   const lineType = event?.messageType ?? event?.message?.type;
   if (typeof lineType === "string") {
     if (["image", "video", "audio", "file", "sticker", "location"].includes(lineType)) return lineType;
   }
-  if (typeof event?.content === "string" || typeof event?.body === "string") return "text";
+  if (typeof content === "string") return "text";
   return event?.type ?? "other";
 }
 
-function extractMessageId(event) {
-  return event?.messageId ?? event?.message?.id ?? event?.id ?? null;
+function extractMessageId(event, ctx) {
+  return event?.messageId
+    ?? event?.metadata?.messageId
+    ?? ctx?.messageId
+    ?? event?.message?.id
+    ?? event?.id
+    ?? null;
+}
+
+/** When the type is a media placeholder we don't want to record "<media:image>"
+ *  as the message text — only real user text should land in cs_messages.text. */
+function extractTextNonMedia(event) {
+  const content = event?.content ?? event?.body;
+  if (typeof content !== "string") return null;
+  if (content.startsWith("<media:")) return null;
+  return content;
 }
 
 async function fetchWithTimeout(url, init, timeoutMs) {
@@ -177,6 +202,29 @@ export default definePluginEntry({
     },
   },
   register(api) {
+    // message_received fires earlier than before_dispatch and crucially
+    // exposes the LINE messageId — without that we can't pull media
+    // binary back from LINE Content API. We use it as the canonical
+    // inbound mirror hook and reduce before_dispatch to only the
+    // pause-gate check below.
+    api.on("message_received", async (event, ctx) => {
+      try {
+        const cfg = api.pluginConfig ?? {};
+        const mccBaseUrl = cfg.mccBaseUrl ?? "http://127.0.0.1:3737";
+        const userId = extractUserId(event, ctx);
+        if (!userId || !mccBaseUrl) return;
+        mirrorInbound(mccBaseUrl, {
+          userId,
+          direction: "user",
+          type: extractType(event),
+          text: extractTextNonMedia(event),
+          lineMessageId: extractMessageId(event, ctx),
+          channelId: ctx?.channelId ?? event?.channel ?? null,
+          rawEvent: event,
+        });
+      } catch { /* best-effort, never block */ }
+    });
+
     // Outbound bot reply mirror — fires when openclaw is about to send a
     // message to the channel (LINE, Telegram, etc). Capture text content
     // so the Conversations tab shows what the agent answered.
@@ -206,21 +254,9 @@ export default definePluginEntry({
         const channelId = ctx?.channelId ?? event?.channel ?? null;
         const userId = extractUserId(event, ctx);
 
-        // Always mirror inbound LINE-shaped events to MCC, regardless of the
-        // hours-gating channel filter. The mirror is best-effort and never
-        // blocks. We leave the gating-channels filter below as a separate
-        // concern so operators can still scope hours rules to a subset.
-        if (userId && mccBaseUrl) {
-          mirrorInbound(mccBaseUrl, {
-            userId,
-            direction: "user",
-            type: extractType(event),
-            text: extractText(event),
-            lineMessageId: extractMessageId(event),
-            channelId,
-            rawEvent: event,   // server-side parses non-text types from here
-          });
-        }
+        // Inbound mirroring lives in message_received above (it has the
+        // messageId we need for LINE Content API). before_dispatch only
+        // exists to enforce the per-user operator pause.
 
         // Per-user operator pause — silences the agent on this turn. MCC
         // owns the resume schedule; we just consult it here. Runs regardless

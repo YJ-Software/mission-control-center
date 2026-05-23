@@ -388,10 +388,24 @@ function MessageBubble({ msg }: { msg: MessageRow }) {
   let quickReplies: string[] = []
   if (msg.payload) {
     try {
-      const p = JSON.parse(msg.payload) as { imageUrl?: string; fileUrl?: string; fileName?: string; mime?: string; quickReplies?: string[] }
+      const p = JSON.parse(msg.payload) as {
+        imageUrl?: string;
+        fileUrl?: string;
+        fileName?: string;
+        mime?: string;
+        storedFilename?: string;
+        quickReplies?: string[];
+      }
+      // Inbound rich messages store only the filename — build the URL
+      // relative to the current host so it works whether you're on
+      // farfar-mcc.gbox.tw or http://localhost:3737.
+      const relative = p.storedFilename ? `/api/customer-service/cs-media/${p.storedFilename}` : null
       if (p.imageUrl) imageUrl = p.imageUrl
+      else if (relative && (msg.type === 'image' || msg.type === 'video' || msg.type === 'audio')) imageUrl = relative
       if (p.fileUrl) fileUrl = p.fileUrl
+      else if (relative && msg.type === 'file') fileUrl = relative
       if (p.fileName) fileName = p.fileName
+      else if (p.storedFilename) fileName = p.storedFilename
       if (p.mime) mime = p.mime
       if (Array.isArray(p.quickReplies)) quickReplies = p.quickReplies
     } catch { /* ignore */ }

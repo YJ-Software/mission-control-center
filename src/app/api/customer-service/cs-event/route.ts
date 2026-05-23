@@ -61,11 +61,12 @@ function inferExt(type: string, mime: string): string {
   return MEDIA_EXT[type] ?? 'bin'
 }
 
-function buildPublicUrl(req: NextRequest, filename: string): string {
-  const host = req.headers.get('host') ?? '127.0.0.1:3737'
-  const proto = req.headers.get('x-forwarded-proto') ?? (host.startsWith('127.0.0.1') ? 'http' : 'https')
-  return `${proto}://${host}/api/customer-service/cs-media/${filename}`
-}
+// Note: we intentionally store only the storedFilename in the message
+// payload (not a full URL). The plugin POSTs cs-event from localhost so
+// the Host header is "127.0.0.1:3737" — baking that into the payload
+// breaks rendering in the operator's browser (which sees the public
+// hostname via CF Tunnel). The frontend reconstructs the URL relative
+// to window.location at render time.
 
 /**
  * Posted by the business-hours-gate plugin (and other future producers) to
@@ -100,7 +101,6 @@ export async function POST(req: NextRequest) {
       payload = {
         ...(payload ?? {}),
         storedFilename: saved.filename,
-        imageUrl: buildPublicUrl(req, saved.filename),
         mime: saved.mime,
       }
     } else {
