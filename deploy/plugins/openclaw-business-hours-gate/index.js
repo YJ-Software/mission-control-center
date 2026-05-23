@@ -111,7 +111,11 @@ function mirrorInbound(mccBaseUrl, payload) {
       body: JSON.stringify(payload),
     },
     1000,
-  ).catch(() => {});
+  ).then((res) => {
+    if (!res.ok) console.warn(`[business-hours-gate] cs-event mirror returned ${res.status}`);
+  }).catch((err) => {
+    console.warn(`[business-hours-gate] cs-event mirror error: ${err?.message ?? err}`);
+  });
 }
 
 export default definePluginEntry({
@@ -163,14 +167,13 @@ export default definePluginEntry({
       try {
         const cfg = api.pluginConfig ?? {};
         const mccBaseUrl = cfg.mccBaseUrl ?? "http://127.0.0.1:3737";
-
-        if (cfg.channels && cfg.channels.length > 0) {
-          const channelId = ctx.channelId ?? event.channel;
-          if (!channelId || !cfg.channels.includes(channelId)) return;
-        }
-
-        // Mirror inbound event to MCC for the Conversations tab.
+        const channelId = ctx?.channelId ?? event?.channel ?? null;
         const userId = extractUserId(event, ctx);
+
+        // Always mirror inbound LINE-shaped events to MCC, regardless of the
+        // hours-gating channel filter. The mirror is best-effort and never
+        // blocks. We leave the gating-channels filter below as a separate
+        // concern so operators can still scope hours rules to a subset.
         if (userId && mccBaseUrl) {
           mirrorInbound(mccBaseUrl, {
             userId,
@@ -178,14 +181,22 @@ export default definePluginEntry({
             type: extractType(event),
             text: extractText(event),
             lineMessageId: event?.message?.id ?? null,
-            channelId: ctx?.channelId ?? event?.channel ?? null,
+            channelId,
           });
         }
 
         // Per-user operator pause — silences the agent on this turn. MCC
-        // owns the resume schedule; we just consult it here.
+        // owns the resume schedule; we just consult it here. Runs regardless
+        // of channel filter so a paused user is always honoured.
         if (userId && (await checkPause(mccBaseUrl, userId))) {
           return { handled: true };
+        }
+
+        // Channel filter scopes only the *gating* behaviour (hours / pauseAi)
+        // below. Mirroring + per-user pause check above were applied
+        // unconditionally so the Conversations tab always sees real traffic.
+        if (cfg.channels && cfg.channels.length > 0) {
+          if (!channelId || !cfg.channels.includes(channelId)) return;
         }
 
         if (cfg.pauseAi === true) {
