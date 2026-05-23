@@ -24,6 +24,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   const [currentLocale, setCurrentLocale] = useState(activeLocale)
   const [refreshing, setRefreshing] = useState(false)
   const [updating, setUpdating] = useState(false)
+  const [updatingMcc, setUpdatingMcc] = useState(false)
   const t = useTranslations('header')
   const queryClient = useQueryClient()
 
@@ -35,6 +36,16 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   })
 
   const oc = versionInfo?.openclawVersion
+
+  const { data: mccCheck } = useQuery<{ current: string; latest: string; hasUpdate: boolean }>({
+    queryKey: ['mcc-upgrade-check'],
+    queryFn: () => fetch('/api/upgrade/check').then(r => r.json()),
+    refetchInterval: 300000,
+    // a 502 (no manifest configured) is the legit "we can't tell" path —
+    // suppress noise by treating it as no-update available.
+    retry: false,
+  })
+  const mccHasUpdate = !!mccCheck?.hasUpdate
 
   async function handleUpdate() {
     setUpdating(true)
@@ -48,6 +59,29 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
       queryClient.invalidateQueries({ queryKey: ['services-status'] })
     } finally {
       setUpdating(false)
+    }
+  }
+
+  async function handleUpdateMcc() {
+    if (!confirm(t('updateMccConfirm', { version: mccCheck?.latest ?? '' }))) return
+    setUpdatingMcc(true)
+    try {
+      const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update-mcc' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      // update-mcc schedules a service restart; the page will get cut off
+      // mid-flight when systemd swaps the symlink. Show a soft notice and
+      // reload after a beat.
+      if (data?.success !== false) {
+        setTimeout(() => window.location.reload(), 8000)
+      } else {
+        alert(t('updateMccFailed', { error: data?.error ?? 'unknown' }))
+      }
+    } finally {
+      setUpdatingMcc(false)
     }
   }
 
@@ -91,6 +125,22 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
             </p>
           )}
         </div>
+
+        {mccHasUpdate && (
+          <button
+            onClick={handleUpdateMcc}
+            disabled={updatingMcc}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-medium
+              bg-cyan-500/15 text-cyan-300 border border-cyan-500/30
+              hover:bg-cyan-500/25 transition-colors
+              disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {updatingMcc
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <ArrowUpCircle className="w-3.5 h-3.5" />}
+            {updatingMcc ? t('updating') : t('mccUpdateAvailable', { version: mccCheck!.latest })}
+          </button>
+        )}
 
         {oc?.updateAvailable && (
           <button

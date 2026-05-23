@@ -1,6 +1,9 @@
 {
   "header": {
     "updateAvailable": "OpenClaw {version} 可更新",
+    "mccUpdateAvailable": "MCC {version} 可更新",
+    "updateMccConfirm": "升级 MCC 到 {version}？升级期间服务会重启、页面会短暂断线。",
+    "updateMccFailed": "MCC 升级失败：{error}",
     "updating": "更新中..."
   },
   "nav": {

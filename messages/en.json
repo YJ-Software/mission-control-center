@@ -1,6 +1,9 @@
 {
   "header": {
     "updateAvailable": "OpenClaw {version} available",
+    "mccUpdateAvailable": "MCC {version} available",
+    "updateMccConfirm": "Upgrade MCC to {version}? The service will restart and the page will briefly disconnect.",
+    "updateMccFailed": "MCC upgrade failed: {error}",
     "updating": "Updating..."
   },
   "nav": {
