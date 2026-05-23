@@ -11,7 +11,6 @@ import { SettingsTab } from './settings-tab'
 import { HandoffTab } from './handoff-tab'
 import { WikiTab } from './wiki-tab'
 import { ConversationsTab } from './conversations-tab'
-import { WikiConflictBanner } from './wiki-conflict-banner'
 
 export function CustomerServiceContent() {
   const t = useTranslations('customerService')
@@ -28,8 +27,6 @@ export function CustomerServiceContent() {
 
   return (
     <div className="p-6 space-y-5">
-      <WikiConflictBanner />
-
       <BusinessHoursProvider>
         <Tabs.Root defaultValue="overview">
           <Tabs.List className="flex gap-1 mb-6 bg-white/[0.04] rounded-lg p-1 border border-white/[0.08] overflow-x-auto">
