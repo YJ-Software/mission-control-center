@@ -49,27 +49,32 @@ function isWithinWindow(now, win) {
   return now.minutes >= start && now.minutes < end;
 }
 
-/** Best-effort extraction of a LINE userId from the heterogenous event shapes
- *  openclaw hands the plugin. We probe the well-known places without assuming
- *  any single layout. */
+/** Extract LINE userId from openclaw 2026.5.x's before_dispatch event shape.
+ *  Field order: senderId is the canonical case-preserving userId; conversationId
+ *  is the same value for direct chats; fall through to legacy LINE-webhook
+ *  shapes for older openclaw versions. */
 function extractUserId(event, ctx) {
   return (
+    event?.senderId ??
+    ctx?.senderId ??
+    ctx?.conversationId ??
     event?.source?.userId ??
     event?.userId ??
     ctx?.userId ??
-    ctx?.user?.id ??
-    ctx?.source?.userId ??
     null
   );
 }
 
 function extractText(event) {
+  if (typeof event?.content === "string") return event.content;
+  if (typeof event?.body === "string") return event.body;
   if (typeof event?.message?.text === "string") return event.message.text;
   if (typeof event?.text === "string") return event.text;
   return null;
 }
 
 function extractType(event) {
+  if (typeof event?.content === "string" || typeof event?.body === "string") return "text";
   return event?.message?.type ?? event?.type ?? "other";
 }
 
