@@ -1,18 +1,22 @@
 {
   "latest": {
-    "version": "0.3.19",
-    "releaseDate": "2026-05-23T12:02:17.694Z",
+    "version": "0.3.20",
+    "releaseDate": "2026-05-23T13:21:03.225Z",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.19/mission-control-v0.3.19-linux-x64.tar.gz",
-        "sha256": "cf7038666d0f345698169196a0f1976f8a70b657a8ec4bbfae3863bfd549064f",
-        "size": 146474916
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.20/mission-control-v0.3.20-linux-x64.tar.gz",
+        "sha256": "63ddfc9a70681fc697d9f78d332c67ab6575b270372b3965e3068aa5a7bc48e0",
+        "size": 146484585
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.19",
+      "releaseDate": "2026-05-23T12:02:17.694Z"
+    },
     {
       "version": "0.3.18",
       "releaseDate": "2026-05-23T11:44:29.781Z"
