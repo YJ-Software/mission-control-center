@@ -85,18 +85,39 @@ export async function getBotInfo(): Promise<{ userId: string; displayName: strin
 }
 
 /**
- * Fetch a LINE message content (image/audio/video) sent by a user. Returns
- * the raw bytes and content-type so MCC can re-serve them from its own
- * domain (LINE's media endpoints require channel auth, so the browser can't
- * fetch them directly).
+ * Fetch a LINE message content (image/audio/video/file) sent by a user.
+ * Returns the raw bytes plus content-type and (for file type) the
+ * original filename. LINE includes the user's original filename in the
+ * Content-Disposition response header — pull it out so MCC can offer
+ * meaningful download names and display.
  */
-export async function fetchMessageContent(messageId: string): Promise<{ buffer: Buffer; contentType: string }> {
+export async function fetchMessageContent(messageId: string): Promise<{
+  buffer: Buffer
+  contentType: string
+  filename: string | null
+}> {
   const res = await fetch(`${LINE_DATA}/message/${encodeURIComponent(messageId)}/content`, {
     headers: authHeaders(),
     signal: AbortSignal.timeout(20000),
   })
   if (!res.ok) throw new LineApiError(res.status, await res.text())
   const contentType = res.headers.get('content-type') ?? 'application/octet-stream'
+  const filename = parseFilenameFromDisposition(res.headers.get('content-disposition'))
   const buffer = Buffer.from(await res.arrayBuffer())
-  return { buffer, contentType }
+  return { buffer, contentType, filename }
+}
+
+/** RFC 6266 attachment-filename extractor. Handles both
+ *  `filename="x.pdf"` and the encoded `filename*=UTF-8''x.pdf` forms. */
+function parseFilenameFromDisposition(header: string | null): string | null {
+  if (!header) return null
+  const star = header.match(/filename\*\s*=\s*([^']*)'([^']*)'([^;]+)/i)
+  if (star) {
+    try { return decodeURIComponent(star[3].trim()) } catch { /* fall through */ }
+  }
+  const quoted = header.match(/filename\s*=\s*"([^"]+)"/i)
+  if (quoted) return quoted[1]
+  const bare = header.match(/filename\s*=\s*([^;]+)/i)
+  if (bare) return bare[1].trim()
+  return null
 }

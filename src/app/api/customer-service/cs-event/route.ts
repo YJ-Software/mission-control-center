@@ -33,28 +33,31 @@ const MEDIA_EXT: Record<string, string> = {
  *  payload, or null if the fetch fails (we still record the message stub
  *  so the conversation history doesn't have a gap).
  */
-async function downloadLineMedia(messageId: string, type: string): Promise<{ filename: string; mime: string } | null> {
+async function downloadLineMedia(messageId: string, type: string): Promise<{ filename: string; mime: string; originalName: string | null } | null> {
   try {
     const r = await fetchMessageContent(messageId)
     // For image types we can use the strict saveImage validator. Other
     // types (video / audio / file) we save raw with a discriminated ext.
     if (type === 'image') {
       const saved = saveImage(r.buffer, r.contentType)
-      return { filename: saved.filename, mime: saved.mime }
+      return { filename: saved.filename, mime: saved.mime, originalName: r.filename }
     }
-    const ext = inferExt(type, r.contentType)
+    const ext = inferExt(type, r.contentType, r.filename)
     const filename = `${randomUUID()}.${ext}`
     writeFileSync(join(CS_MEDIA_DIR, filename), r.buffer)
-    return { filename, mime: r.contentType }
+    return { filename, mime: r.contentType, originalName: r.filename }
   } catch (err) {
     console.warn(`[cs-event] download media ${messageId} failed:`, err instanceof Error ? err.message : err)
     return null
   }
 }
 
-function inferExt(type: string, mime: string): string {
-  // Prefer the mime's extension hint when available, otherwise the
-  // best-guess for the LINE message type.
+function inferExt(type: string, mime: string, originalName: string | null): string {
+  // Prefer the original filename's extension (preserves docx / xlsx / pptx
+  // etc which we can't always tell from mime alone). Fall back to mime
+  // hints, then the LINE message type's default.
+  const nameExt = originalName?.match(/\.([a-z0-9]{1,8})$/i)?.[1]?.toLowerCase()
+  if (nameExt) return nameExt
   if (mime.includes('mp4')) return 'mp4'
   if (mime.includes('audio')) return mime.includes('aac') ? 'aac' : 'm4a'
   if (mime.includes('pdf')) return 'pdf'
@@ -102,6 +105,7 @@ export async function POST(req: NextRequest) {
         ...(payload ?? {}),
         storedFilename: saved.filename,
         mime: saved.mime,
+        ...(saved.originalName ? { fileName: saved.originalName } : {}),
       }
     } else {
       // record the stub anyway so the operator sees "client sent an image"
