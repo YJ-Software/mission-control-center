@@ -1,4 +1,5 @@
 import { runRetentionSweep, getStorageStats, readStorageSettings } from './cs-storage'
+import { purgeExpiredPauses } from './cs-store'
 import { createNotification } from '@/lib/notifications'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -30,6 +31,15 @@ async function tick(): Promise<void> {
     const r = runRetentionSweep()
     if (r.tombstoned > 0 || r.unlinked > 0) {
       console.log(`[cs-storage] daily sweep: tombstoned=${r.tombstoned} unlinked=${r.unlinked} freed=${(r.bytesFreed / 1024 / 1024).toFixed(1)}MB`)
+    }
+    // Piggy-back: purge cs_agent_pause rows whose auto-resume already
+    // fired but which never got cleaned up (e.g. server restarted before
+    // the in-memory timer ran, or operator unticked early in odd ways).
+    // Stale rows are harmless for the gate-check (isPaused already
+    // returns false once resumeAt < now) but pile up in the DB.
+    const purged = purgeExpiredPauses()
+    if (purged > 0) {
+      console.log(`[cs-storage] purged ${purged} expired pause rows`)
     }
     checkThreshold()
   } catch (err) {
