@@ -161,11 +161,11 @@ export function ConversationView({ userId, initial }: Props) {
         </button>
 
         {/* pause toggle */}
-        <div className={`ml-auto flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${isPaused ? 'border-amber-400/30 bg-amber-400/[0.08]' : 'border-white/10 bg-white/[0.03]'}`}>
+        <div className={`ml-auto flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${isPaused ? 'border-amber-400/30 bg-amber-400/[0.08]' : 'border-emerald-400/30 bg-emerald-400/[0.08]'}`}>
           <button
             onClick={() => pauseMutation.mutate(!isPaused)}
             disabled={pauseMutation.isPending}
-            className={`w-8 h-4 rounded-full relative transition-colors ${isPaused ? 'bg-amber-400/70' : 'bg-white/15'}`}
+            className={`w-8 h-4 rounded-full relative transition-colors ${isPaused ? 'bg-amber-400/70' : 'bg-emerald-400/70'}`}
             title={isPaused ? t('resumeAgent') : t('takeOver')}
           >
             <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${isPaused ? 'right-0.5' : 'left-0.5'}`} />
@@ -176,7 +176,7 @@ export function ConversationView({ userId, initial }: Props) {
               <div className="font-mono text-[10px] text-amber-200/70">{fmtCountdown(remaining)} {t('untilResume')}</div>
             </div>
           ) : (
-            <div className="text-[11px] text-white/55">{t('agentReplying')}</div>
+            <div className="text-[11px] text-emerald-300">{t('agentReplying')}</div>
           )}
         </div>
       </div>
