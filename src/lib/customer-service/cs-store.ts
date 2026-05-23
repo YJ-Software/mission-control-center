@@ -1,10 +1,27 @@
 import { randomUUID } from 'crypto'
+import { EventEmitter } from 'events'
 import { db } from '@/lib/db'
 import { csConversations, csMessages, csAgentPause } from '@/lib/schema'
 import { eq, desc, sql, lt } from 'drizzle-orm'
 import { getProfile, type LineProfile } from './line-api'
 
 const PROFILE_TTL_MS = 24 * 60 * 60 * 1000
+
+/** Process-local bus for live dashboard updates. server.ts subscribes and
+ *  forwards events over the /ws channel. Keep payloads small (no full
+ *  message bodies in 'pause' events). */
+export const csEventBus = new EventEmitter()
+csEventBus.setMaxListeners(50)
+
+export interface CsBusMessage {
+  type: 'cs:new-message'
+  payload: { userId: string; messageId: string; direction: string; preview: string; createdAt: number | null }
+}
+export interface CsBusPause {
+  type: 'cs:pause-changed'
+  payload: { userId: string; paused: boolean; resumeAt: number | null }
+}
+export type CsBusEvent = CsBusMessage | CsBusPause
 
 export type Direction = 'user' | 'bot' | 'operator'
 export type MessageType = 'text' | 'image' | 'sticker' | 'quick_reply' | 'other'
@@ -81,7 +98,7 @@ export function recordMessage(input: RecordMessageInput): MessageRow {
     },
   }).run()
 
-  return {
+  const row: MessageRow = {
     id,
     userId: input.userId,
     direction: input.direction,
@@ -92,6 +109,15 @@ export function recordMessage(input: RecordMessageInput): MessageRow {
     operatorId: input.operatorId ?? null,
     createdAt: now,
   }
+  // Fire-and-forget bus event for live dashboard updates. server.ts forwards
+  // this over /ws so connected UIs invalidate queries immediately instead of
+  // waiting for the 3-5s polling tick.
+  const evt: CsBusMessage = {
+    type: 'cs:new-message',
+    payload: { userId: row.userId, messageId: row.id, direction: row.direction, preview: previewOf(input), createdAt: row.createdAt },
+  }
+  csEventBus.emit('cs', evt)
+  return row
 }
 
 export function listConversations(opts: { search?: string; limit?: number } = {}): ConversationRow[] {
@@ -203,11 +229,13 @@ export function setPause(userId: string, durationMs: number, operatorId?: string
     target: csAgentPause.userId,
     set: { resumeAt, operatorId: operatorId ?? null },
   }).run()
+  csEventBus.emit('cs', { type: 'cs:pause-changed', payload: { userId, paused: true, resumeAt } } as CsBusPause)
   return { userId, pausedAt: now, resumeAt, operatorId: operatorId ?? null }
 }
 
 export function clearPause(userId: string): void {
   db.delete(csAgentPause).where(eq(csAgentPause.userId, userId)).run()
+  csEventBus.emit('cs', { type: 'cs:pause-changed', payload: { userId, paused: false, resumeAt: null } } as CsBusPause)
 }
 
 export function listActivePauses(): PauseRow[] {

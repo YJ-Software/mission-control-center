@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { Loader2, RefreshCw, X, Send, Image as ImageIcon, Plus, AlertCircle } from 'lucide-react'
+import { Loader2, RefreshCw, X, Send, Image as ImageIcon, Plus, AlertCircle, Upload } from 'lucide-react'
 
 interface ConversationRow {
   userId: string
@@ -49,6 +49,9 @@ export function ConversationView({ userId, initial }: Props) {
   const t = useTranslations('customerService.conversations')
   const qc = useQueryClient()
   const scrollerRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const { data: detail } = useQuery<{ conversation: ConversationRow; messages: MessageRow[] }>({
     queryKey: ['cs-messages', userId],
@@ -77,6 +80,30 @@ export function ConversationView({ userId, initial }: Props) {
       scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight
     }
   }, [messages.length])
+
+  // Live invalidation when a cs:new-message for THIS user arrives, and on
+  // pause toggles from any source. Coupling to window CustomEvents keeps
+  // this component decoupled from the websocket store implementation.
+  useEffect(() => {
+    const onNew = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { userId?: string } | undefined
+      if (detail?.userId === userId) {
+        qc.invalidateQueries({ queryKey: ['cs-messages', userId] })
+      }
+    }
+    const onPause = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { userId?: string } | undefined
+      if (detail?.userId === userId) {
+        qc.invalidateQueries({ queryKey: ['cs-messages', userId] })
+      }
+    }
+    window.addEventListener('cs:new-message', onNew)
+    window.addEventListener('cs:pause-changed', onPause)
+    return () => {
+      window.removeEventListener('cs:new-message', onNew)
+      window.removeEventListener('cs:pause-changed', onPause)
+    }
+  }, [userId, qc])
 
   const [draft, setDraft] = useState('')
   const [imageUrl, setImageUrl] = useState('')
@@ -232,11 +259,17 @@ export function ConversationView({ userId, initial }: Props) {
 
         {imageUrl && (
           <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-cyan-500/[0.06] border border-cyan-500/25 text-[11px]">
-            <ImageIcon className="w-3 h-3 text-cyan-300" />
+            <img src={imageUrl} alt="" className="w-8 h-8 rounded object-cover" />
             <span className="font-mono text-cyan-200/80 truncate flex-1">{imageUrl}</span>
             <button onClick={() => setImageUrl('')} className="text-white/40 hover:text-white/80">
               <X className="w-3 h-3" />
             </button>
+          </div>
+        )}
+        {uploadError && (
+          <div className="flex items-start gap-2 px-2 py-1.5 rounded-md bg-red-500/10 border border-red-500/25 text-[11px] text-red-300">
+            <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+            <span>{uploadError}</span>
           </div>
         )}
 
@@ -248,15 +281,38 @@ export function ConversationView({ userId, initial }: Props) {
             rows={2}
             className="flex-1 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-sm text-white/85 focus:outline-none focus:border-cyan-500/40 resize-none"
           />
-          <button
-            onClick={() => {
-              const url = prompt(t('imageUrlPrompt'))
-              if (url && /^https?:\/\//.test(url)) setImageUrl(url)
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (!file) return
+              setUploadError(null)
+              setUploadingImage(true)
+              try {
+                const fd = new FormData()
+                fd.append('file', file)
+                const res = await fetch('/api/customer-service/cs-media/upload', { method: 'POST', body: fd })
+                const data = await res.json()
+                if (!res.ok) throw new Error(data.error ?? 'upload failed')
+                setImageUrl(data.url as string)
+              } catch (err) {
+                setUploadError(err instanceof Error ? err.message : String(err))
+              } finally {
+                setUploadingImage(false)
+              }
             }}
-            className="px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/60 hover:text-white/90"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingImage}
+            className="px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/60 hover:text-white/90 disabled:opacity-40 flex items-center gap-1.5"
             title={t('attachImage')}
           >
-            <ImageIcon className="w-4 h-4" />
+            {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
           </button>
           <button
             onClick={() => sendMutation.mutate(imageUrl ? 'image' : 'text')}

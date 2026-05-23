@@ -526,6 +526,19 @@ app.prepare().then(() => {
     })
   })
 
+  // Forward Customer Service bus events (new message, pause toggle) to all
+  // dashboard clients so the Conversations tab updates in real time instead
+  // of waiting on the every-3-5s polling tick.
+  import('./src/lib/customer-service/cs-store').then(({ csEventBus }) => {
+    csEventBus.on('cs', (event) => {
+      try {
+        broadcast(wss, JSON.stringify(event))
+      } catch { /* never crash the bus listener */ }
+    })
+  }).catch(err => {
+    console.error('[cs-bus] failed to attach listener:', err)
+  })
+
   // Only handle upgrade for our /ws paths; let Next.js handle HMR upgrades
   server.on('upgrade', (req, socket, head) => {
     const upgradeUrl = new URL(req.url!, `http://${req.headers.host || 'localhost'}`)

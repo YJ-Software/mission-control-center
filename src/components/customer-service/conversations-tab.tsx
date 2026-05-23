@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { MessageSquare, Loader2, Search, Ban } from 'lucide-react'
 import { ConversationView } from './conversation-view'
@@ -53,6 +53,7 @@ export function ConversationsTab() {
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
 
+  const qc = useQueryClient()
   const { data, isLoading } = useQuery<{ conversations: ConversationRow[] }>({
     queryKey: ['cs-conversations', search],
     queryFn: () => {
@@ -61,6 +62,19 @@ export function ConversationsTab() {
     },
     refetchInterval: 5000,
   })
+
+  // Live invalidation triggered by /ws cs:* events forwarded from the
+  // server-side EventEmitter (see src/lib/customer-service/cs-store.ts).
+  useEffect(() => {
+    const onNew = () => qc.invalidateQueries({ queryKey: ['cs-conversations'] })
+    const onPause = () => qc.invalidateQueries({ queryKey: ['cs-conversations'] })
+    window.addEventListener('cs:new-message', onNew)
+    window.addEventListener('cs:pause-changed', onPause)
+    return () => {
+      window.removeEventListener('cs:new-message', onNew)
+      window.removeEventListener('cs:pause-changed', onPause)
+    }
+  }, [qc])
 
   const conversations = data?.conversations ?? []
   const selectedConv = conversations.find(c => c.userId === selected) ?? null

@@ -134,6 +134,16 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const handleMessage = useCallback((msg: Record<string, unknown>) => {
+    // Customer Service bus events (forwarded from the cs-store EventEmitter
+    // by server.ts). Re-emit as a window CustomEvent so the Conversations
+    // tab can subscribe without coupling to this store.
+    if (typeof msg.type === 'string' && msg.type.startsWith('cs:')) {
+      try {
+        window.dispatchEvent(new CustomEvent(msg.type, { detail: msg.payload }))
+      } catch { /* ignore */ }
+      return
+    }
+
     // Handle RPC responses
     if (msg.type === 'res') {
       const id = String(msg.id)
