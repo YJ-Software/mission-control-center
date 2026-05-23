@@ -115,7 +115,13 @@ export interface ReleaseManifest {
 }
 
 export async function fetchManifest(manifestUrl: string): Promise<ReleaseManifest> {
-  const res = await fetch(manifestUrl, { cache: 'no-store' })
+  // Cache-bust the URL: raw.githubusercontent.com serves with
+  // `cache-control: max-age=300`, so different CDN edges return the
+  // previous manifest for up to 5 minutes after a new push. Adding a
+  // unique query param forces a cache miss so operators don't have to
+  // wait the full TTL after a release to see "Upgrade available".
+  const bustedUrl = manifestUrl + (manifestUrl.includes('?') ? '&' : '?') + '_=' + Date.now()
+  const res = await fetch(bustedUrl, { cache: 'no-store' })
   if (!res.ok) throw new Error(`manifest fetch failed (${res.status})`)
   const body = (await res.json()) as ReleaseManifest
   if (!body?.latest?.version || !Array.isArray(body.latest.artifacts)) {
