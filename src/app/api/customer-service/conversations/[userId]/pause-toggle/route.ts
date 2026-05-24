@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isPaused, setPause, clearPause, getPause } from '@/lib/customer-service/cs-store'
 import { scheduleAutoResume, cancelAutoResume } from '@/lib/customer-service/cs-resume-timers'
+import { extractHandoffMemories } from '@/lib/customer-service/handoff-memory'
 
 export const runtime = 'nodejs'
 
@@ -25,8 +26,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
     scheduleAutoResume(userId, pause.resumeAt)
     return NextResponse.json({ ok: true, paused: true, pauseInfo: pause })
   } else {
+    const pause = getPause(userId)
     cancelAutoResume(userId)
     clearPause(userId)
+    if (pause?.pausedAt) {
+      void extractHandoffMemories(userId, pause.pausedAt)
+    }
     return NextResponse.json({ ok: true, paused: false, pauseInfo: null })
   }
 }

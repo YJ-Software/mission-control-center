@@ -13,7 +13,13 @@ interface LlmConfig {
   model: string
 }
 
-function readMem0Config(): LlmConfig | null {
+/**
+ * Single LLM source of truth: whatever is configured for mem0
+ * (openclaw.json → mcp.servers.openclaw-mem0.env). Quick-reply
+ * suggester, handoff-memory extractor, and any future CS LLM call
+ * all share this — no second API key to manage.
+ */
+export function readLlmConfig(): LlmConfig | null {
   if (!existsSync(OPENCLAW_JSON)) return null
   try {
     const cfg = JSON.parse(readFileSync(OPENCLAW_JSON, 'utf-8')) as {
@@ -33,32 +39,6 @@ function readMem0Config(): LlmConfig | null {
 
 function readSetting(key: string): string {
   return db.select().from(settings).where(eq(settings.key, key)).get()?.value ?? ''
-}
-
-/**
- * Resolve which LLM the quick-reply suggester should call.
- *
- * Default behaviour ("與 mem0 設定相同 LLM"): mirror the gemini-flash-lite
- * config from the openclaw-mem0 MCP entry — no second API key to manage.
- *
- * When the operator unchecks that toggle in CS Settings → Quick Reply
- * LLM, fields stored under `customer-service.quickReply.llm.*` take
- * over. Empty fields fall back to the mem0 entry so partial configs
- * still produce something workable.
- */
-export function readLlmConfig(): LlmConfig | null {
-  const useMem0 = (readSetting('customer-service.quickReply.llm.useMem0') || 'true') === 'true'
-  const mem0 = readMem0Config()
-
-  if (useMem0) return mem0
-
-  const override: LlmConfig = {
-    baseUrl: readSetting('customer-service.quickReply.llm.baseUrl') || mem0?.baseUrl || '',
-    apiKey: readSetting('customer-service.quickReply.llm.apiKey') || mem0?.apiKey || '',
-    model: readSetting('customer-service.quickReply.llm.model') || mem0?.model || 'gemini-2.5-flash-lite',
-  }
-  if (!override.baseUrl || !override.apiKey) return null
-  return override
 }
 
 export interface HistoryMessage {

@@ -23,6 +23,10 @@ export interface BusCsPauseChanged {
   type: 'cs:pause-changed'
   payload: { userId: string; paused: boolean; resumeAt: number | null }
 }
+export interface BusCsHandoffMemoriesExtracted {
+  type: 'cs:handoff-memories-extracted'
+  payload: { userId: string; count: number; errors: number }
+}
 
 // --- Dashboard-wide notifications ---
 export interface BusNotificationNew {
@@ -37,6 +41,7 @@ export interface BusNotificationCleared {
 export type BusEvent =
   | BusCsNewMessage
   | BusCsPauseChanged
+  | BusCsHandoffMemoriesExtracted
   | BusNotificationNew
   | BusNotificationCleared
 
