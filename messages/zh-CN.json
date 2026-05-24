@@ -1437,7 +1437,7 @@
       "attachImage": "附加文件／图片",
       "imageUrlPrompt": "图片 URL (https://...)：",
       "fileWillBeSentAsLink": "LINE 没有原生 file 讯息类型，会用「📎 文件名 + 链接」的文字讯息送出",
-      "aiQuickReplyEnable": "AI 自动建议 quick reply",
+      "aiQuickReplyEnable": "AI 自动建议 Quick reply (帮客户先想好回覆选项)",
       "aiQuickReplyHelp": "Quick reply 是 LINE 讯息下方的快速回覆按钮，客户点一下就会以该文字当作回覆送出。启用后，AI 会根据对话脉络 + 你正在打的讯息，自动建议 3 个按钮选项，点 + 加入。可手动按 ↻ 重新生成。",
       "aiQuickReplyRefresh": "重新生成建议",
       "aiQuickReplyAdd": "加入此 quick reply",

@@ -1437,7 +1437,7 @@
       "attachImage": "Attach file / image",
       "imageUrlPrompt": "Image URL (https://...):",
       "fileWillBeSentAsLink": "LINE has no native file message — sent as text with filename + link",
-      "aiQuickReplyEnable": "AI suggest quick replies",
+      "aiQuickReplyEnable": "AI suggest Quick replies (pre-baked answer options for the customer)",
       "aiQuickReplyHelp": "Quick reply is the row of tappable buttons LINE shows under a bot message — tap one and it sends back the button text as the customer's reply. When enabled, the AI watches your draft + the conversation history and suggests 3 button labels that match the context. Tap + to add to staging, or press ↻ to regenerate.",
       "aiQuickReplyRefresh": "Regenerate suggestions",
       "aiQuickReplyAdd": "Add this quick reply",
