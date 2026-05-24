@@ -1427,6 +1427,8 @@
       "noneSelected": "Pick a customer on the left to start chatting",
       "noMessages": "No messages yet",
       "refreshProfile": "Re-fetch LINE Profile",
+      "agentTimeline": "Agent timeline",
+      "openAgentTimeline": "See what the agent did for this customer (with undelivered-reply detection)",
       "takeOver": "Take over (pause agent)",
       "resumeAgent": "Hand back to agent",
       "takenOver": "Operator taken over",
@@ -1477,6 +1479,18 @@
         "missingProfiles": "{count}/{total} customers have no LINE Profile — token may have expired or the customer removed the bot as a friend. Check Settings → LINE Channel.",
         "retentionNever": "Retention is set to \"Never delete\" and storage has reached {gb} GB. Consider setting a sane window to prevent unbounded growth."
       }
+    },
+    "agentTimeline": {
+      "title": "Agent conversation timeline",
+      "loading": "Loading...",
+      "noSessions": "No agent sessions for this customer yet.",
+      "pruned": "pruned",
+      "prunedHint": "This session's jsonl is gone (openclaw auto-pruned or manually deleted); events cannot be reconstructed.",
+      "agent": "Agent",
+      "thinking": "thinking",
+      "delivered": "delivered to LINE",
+      "notDelivered": "NOT delivered to LINE",
+      "hasUndelivered": "has undelivered replies"
     },
     "quickReplyLlm": {
       "title": "Quick Reply LLM",

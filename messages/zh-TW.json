@@ -1427,6 +1427,8 @@
       "noneSelected": "從左側選一位客戶開始對話",
       "noMessages": "尚無訊息",
       "refreshProfile": "重新抓取 LINE Profile",
+      "agentTimeline": "Agent 時間軸",
+      "openAgentTimeline": "看 agent 對這位客戶做了什麼（含未送達訊息偵測）",
       "takeOver": "接手（暫停 agent）",
       "resumeAgent": "讓 agent 回應",
       "takenOver": "接手中",
@@ -1477,6 +1479,18 @@
         "missingProfiles": "{count}/{total} 個客戶沒抓到 LINE Profile — 可能 LINE token 失效、或客戶移除 bot 為好友。檢查 設定 → LINE Channel 憑證。",
         "retentionNever": "保存期限是「永不刪除」、當前已佔 {gb} GB。考慮設定合理期限避免無限成長。"
       }
+    },
+    "agentTimeline": {
+      "title": "Agent 對話時間軸",
+      "loading": "讀取中...",
+      "noSessions": "這位客戶還沒有任何 agent session。",
+      "pruned": "已清除",
+      "prunedHint": "這個 session 的 jsonl 已被清掉（openclaw 自動 prune 或手動刪除），無法重建事件。",
+      "agent": "Agent",
+      "thinking": "思考（thinking）",
+      "delivered": "已送達 LINE",
+      "notDelivered": "未送達 LINE",
+      "hasUndelivered": "有未送達訊息"
     },
     "quickReplyLlm": {
       "title": "Quick Reply LLM",

@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { Loader2, RefreshCw, X, Send, Image as ImageIcon, Plus, AlertCircle, Upload, Paperclip, FileText, Sparkles, HelpCircle } from 'lucide-react'
+import { Loader2, RefreshCw, X, Send, Image as ImageIcon, Plus, AlertCircle, Upload, Paperclip, FileText, Sparkles, HelpCircle, Clock } from 'lucide-react'
+import { AgentTimelineDrawer } from './agent-timeline-drawer'
 
 interface ConversationRow {
   userId: string
@@ -111,6 +112,7 @@ export function ConversationView({ userId, initial }: Props) {
   const [fileName, setFileName] = useState('')
   const [quickReplies, setQuickReplies] = useState<string[]>([])
   const [qrInput, setQrInput] = useState('')
+  const [timelineOpen, setTimelineOpen] = useState(false)
 
   // AI quick-reply suggestions — toggle is per-browser via localStorage,
   // suggestions live as ephemeral state.
@@ -261,6 +263,14 @@ export function ConversationView({ userId, initial }: Props) {
           title={t('refreshProfile')}
         >
           {refreshProfileMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+        </button>
+        <button
+          onClick={() => setTimelineOpen(true)}
+          className="text-[11px] text-white/45 hover:text-cyan-300 flex items-center gap-1 px-2 py-1 rounded-md border border-white/[0.08] hover:border-cyan-400/30 transition-colors"
+          title={t('openAgentTimeline')}
+        >
+          <Clock className="w-3 h-3" />
+          {t('agentTimeline')}
         </button>
 
         {/* pause toggle */}
@@ -472,6 +482,8 @@ export function ConversationView({ userId, initial }: Props) {
           </div>
         )}
       </div>
+
+      <AgentTimelineDrawer userId={userId} open={timelineOpen} onOpenChange={setTimelineOpen} />
     </>
   )
 }
