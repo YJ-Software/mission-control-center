@@ -1429,6 +1429,7 @@
       "refreshProfile": "重新抓取 LINE Profile",
       "agentTimeline": "Agent 時間軸",
       "openAgentTimeline": "看 agent 對這位客戶做了什麼（含未送達訊息偵測）",
+      "sendSticker": "送 LINE 貼圖",
       "takeOver": "接手（暫停 agent）",
       "resumeAgent": "讓 agent 回應",
       "takenOver": "接手中",
@@ -1479,6 +1480,11 @@
         "missingProfiles": "{count}/{total} 個客戶沒抓到 LINE Profile — 可能 LINE token 失效、或客戶移除 bot 為好友。檢查 設定 → LINE Channel 憑證。",
         "retentionNever": "保存期限是「永不刪除」、當前已佔 {gb} GB。考慮設定合理期限避免無限成長。"
       }
+    },
+    "stickerPicker": {
+      "title": "選一個貼圖送出",
+      "hint": "點貼圖即送出。LINE Bot 只能送官方免費包；這份清單是 LINE 開發者文件上明定可送的貼圖。",
+      "sending": "傳送中..."
     },
     "agentTimeline": {
       "title": "Agent 對話時間軸",

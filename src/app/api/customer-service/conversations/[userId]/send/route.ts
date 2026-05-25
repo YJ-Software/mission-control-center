@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { recordMessage, setPause } from '@/lib/customer-service/cs-store'
 import { scheduleAutoResume } from '@/lib/customer-service/cs-resume-timers'
-import { pushMessage, buildTextMessage, buildImageMessage, type LineMessage } from '@/lib/customer-service/line-api'
+import { pushMessage, buildTextMessage, buildImageMessage, buildStickerMessage, type LineMessage } from '@/lib/customer-service/line-api'
 
 export const runtime = 'nodejs'
 
 const PAUSE_MS = 30 * 60 * 1000
 
 interface SendBody {
-  type: 'text' | 'image' | 'file'
+  type: 'text' | 'image' | 'file' | 'sticker'
   text?: string
   imageUrl?: string
   previewImageUrl?: string
@@ -16,6 +16,10 @@ interface SendBody {
    *  filename, so we can compose a "📎 contract.pdf  https://..." text. */
   fileUrl?: string
   fileName?: string
+  /** For type=sticker: LINE packageId + stickerId from the official
+   *  sendable sticker list. */
+  packageId?: string
+  stickerId?: string
   quickReplies?: string[]
   operatorId?: string
   /** When true (default), starts/refreshes the 30-min agent pause window. */
@@ -38,6 +42,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
   if (body.type === 'image') {
     if (!body.imageUrl) return NextResponse.json({ error: 'imageUrl required for image type' }, { status: 400 })
     msg = buildImageMessage(body.imageUrl, body.previewImageUrl)
+  } else if (body.type === 'sticker') {
+    if (!body.packageId || !body.stickerId) {
+      return NextResponse.json({ error: 'packageId and stickerId required for sticker type' }, { status: 400 })
+    }
+    msg = buildStickerMessage(body.packageId, body.stickerId)
   } else if (body.type === 'file') {
     // LINE has no native file-message type; wrap as text with the public
     // URL so the customer can tap to download. Operator can prefix custom
@@ -75,9 +84,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
       ? { imageUrl: body.imageUrl, previewImageUrl: body.previewImageUrl, quickReplies: body.quickReplies }
       : body.type === 'file'
         ? { fileUrl: body.fileUrl, fileName: body.fileName, quickReplies: body.quickReplies }
-        : body.quickReplies && body.quickReplies.length > 0
-          ? { quickReplies: body.quickReplies }
-          : undefined,
+        : body.type === 'sticker'
+          ? { packageId: body.packageId, stickerId: body.stickerId }
+          : body.quickReplies && body.quickReplies.length > 0
+            ? { quickReplies: body.quickReplies }
+            : undefined,
     lineMessageId,
     operatorId: body.operatorId,
   })

@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { Loader2, RefreshCw, X, Send, Image as ImageIcon, Plus, AlertCircle, Upload, Paperclip, FileText, Sparkles, HelpCircle, Clock } from 'lucide-react'
+import { Loader2, RefreshCw, X, Send, Image as ImageIcon, Plus, AlertCircle, Upload, Paperclip, FileText, Sparkles, HelpCircle, Clock, Smile } from 'lucide-react'
 import { AgentTimelineDrawer } from './agent-timeline-drawer'
+import { StickerPicker } from './sticker-picker'
 
 interface ConversationRow {
   userId: string
@@ -113,6 +114,7 @@ export function ConversationView({ userId, initial }: Props) {
   const [quickReplies, setQuickReplies] = useState<string[]>([])
   const [qrInput, setQrInput] = useState('')
   const [timelineOpen, setTimelineOpen] = useState(false)
+  const [stickerPickerOpen, setStickerPickerOpen] = useState(false)
 
   // AI quick-reply suggestions — toggle is per-browser via localStorage,
   // suggestions live as ephemeral state.
@@ -182,7 +184,8 @@ export function ConversationView({ userId, initial }: Props) {
   }, [aiEnabled, draft, userId])
 
   const sendMutation = useMutation({
-    mutationFn: async (mode: 'text' | 'image' | 'file') => {
+    mutationFn: async (input: 'text' | 'image' | 'file' | { mode: 'sticker'; packageId: string; stickerId: string }) => {
+      const mode = typeof input === 'string' ? input : input.mode
       const body: Record<string, unknown> = { type: mode, quickReplies: quickReplies.length > 0 ? quickReplies : undefined }
       if (mode === 'text') body.text = draft
       else if (mode === 'image') body.imageUrl = imageUrl
@@ -190,6 +193,10 @@ export function ConversationView({ userId, initial }: Props) {
         body.fileUrl = fileUrl
         body.fileName = fileName
         body.text = draft  // optional leading text composed with the link
+      } else if (typeof input === 'object' && input.mode === 'sticker') {
+        body.packageId = input.packageId
+        body.stickerId = input.stickerId
+        body.quickReplies = undefined  // LINE rejects quickReply on sticker messages
       }
       const res = await fetch(`/api/customer-service/conversations/${encodeURIComponent(userId)}/send`, {
         method: 'POST',
@@ -206,6 +213,7 @@ export function ConversationView({ userId, initial }: Props) {
       setFileUrl('')
       setFileName('')
       setQuickReplies([])
+      setStickerPickerOpen(false)
       qc.invalidateQueries({ queryKey: ['cs-messages', userId] })
       qc.invalidateQueries({ queryKey: ['cs-conversations'] })
     },
@@ -463,6 +471,17 @@ export function ConversationView({ userId, initial }: Props) {
             {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
           </button>
           <button
+            onClick={() => setStickerPickerOpen(o => !o)}
+            className={`px-3 py-2 rounded-lg border flex items-center gap-1.5 ${
+              stickerPickerOpen
+                ? 'bg-yellow-500/15 border-yellow-500/40 text-yellow-200'
+                : 'bg-white/[0.04] border-white/[0.08] text-white/60 hover:text-white/90'
+            }`}
+            title={t('sendSticker')}
+          >
+            <Smile className="w-4 h-4" />
+          </button>
+          <button
             onClick={() => {
               const mode: 'text' | 'image' | 'file' = fileUrl ? 'file' : imageUrl ? 'image' : 'text'
               sendMutation.mutate(mode)
@@ -484,6 +503,15 @@ export function ConversationView({ userId, initial }: Props) {
       </div>
 
       <AgentTimelineDrawer userId={userId} open={timelineOpen} onOpenChange={setTimelineOpen} />
+
+      <StickerPicker
+        open={stickerPickerOpen}
+        onOpenChange={setStickerPickerOpen}
+        onPick={(packageId, stickerId) => {
+          sendMutation.mutate({ mode: 'sticker', packageId, stickerId })
+        }}
+        sending={sendMutation.isPending}
+      />
     </>
   )
 }
@@ -510,6 +538,7 @@ function MessageBubble({ msg, userDisplayName, userId }: { msg: MessageRow; user
   let fileName: string | null = null
   let mime: string | null = null
   let quickReplies: string[] = []
+  let stickerId: string | null = null
   if (msg.payload) {
     try {
       const p = JSON.parse(msg.payload) as {
@@ -519,6 +548,8 @@ function MessageBubble({ msg, userDisplayName, userId }: { msg: MessageRow; user
         mime?: string;
         storedFilename?: string;
         quickReplies?: string[];
+        packageId?: string;
+        stickerId?: string;
       }
       // Inbound rich messages store only the filename — build the URL
       // relative to the current host so it works whether you're on
@@ -532,6 +563,7 @@ function MessageBubble({ msg, userDisplayName, userId }: { msg: MessageRow; user
       else if (p.storedFilename) fileName = p.storedFilename
       if (p.mime) mime = p.mime
       if (Array.isArray(p.quickReplies)) quickReplies = p.quickReplies
+      if (p.stickerId) stickerId = String(p.stickerId)
     } catch { /* ignore */ }
   }
   if (msg.type === 'image' && imageUrl) {
@@ -552,7 +584,12 @@ function MessageBubble({ msg, userDisplayName, userId }: { msg: MessageRow; user
       )
     }
   } else if (msg.type === 'sticker') {
-    body = <span className="text-2xl">🏷️ sticker</span>
+    if (stickerId) {
+      const url = `https://stickershop.line-scdn.net/stickershop/v1/sticker/${encodeURIComponent(stickerId)}/iPhone/sticker.png`
+      body = <img src={url} alt={`sticker ${stickerId}`} className="w-[120px] h-[120px] object-contain" loading="lazy" />
+    } else {
+      body = <span className="text-2xl">🏷️ sticker</span>
+    }
   } else if (msg.type === 'deleted_media') {
     body = <span className="text-white/40 italic text-[12px]">{msg.text || '[已逾保存期限]'}</span>
   }

@@ -1429,6 +1429,7 @@
       "refreshProfile": "Re-fetch LINE Profile",
       "agentTimeline": "Agent timeline",
       "openAgentTimeline": "See what the agent did for this customer (with undelivered-reply detection)",
+      "sendSticker": "Send a LINE sticker",
       "takeOver": "Take over (pause agent)",
       "resumeAgent": "Hand back to agent",
       "takenOver": "Operator taken over",
@@ -1479,6 +1480,11 @@
         "missingProfiles": "{count}/{total} customers have no LINE Profile — token may have expired or the customer removed the bot as a friend. Check Settings → LINE Channel.",
         "retentionNever": "Retention is set to \"Never delete\" and storage has reached {gb} GB. Consider setting a sane window to prevent unbounded growth."
       }
+    },
+    "stickerPicker": {
+      "title": "Pick a sticker to send",
+      "hint": "Click a sticker to send it. LINE Bots can only send stickers from the official free packs documented by LINE.",
+      "sending": "Sending..."
     },
     "agentTimeline": {
       "title": "Agent conversation timeline",

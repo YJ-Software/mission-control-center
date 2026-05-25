@@ -64,6 +64,10 @@ export function buildImageMessage(originalContentUrl: string, previewImageUrl?: 
   }
 }
 
+export function buildStickerMessage(packageId: string, stickerId: string): LineMessage {
+  return { type: 'sticker', packageId, stickerId }
+}
+
 export async function pushMessage(userId: string, messages: LineMessage[]): Promise<{ sentMessages?: Array<{ id: string }> }> {
   const res = await fetch(`${LINE_API}/message/push`, {
     method: 'POST',
