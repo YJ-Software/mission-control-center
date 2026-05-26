@@ -121,10 +121,43 @@ curl -fsSL https://raw.githubusercontent.com/YJ-Software/mission-control-center/
 - 磁碟使用量檢視
 
 ### LINE 客服 Ops（Customer Service）
-- **時段控制** — 上班 / 下班時段切換、AI 暫停總開關、business-hours-gate plugin 自動安裝
-- **客戶長期記憶** — mem0（自架 Qdrant + Ollama bge-m3 + Gemini，可用）vs wiki-person（OpenClaw 4.29 暫不可用，見下方限制）
-- **customer-id-injector plugin** — 自動建立客戶 entity stub、把 profile 注入 prompt、覆寫 mem0 user_id
-- **LINE async-ack patch + systemd drop-in** — 修復 LINE webhook 被 OpenClaw 同步處理導致的 timeout，drop-in 確保 `npm update -g openclaw` 後仍生效
+
+一整套 LINE Bot AI 客服的後台 — 不只跑 agent，operator 隨時能接手、看到 agent 內部過程、保證對話記憶累積。完整流程在 dashboard 內，不必開 SSH 看 log。
+
+#### 對話介面（Conversations）
+- **客戶清單** — 顯示 LINE displayName + 頭像（不是難讀的 userId），未讀標記、最近一句預覽
+- **operator 接手** — 一鍵切換「agent 回應中／我接手」，接手會自動暫停 agent 30 分鐘（送任何訊息都會 reset 倒數）
+- **訊息類型完整支援**
+  - 入站：text / image / video / audio / file / sticker（sticker 從 LINE CDN 渲染真實貼圖圖片）
+  - 出站：text / image / file（自動產 `📎 檔名 + 公開 URL`，LINE 沒有原生 file 訊息）/ sticker
+- **Sticker picker** — 對話框 😊 按鈕，5 個 LINE 官方免費包共 ~180 個貼圖 grid，點圖即送
+- **Quick Reply 按鈕** — 每則訊息可附最多 13 個快速回覆 chip（LINE 上限）
+- **AI 自動建議 Quick Reply** — 邊打字邊用 LLM 生 N 個客戶可能想點的回應（debounce 400ms，可在 Settings 設定數量 1–13）
+- **接手 catch-up** — 解除 pause 時自動掃 pause 期間對話，丟給 LLM 萃取「值得長期記憶的客戶事實」並寫入 mem0，操作員不必手動整理
+- **Agent 時間軸 drawer** — 對話頁右上一鍵打開：列出該客戶所有 agent session、每個 session 完整事件流（user msg / thinking / tool call / tool result / agent text），自動標記 `✅ 已送達 LINE` 或 `⚠️ 未送達`（偵測 openclaw 中途插話訊息被吞掉這種 race condition）
+
+#### 客戶長期記憶（mem0）
+- **mem0 自架堆疊** — Qdrant 向量庫 + Ollama bge-m3 embedding + Gemini LLM 全部自架，免外部 API 依賴
+- **記憶瀏覽器** — Settings 下可瀏覽每位客戶累積的 facts，以 LINE displayName 分群，可手動編輯／刪除
+- **customer-id-injector plugin** — 自動建立客戶 entity stub、把 profile 注入 system prompt、覆寫 mem0 user_id，agent 看到的永遠是該客戶專屬的記憶
+- **共用 LLM 設定** — Quick Reply suggester + handoff catch-up extractor 都從 mem0 的 LLM env 借用（單一 Gemini API key），不必管多組設定
+
+#### Settings（CS 集中設定區）
+- **LINE Channel 憑證** — Channel access token / channel secret / channel ID 一鍵驗證
+- **Memory Provider** — mem0 / wiki-person 切換（後者見限制）
+- **Quick Reply LLM** — 共用 mem0 LLM，可調建議數量 (1–13)
+- **Storage** — 媒體檔保存期限 / 容量警告閾值 / 立即清理；超過保存期限自動 tombstone（對話歷史保留、檔案內容變「[檔案已逾保存期限]」）
+- **PluginConfigCard** — 業務時段、AI 暫停總開關、預設回覆訊息、套用頻道過濾
+- **WikiConflictBanner** — 偵測 wiki / memory 模式衝突時顯示警示
+
+#### Overview 統計 + 推薦
+- **即時數字** — 24h 對話數 / 接手率 / 平均回覆延遲 / 客戶總數 / 媒體佔用
+- **自動建議** — 偵測異常（接手率過高、儲存接近上限、profile 抓不到、保存期限設為「永不刪除」等）並給出可操作建議
+
+#### 系統整合
+- **business-hours-gate plugin** — 上班時段 / 下班時段切換、AI 暫停總開關、per-user pause 檢查、自動安裝
+- **LINE async-ack patch + systemd drop-in** — 修復 LINE webhook 被 OpenClaw 同步處理導致的 timeout；drop-in 確保 `npm update -g openclaw` 後仍生效
+- **Notification 中心（全 dashboard 統一）** — Storage 警告、CS 系統事件（包含「沉澱 N 條客戶記憶」）、MCC / openclaw 升級提醒，右上鈴鐺集中顯示，dedup 不洗版
 
 > ⚠️ wiki-person 模式在 OpenClaw 4.29 無法運作：plugin 透過 `api.registerTool` 註冊的 `wiki_apply` / `wiki_get` 等工具不會暴露給 agent 模型，agent 看不到。預設走 mem0，wiki-person UI 為 scaffolding，等 OpenClaw 補上 plugin tool 暴露機制再啟用。
 

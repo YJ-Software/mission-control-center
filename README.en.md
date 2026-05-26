@@ -121,10 +121,43 @@ The script fetches `release-manifest.json`, downloads the matching tarball, veri
 - Disk-usage view
 
 ### LINE Customer Service Ops
-- **Hours control** — on/off-hours toggle, AI master switch, business-hours-gate plugin auto-install
-- **Customer long-term memory** — mem0 (self-hosted Qdrant + Ollama bge-m3 + Gemini, available) vs wiki-person (currently unavailable on OpenClaw 4.29, see limitation below)
-- **customer-id-injector plugin** — auto-create customer entity stub, inject profile into prompt, override mem0 user_id
-- **LINE async-ack patch + systemd drop-in** — fixes LINE webhook timeouts caused by OpenClaw's synchronous handling; the drop-in keeps the patch in place after `npm update -g openclaw`
+
+A full LINE Bot AI customer-service back office — not just an agent runtime. Operators can take over any conversation at will, inspect the agent's internal turns, and ensure long-term customer memory keeps accumulating. The whole flow lives in the dashboard; no SSH log-tailing required.
+
+#### Conversations
+- **Customer list** — Shows LINE displayName + avatar (not the cryptic userId), unread badge, last-message preview
+- **Operator handoff** — One-click toggle "agent replying / I'm handling it"; taking over auto-pauses the agent for 30 minutes (any operator send resets the countdown)
+- **Full message-type support**
+  - Inbound: text / image / video / audio / file / sticker (stickers render as real images via the LINE sticker CDN)
+  - Outbound: text / image / file (composed as `📎 filename + public URL` since LINE has no native file message) / sticker
+- **Sticker picker** — 😊 button in the composer; modal grid across 5 LINE official free packs (~180 stickers), click to send
+- **Quick-reply buttons** — Up to 13 chips per message (LINE's hard limit)
+- **AI quick-reply suggestions** — While the operator types, an LLM proposes N candidate replies the customer might tap (400ms debounce; count configurable 1–13 in Settings)
+- **Handoff catch-up** — When pause ends, the conversation that happened during handoff is fed to the LLM to extract "customer facts worth remembering" and persisted into mem0 — operators don't have to summarize anything
+- **Agent timeline drawer** — One click on the conversation header opens every agent session for that customer, with the complete event stream per session (user messages / thinking / tool calls / results / agent text). Each agent text is tagged `✅ delivered to LINE` or `⚠️ NOT delivered`, surfacing openclaw mid-turn race conditions where a reply was generated but dropped
+
+#### Customer long-term memory (mem0)
+- **Self-hosted mem0 stack** — Qdrant vector store + Ollama bge-m3 embeddings + Gemini LLM, all local. No external API dependency
+- **Memory browser** — In Settings: browse the facts accumulated per customer, grouped by LINE displayName, with manual edit / delete
+- **customer-id-injector plugin** — Auto-creates a customer entity stub, injects profile into the system prompt, and overrides the mem0 user_id so the agent always sees that customer's own memory
+- **Shared LLM config** — The quick-reply suggester and the handoff catch-up extractor both borrow the LLM env from mem0 (single Gemini API key), so there's no second config to maintain
+
+#### Settings (CS hub)
+- **LINE Channel credentials** — Channel access token / channel secret / channel ID with built-in verification
+- **Memory provider** — mem0 / wiki-person toggle (see limitation below)
+- **Quick Reply LLM** — Reuses mem0's LLM; adjustable suggestion count (1–13)
+- **Storage** — Media retention window / capacity warning threshold / on-demand sweep. Files past retention are tombstoned (history kept; content replaced with "[file expired]")
+- **PluginConfigCard** — Business hours, AI master switch, default reply text, applicable channel filter
+- **WikiConflictBanner** — Warns when wiki / memory mode is misconfigured
+
+#### Overview stats + recommendations
+- **Live numbers** — 24h conversations / handoff rate / avg reply latency / total customers / media footprint
+- **Auto recommendations** — Detects anomalies (high handoff rate, storage approaching cap, missing LINE profiles, retention set to "never") and surfaces actionable suggestions
+
+#### System integration
+- **business-hours-gate plugin** — On-hours / off-hours toggle, AI master switch, per-user pause check; auto-installed
+- **LINE async-ack patch + systemd drop-in** — Fixes LINE webhook timeouts caused by OpenClaw's synchronous handling; the drop-in keeps the patch in place after `npm update -g openclaw`
+- **Notification center (dashboard-wide)** — Storage warnings, CS system events (e.g. "extracted N customer memories"), MCC / openclaw upgrade alerts; centralized in the top-right bell with dedup so it never spams
 
 > ⚠️ wiki-person mode does not work on OpenClaw 4.29: tools registered via `api.registerTool` (e.g. `wiki_apply` / `wiki_get`) are not exposed to the agent model, so the agent cannot see them. The customer-service feature defaults to mem0; the wiki-person UI is scaffolding that will activate once OpenClaw exposes plugin-registered tools.
 
