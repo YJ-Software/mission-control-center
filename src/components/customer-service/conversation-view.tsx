@@ -585,7 +585,7 @@ function MessageBubble({ msg, userDisplayName, userId }: { msg: MessageRow; user
     }
   } else if (msg.type === 'sticker') {
     if (stickerId) {
-      const url = `https://stickershop.line-scdn.net/stickershop/v1/sticker/${encodeURIComponent(stickerId)}/iPhone/sticker.png`
+      const url = `https://stickershop.line-scdn.net/stickershop/v1/sticker/${encodeURIComponent(stickerId)}/android/sticker.png`
       body = <img src={url} alt={`sticker ${stickerId}`} className="w-[120px] h-[120px] object-contain" loading="lazy" />
     } else {
       body = <span className="text-2xl">🏷️ sticker</span>

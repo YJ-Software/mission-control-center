@@ -5,7 +5,13 @@
  *
  * Operators pick from these via the sticker picker in the conversation
  * composer. We render thumbnails by URL pattern:
- *   https://stickershop.line-scdn.net/stickershop/v1/sticker/{stickerId}/iPhone/sticker.png
+ *   https://stickershop.line-scdn.net/stickershop/v1/sticker/{stickerId}/android/sticker.png
+ *
+ * Use the `/android/` path (not `/iPhone/`): the iPhone variant of older
+ * packs (e.g. 446) is encoded as Apple's CgBI extended PNG, which Chrome
+ * and Firefox refuse to decode — the picker would show only broken-image
+ * placeholders. The android variant is a standard PNG and works for
+ * every pack.
  *
  * Adding more packs is just appending here. The LINE list is sparsely
  * numbered (some package IDs skip), so we keep explicit ranges per pack
@@ -33,5 +39,5 @@ export const STICKER_PACKS: StickerPack[] = [
 ]
 
 export function stickerImageUrl(stickerId: string): string {
-  return `https://stickershop.line-scdn.net/stickershop/v1/sticker/${encodeURIComponent(stickerId)}/iPhone/sticker.png`
+  return `https://stickershop.line-scdn.net/stickershop/v1/sticker/${encodeURIComponent(stickerId)}/android/sticker.png`
 }
