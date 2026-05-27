@@ -256,7 +256,21 @@ export default definePluginEntry({
 
         // Inbound mirroring lives in message_received above (it has the
         // messageId we need for LINE Content API). before_dispatch only
-        // exists to enforce the per-user operator pause.
+        // exists to enforce slash-command blocking and per-user operator
+        // pause.
+
+        // Block customer-initiated openclaw slash commands (/status,
+        // /reset, /help, /think, /model, …). Without this, anything a
+        // LINE customer sends starting with "/" gets parsed by openclaw's
+        // built-in command dispatcher and the response (often internal
+        // status info) goes back to the customer. We swallow the message
+        // entirely — the inbound was already mirrored in message_received
+        // above, so it still shows up in the Conversations tab and the
+        // operator can decide whether to reply manually.
+        const inboundText = extractTextNonMedia(event);
+        if (typeof inboundText === "string" && /^\s*\//.test(inboundText)) {
+          return { handled: true };
+        }
 
         // Per-user operator pause — silences the agent on this turn. MCC
         // owns the resume schedule; we just consult it here. Runs regardless
