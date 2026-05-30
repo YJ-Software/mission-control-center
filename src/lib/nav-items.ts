@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Clock, Newspaper,
-  MessageSquare, Settings, BrainCircuit, TerminalSquare, Globe, Users, DollarSign, Zap, Container, HardDrive, Wrench, Bot, Headphones,
+  MessageSquare, Settings, BrainCircuit, TerminalSquare, Globe, Users, DollarSign, Zap, Container, HardDrive, Wrench, Bot, Headphones, ScrollText,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -22,6 +22,7 @@ export const navItems: NavItem[] = [
   { href: '/costs', icon: DollarSign, labelKey: 'costs', code: 'COST' },
   { href: '/live-feed', icon: Zap, labelKey: 'liveFeed', code: 'FEED' },
   { href: '/cron-jobs', icon: Clock, labelKey: 'cronJobs', code: 'CRON' },
+  { href: '/system-log', icon: ScrollText, labelKey: 'systemLog', code: 'LOG' },
   { href: '/morning-report', icon: Newspaper, labelKey: 'morningReport', code: 'RPT' },
   { href: '/second-brain', icon: BrainCircuit, labelKey: 'secondBrain', code: 'BRAIN' },
   { href: '/docker', icon: Container, labelKey: 'docker', code: 'DOCK' },

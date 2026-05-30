@@ -1,7 +1,8 @@
 'use client'
 
-import { Globe, Menu, RefreshCw, ArrowUpCircle, Loader2 } from 'lucide-react'
+import { Globe, Menu, RefreshCw, ArrowUpCircle, Loader2, ScrollText } from 'lucide-react'
 import { useState } from 'react'
+import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
@@ -26,6 +27,8 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   const [refreshing, setRefreshing] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [updatingMcc, setUpdatingMcc] = useState(false)
+  const [ocJobId, setOcJobId] = useState<string | null>(null)
+  const [mccJobId, setMccJobId] = useState<string | null>(null)
   const t = useTranslations('header')
   const queryClient = useQueryClient()
 
@@ -51,13 +54,16 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   async function handleUpdate() {
     setUpdating(true)
     try {
-      await fetch('/api/action', {
+      const res = await fetch('/api/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update-openclaw' }),
+        body: JSON.stringify({ action: 'update-openclaw', triggeredBy: 'header-button' }),
       })
+      const data = await res.json().catch(() => ({}))
+      if (data?.jobId) setOcJobId(data.jobId)
       queryClient.invalidateQueries({ queryKey: ['openclaw-version'] })
       queryClient.invalidateQueries({ queryKey: ['services-status'] })
+      queryClient.invalidateQueries({ queryKey: ['system-log-jobs'] })
     } finally {
       setUpdating(false)
     }
@@ -70,9 +76,11 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
       const res = await fetch('/api/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update-mcc' }),
+        body: JSON.stringify({ action: 'update-mcc', triggeredBy: 'header-button' }),
       })
       const data = await res.json().catch(() => ({}))
+      if (data?.jobId) setMccJobId(data.jobId)
+      queryClient.invalidateQueries({ queryKey: ['system-log-jobs'] })
       // update-mcc schedules a service restart; the page will get cut off
       // mid-flight when systemd swaps the symlink. Show a soft notice and
       // reload after a beat.
@@ -142,6 +150,16 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
             {updatingMcc ? t('updating') : t('mccUpdateAvailable', { version: mccCheck!.latest })}
           </button>
         )}
+        {mccJobId && (
+          <Link
+            href={`/system-log?job=${mccJobId}`}
+            className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-mono
+              text-cyan-300/80 hover:text-cyan-200 hover:bg-cyan-500/10 border border-cyan-500/20 transition-colors"
+          >
+            <ScrollText className="w-3 h-3" />
+            {t('viewLog')}
+          </Link>
+        )}
 
         {oc?.updateAvailable && (
           <button
@@ -157,6 +175,16 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
               : <ArrowUpCircle className="w-3.5 h-3.5" />}
             {updating ? t('updating') : t('updateAvailable', { version: oc.latest })}
           </button>
+        )}
+        {ocJobId && (
+          <Link
+            href={`/system-log?job=${ocJobId}`}
+            className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-mono
+              text-amber-300/80 hover:text-amber-200 hover:bg-amber-500/10 border border-amber-500/20 transition-colors"
+          >
+            <ScrollText className="w-3 h-3" />
+            {t('viewLog')}
+          </Link>
         )}
       </div>
 

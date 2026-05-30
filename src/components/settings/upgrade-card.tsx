@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Download, Loader2, CheckCircle2, AlertCircle, ArrowUpCircle, Package, Settings, Save, Terminal, Copy, Check } from 'lucide-react'
+import Link from 'next/link'
+import { Download, Loader2, CheckCircle2, AlertCircle, ArrowUpCircle, Package, Settings, Save, Terminal, Copy, Check, ScrollText } from 'lucide-react'
 
 interface UpgradeStatus {
   mode: 'release' | 'dev' | 'unknown'
@@ -34,6 +35,8 @@ interface OpenclawCheck {
 
 type Phase = 'idle' | 'checking' | 'uploading' | 'applying' | 'restarting' | 'done' | 'error'
 
+interface JobStartResponse { success?: boolean; jobId?: string; error?: string }
+
 export function UpgradeCard() {
   const [status, setStatus] = useState<UpgradeStatus | null>(null)
   const [check, setCheck] = useState<CheckResult | null>(null)
@@ -46,6 +49,9 @@ export function UpgradeCard() {
   const [openclaw, setOpenclaw] = useState<OpenclawCheck | null>(null)
   const [openclawChecking, setOpenclawChecking] = useState(false)
   const [openclawCopied, setOpenclawCopied] = useState(false)
+  const [openclawJobId, setOpenclawJobId] = useState<string | null>(null)
+  const [openclawUpgrading, setOpenclawUpgrading] = useState(false)
+  const [mccJobId, setMccJobId] = useState<string | null>(null)
 
   const loadOpenclawCheck = useCallback(async () => {
     setOpenclawChecking(true)
@@ -131,35 +137,6 @@ export function UpgradeCard() {
     }
   }
 
-  const pollForNewVersion = useCallback(
-    async (expectedVersion: string, timeoutMs = 120_000) => {
-      setPhase('restarting')
-      setMessage(`Waiting for v${expectedVersion}…`)
-      const start = Date.now()
-      while (Date.now() - start < timeoutMs) {
-        await new Promise((r) => setTimeout(r, 2000))
-        try {
-          const res = await fetch('/api/health', { cache: 'no-store' })
-          if (res.ok) {
-            const health = (await res.json()) as { version?: string }
-            if (health.version === expectedVersion) {
-              setPhase('done')
-              setMessage(`Upgraded to v${expectedVersion}`)
-              // Reload the page so the new version's UI takes over.
-              setTimeout(() => window.location.reload(), 1200)
-              return
-            }
-          }
-        } catch {
-          // service restart in flight — expected
-        }
-      }
-      setPhase('error')
-      setMessage('Timed out waiting for the new version. Check journalctl.')
-    },
-    [],
-  )
-
   const handleFileUpload = async (file: File) => {
     setPhase('uploading')
     setMessage(`Uploading ${file.name}…`)
@@ -167,16 +144,18 @@ export function UpgradeCard() {
       setPhase('applying')
       const res = await fetch('/api/upgrade/apply', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream' },
+        headers: { 'Content-Type': 'application/octet-stream', 'x-triggered-by': 'settings-card' },
         body: file,
       })
-      const data = await res.json()
+      const data = (await res.json()) as { ok?: boolean; jobId?: string; error?: string }
       if (!res.ok) {
         setPhase('error')
         setMessage(data.error || `apply failed (${res.status})`)
         return
       }
-      await pollForNewVersion(data.version)
+      if (data.jobId) setMccJobId(data.jobId)
+      setPhase('restarting')
+      setMessage('Restart scheduled — see System Log for live progress')
     } catch (e) {
       setPhase('error')
       setMessage(e instanceof Error ? e.message : String(e))
@@ -186,23 +165,46 @@ export function UpgradeCard() {
   const handleApplyFromManifest = async () => {
     if (!check?.artifact) return
     setPhase('applying')
-    setMessage(`Downloading v${check.latest}…`)
+    setMessage(`Starting upgrade to v${check.latest}…`)
     try {
       const res = await fetch('/api/upgrade/apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: check.artifact.url, sha256: check.artifact.sha256 || undefined }),
+        body: JSON.stringify({
+          url: check.artifact.url,
+          sha256: check.artifact.sha256 || undefined,
+          triggeredBy: 'settings-card',
+        }),
       })
-      const data = await res.json()
+      const data = (await res.json()) as { ok?: boolean; jobId?: string; error?: string }
       if (!res.ok) {
         setPhase('error')
         setMessage(data.error || `apply failed (${res.status})`)
         return
       }
-      await pollForNewVersion(data.version)
+      if (data.jobId) setMccJobId(data.jobId)
+      setPhase('restarting')
+      setMessage('Restart scheduled — see System Log for live progress')
     } catch (e) {
       setPhase('error')
       setMessage(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const handleUpgradeOpenclaw = async () => {
+    setOpenclawUpgrading(true)
+    try {
+      const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update-openclaw', triggeredBy: 'settings-card' }),
+      })
+      const data = (await res.json()) as JobStartResponse
+      if (data?.jobId) setOpenclawJobId(data.jobId)
+      // Refresh detection so the badge clears once npm finishes.
+      setTimeout(() => loadOpenclawCheck(), 30_000)
+    } finally {
+      setOpenclawUpgrading(false)
     }
   }
 
@@ -408,25 +410,50 @@ export function UpgradeCard() {
 
         {openclaw && openclaw.hasUpdate && (
           <div className="rounded-xl border border-purple-400/25 bg-purple-400/[0.04] p-3 space-y-2">
-            <p className="text-sm text-white/85">
-              OpenClaw v{openclaw.latest} available
-              <span className="text-white/30 text-xs"> (from v{openclaw.current})</span>
-            </p>
-            <p className="text-[11px] text-white/55">
-              Run this on the server (SSH) to upgrade. The dashboard service doesn&apos;t have npm in its PATH so it can&apos;t install for you.
-            </p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-[12px] font-mono text-cyan-300 select-all break-all">
-                {openclaw.installCommand}
-              </code>
-              <button
-                onClick={copyOpenclawCommand}
-                className="px-2 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-white/40 hover:text-white/80 transition-colors"
-                title="Copy"
-              >
-                {openclawCopied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-              </button>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm text-white/85">
+                OpenClaw v{openclaw.latest} available
+                <span className="text-white/30 text-xs"> (from v{openclaw.current})</span>
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleUpgradeOpenclaw}
+                  disabled={openclawUpgrading}
+                  className="bg-purple-400/15 border border-purple-400/40 text-purple-300 hover:bg-purple-400/25 transition-all rounded-xl px-4 py-2 flex items-center gap-1 text-sm disabled:opacity-40"
+                >
+                  {openclawUpgrading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <ArrowUpCircle className="w-3.5 h-3.5" />
+                  )}
+                  Upgrade
+                </button>
+                {openclawJobId && (
+                  <Link
+                    href={`/system-log?job=${openclawJobId}`}
+                    className="flex items-center gap-1 px-2 py-2 rounded-lg text-[10px] font-mono text-purple-300/80 hover:text-purple-200 hover:bg-purple-500/10 border border-purple-500/20 transition-colors"
+                  >
+                    <ScrollText className="w-3 h-3" />
+                    View log
+                  </Link>
+                )}
+              </div>
             </div>
+            <details className="text-[11px] text-white/55">
+              <summary className="cursor-pointer text-white/40 hover:text-white/70">Or run on the server yourself</summary>
+              <div className="flex items-center gap-2 mt-2">
+                <code className="flex-1 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-[12px] font-mono text-cyan-300 select-all break-all">
+                  {openclaw.installCommand}
+                </code>
+                <button
+                  onClick={copyOpenclawCommand}
+                  className="px-2 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-white/40 hover:text-white/80 transition-colors"
+                  title="Copy"
+                >
+                  {openclawCopied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </details>
           </div>
         )}
 
@@ -456,6 +483,15 @@ export function UpgradeCard() {
             <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" />
           )}
           <span className="font-mono">{message || phase}</span>
+          {mccJobId && (
+            <Link
+              href={`/system-log?job=${mccJobId}`}
+              className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono text-cyan-300/85 hover:text-cyan-200 hover:bg-cyan-500/10 border border-cyan-500/30"
+            >
+              <ScrollText className="w-3 h-3" />
+              View log
+            </Link>
+          )}
         </div>
       )}
     </div>

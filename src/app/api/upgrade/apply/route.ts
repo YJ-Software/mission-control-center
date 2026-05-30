@@ -10,6 +10,8 @@ import {
   getInstallInfo,
   scheduleServiceRestart,
 } from '@/lib/upgrade/manager'
+import { startJob, type PhaseSpec } from '@/lib/jobs/runner'
+import type { JobKind, TriggerSource } from '@/lib/jobs/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,17 +42,16 @@ async function streamToTempFile(request: Request): Promise<string> {
   return tmpPath
 }
 
+const VALID_SOURCES: TriggerSource[] = ['header-button', 'settings-card', 'quick-action', 'cron', 'api']
+
 /**
- * Apply an upgrade.
+ * Apply an upgrade — now returns a jobId; the actual work runs via the job
+ * runner so the UI can stream logs via /system-log.
  *
  * Two input modes:
- *   - application/octet-stream (body = tarball bytes)   (direct upload)
+ *   - application/octet-stream (body = tarball bytes) — direct upload
  *     Optional header: x-expected-sha256
- *   - application/json with { url, sha256? }            (download & apply)
- *
- * On success, the response is flushed and then a detached `systemctl --user
- * restart` subprocess is scheduled — the current process is about to be
- * killed. Clients should poll /api/health to detect the new version.
+ *   - application/json with { url, sha256?, triggeredBy? } — download & apply
  */
 export async function POST(request: Request) {
   const info = getInstallInfo()
@@ -64,46 +65,113 @@ export async function POST(request: Request) {
     )
   }
 
-  let tarballPath: string | null = null
-  let expectedSha256: string | undefined
-
   try {
     const contentType = request.headers.get('content-type') || ''
+    let kind: JobKind = 'upgrade-mcc-tarball'
+    let label = 'Upgrade Mission Control (tarball upload)'
+    let triggeredBy: TriggerSource = 'settings-card'
+    const phases: PhaseSpec[] = []
 
     if (contentType.includes('application/json')) {
-      const body = (await request.json()) as { url?: string; sha256?: string }
+      const body = (await request.json()) as { url?: string; sha256?: string; triggeredBy?: string }
       if (!body.url) {
         return NextResponse.json({ error: 'missing url' }, { status: 400 })
       }
-      expectedSha256 = body.sha256
-      tarballPath = await downloadArtifact(body.url)
+      const url = body.url
+      const expectedSha256 = body.sha256
+      if (body.triggeredBy && VALID_SOURCES.includes(body.triggeredBy as TriggerSource)) {
+        triggeredBy = body.triggeredBy as TriggerSource
+      }
+      kind = 'upgrade-mcc'
+      label = 'Upgrade Mission Control (manifest)'
+
+      let downloadedPath: string | null = null
+      phases.push({
+        name: 'download artifact',
+        inline: async (log) => {
+          try {
+            log('stdout', `downloading ${url}…`)
+            downloadedPath = await downloadArtifact(url)
+            log('stdout', `downloaded → ${downloadedPath}`)
+            return 0
+          } catch (err) {
+            log('stderr', err instanceof Error ? err.message : String(err))
+            return 1
+          }
+        },
+      })
+      phases.push({
+        name: 'apply upgrade',
+        inline: async (log, ctx) => {
+          if (!downloadedPath) {
+            log('stderr', 'no tarball — download phase failed')
+            return 1
+          }
+          try {
+            log('stdout', 'extracting + swapping symlink…')
+            const result = await applyUpgrade({ tarballPath: downloadedPath, expectedSha256 })
+            ctx.setExpectedVersion(result.version)
+            log('stdout', `staged v${result.version} at ${result.versionDir}`)
+            return 0
+          } catch (err) {
+            log('stderr', err instanceof Error ? err.message : String(err))
+            try { cleanupTempTarball(downloadedPath); } catch { try { await unlink(downloadedPath) } catch {} }
+            return 1
+          }
+        },
+      })
     } else {
-      const headerSha = request.headers.get('x-expected-sha256')
-      if (headerSha) expectedSha256 = headerSha
-      tarballPath = await streamToTempFile(request)
+      const headerSha = request.headers.get('x-expected-sha256') || undefined
+      const headerSource = request.headers.get('x-triggered-by') || ''
+      if (VALID_SOURCES.includes(headerSource as TriggerSource)) {
+        triggeredBy = headerSource as TriggerSource
+      }
+      // Body must be consumed before we can return — stream synchronously.
+      const tarballPath = await streamToTempFile(request)
+
+      phases.push({
+        name: 'apply uploaded tarball',
+        inline: async (log, ctx) => {
+          try {
+            log('stdout', `applying ${tarballPath}`)
+            const result = await applyUpgrade({ tarballPath, expectedSha256: headerSha })
+            ctx.setExpectedVersion(result.version)
+            log('stdout', `staged v${result.version} at ${result.versionDir}`)
+            return 0
+          } catch (err) {
+            log('stderr', err instanceof Error ? err.message : String(err))
+            try { cleanupTempTarball(tarballPath); } catch { try { await unlink(tarballPath) } catch {} }
+            return 1
+          }
+        },
+      })
     }
 
-    const result = await applyUpgrade({ tarballPath, expectedSha256 })
+    const service = info.service
+    phases.push({
+      name: `restart service (${service})`,
+      inline: async (log) => {
+        log('stdout', `scheduling restart in 2s — service: ${service}`)
+        log('system', 'this process will be replaced; log resumes after restart')
+        scheduleServiceRestart(service)
+        return 0
+      },
+    })
 
-    // Schedule the restart AFTER building the response. The subprocess sleeps
-    // a couple of seconds so Next.js has time to flush the response before
-    // SIGTERM arrives.
-    scheduleServiceRestart(info.service)
+    const meta = startJob({
+      kind,
+      label,
+      triggeredBy,
+      phases,
+      restartingBeforeLastPhase: true,
+    })
 
     return NextResponse.json({
       ok: true,
-      version: result.version,
-      versionDir: result.versionDir,
+      jobId: meta.id,
       restarting: true,
     })
   } catch (err) {
-    if (tarballPath) {
-      try {
-        cleanupTempTarball(tarballPath)
-      } catch {
-        try { await unlink(tarballPath) } catch {}
-      }
-    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : String(err) },
       { status: 500 },

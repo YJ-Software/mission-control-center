@@ -4,7 +4,8 @@
     "mccUpdateAvailable": "MCC {version} available",
     "updateMccConfirm": "Upgrade MCC to {version}? The service will restart and the page will briefly disconnect.",
     "updateMccFailed": "MCC upgrade failed: {error}",
-    "updating": "Updating..."
+    "updating": "Updating...",
+    "viewLog": "View log"
   },
   "notifications": {
     "title": "Notifications",
@@ -26,6 +27,7 @@
     "liveFeed": "Live Feed",
     "docker": "Docker",
     "cronJobs": "Cron Jobs",
+    "systemLog": "System Log",
     "morningReport": "Morning Report",
     "settings": "Settings",
     "chat": "Chat",
@@ -544,6 +546,20 @@
     "runStatusOk": "Success",
     "runStatusError": "Failed",
     "runStatusSkipped": "Skipped"
+  },
+  "systemLog": {
+    "title": "System Log",
+    "subtitle": "Background jobs & upgrade history",
+    "jobs": "Jobs",
+    "empty": "No jobs yet.",
+    "selectJob": "Select a job to view its log.",
+    "loading": "Loading…",
+    "waitingOutput": "Waiting for output…",
+    "autoScroll": "Auto-scroll",
+    "viewLog": "View log",
+    "searchPlaceholder": "search…",
+    "statusAll": "all status",
+    "kindAll": "all kinds"
   },
   "morningReport": {
     "title": "Morning Report",

@@ -4,7 +4,8 @@
     "mccUpdateAvailable": "MCC {version} 可更新",
     "updateMccConfirm": "升級 MCC 到 {version} ？升級期間服務會重啟、頁面會短暫斷線。",
     "updateMccFailed": "MCC 升級失敗：{error}",
-    "updating": "更新中..."
+    "updating": "更新中...",
+    "viewLog": "查看 log"
   },
   "notifications": {
     "title": "通知",
@@ -26,6 +27,7 @@
     "liveFeed": "即時動態",
     "docker": "Docker",
     "cronJobs": "排程管理",
+    "systemLog": "系統紀錄",
     "morningReport": "晨報管理",
     "settings": "設定",
     "chat": "對話",
@@ -544,6 +546,20 @@
     "runStatusOk": "成功",
     "runStatusError": "失敗",
     "runStatusSkipped": "跳過"
+  },
+  "systemLog": {
+    "title": "系統紀錄",
+    "subtitle": "背景工作與升級歷程",
+    "jobs": "工作清單",
+    "empty": "尚無紀錄。",
+    "selectJob": "請選擇一筆工作查看 log。",
+    "loading": "載入中…",
+    "waitingOutput": "等待輸出…",
+    "autoScroll": "自動捲動",
+    "viewLog": "查看 log",
+    "searchPlaceholder": "搜尋…",
+    "statusAll": "所有狀態",
+    "kindAll": "所有種類"
   },
   "morningReport": {
     "title": "晨報管理",
