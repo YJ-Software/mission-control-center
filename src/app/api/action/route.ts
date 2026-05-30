@@ -100,7 +100,7 @@ const actions: Record<string, ActionHandler> = {
       triggeredBy,
       phases: [
         { name: 'npm install -g openclaw@latest', shell: 'npm install -g openclaw@latest 2>&1' },
-        { name: 'openclaw doctor --non-interactive', shell: 'openclaw doctor --non-interactive 2>&1', allowFailure: true },
+        { name: 'openclaw doctor --fix --non-interactive', shell: 'openclaw doctor --fix --non-interactive 2>&1', allowFailure: true },
       ],
     })
     return { success: true, jobId: meta.id, message: 'Upgrade job started' }
