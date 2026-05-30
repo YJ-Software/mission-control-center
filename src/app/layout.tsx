@@ -1,21 +1,9 @@
 import type { Metadata, Viewport } from 'next'
-import { Outfit, JetBrains_Mono } from 'next/font/google'
 import { NextIntlClientProvider } from 'next-intl'
 import { getLocale, getMessages } from 'next-intl/server'
+import '@fontsource-variable/outfit'
+import '@fontsource-variable/jetbrains-mono'
 import './globals.css'
-
-const outfit = Outfit({
-  subsets: ['latin'],
-  variable: '--font-sans',
-  display: 'swap',
-})
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-  weight: ['400', '500'],
-  display: 'swap',
-})
 
 export const metadata: Metadata = {
   title: 'Mission Control — OpenClaw',
@@ -34,7 +22,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const messages = await getMessages()
 
   return (
-    <html lang={locale} className={`dark ${outfit.variable} ${jetbrainsMono.variable}`}>
+    <html lang={locale} className="dark">
       <body className="font-sans">
         <NextIntlClientProvider messages={messages}>
           {children}

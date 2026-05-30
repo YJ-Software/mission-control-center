@@ -51,6 +51,9 @@
     --chart-3: 270 80% 60%;
     --chart-4: 60 100% 50%;
     --chart-5: 0 72% 51%;
+
+    --font-sans: 'Outfit Variable', 'Outfit', sans-serif;
+    --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', monospace;
   }
 
   @media (max-width: 767px) {
