@@ -1,7 +1,40 @@
 import { spawn } from 'child_process'
+import { existsSync } from 'node:fs'
+import os from 'node:os'
 import type { JobKind, JobMeta, JobPhase, LogLine, LogStream, TriggerSource } from './types'
 import { appendLogLine, newJobId, upsertJobMeta } from './store'
 import { emitJobEvent } from './sse'
+
+// Augment PATH for spawned shells. systemd user units inherit a slim PATH and
+// `bash -lc` is unreliable on Ubuntu (~/.bashrc returns early when non-interactive,
+// so its npm-global/brew exports never run). We prepend the common per-user bin
+// dirs ourselves so CLIs like `openclaw` resolve regardless of unit env.
+let cachedPath: string | null = null
+function augmentedPath(): string {
+  if (cachedPath !== null) return cachedPath
+  const home = os.homedir()
+  const candidates = [
+    `${home}/.npm-global/bin`,
+    `${home}/.linuxbrew/bin`,
+    '/home/linuxbrew/.linuxbrew/bin',
+    `${home}/.local/bin`,
+    '/usr/local/bin',
+  ]
+  const existing = (process.env.PATH ?? '').split(':').filter(Boolean)
+  const merged: string[] = []
+  const seen = new Set<string>()
+  for (const p of [...candidates.filter((p) => existsSync(p)), ...existing]) {
+    if (seen.has(p)) continue
+    seen.add(p)
+    merged.push(p)
+  }
+  cachedPath = merged.join(':')
+  return cachedPath
+}
+
+function childEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, PATH: augmentedPath() }
+}
 
 export interface PhaseContext {
   /** mutate the job's expectedVersion (used by upgrade flows to record the target after extraction) */
@@ -49,10 +82,8 @@ function emitMeta(meta: JobMeta) {
 
 async function runShellPhase(jobId: string, phaseIndex: number, cmd: string): Promise<number> {
   return new Promise<number>((resolve) => {
-    // Use bash -lc to pick up the user's login PATH (npm/node/openclaw often
-    // come from nvm/volta that systemd's default env doesn't include).
-    const child = spawn('bash', ['-lc', cmd], {
-      env: process.env,
+    const child = spawn('bash', ['-c', cmd], {
+      env: childEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     child.stdout.setEncoding('utf8')
@@ -129,7 +160,13 @@ export function startJob(spec: JobSpec): JobMeta {
         code = 1
       }
 
-      const ok = code === 0 || !!phaseSpec.allowFailure
+      // allowFailure tolerates non-zero exits (e.g. doctor warnings), but
+      // 127 means the command itself was not found — that's never an allowable
+      // outcome and silently green-ticking it hides real install/PATH bugs.
+      if (code === 127 && phaseSpec.allowFailure) {
+        logTo(id, i, 'stderr', 'command not found (exit 127) — refusing to allowFailure')
+      }
+      const ok = code === 0 || (!!phaseSpec.allowFailure && code !== 127)
       meta.phases[i] = {
         ...meta.phases[i],
         status: ok ? 'success' : 'failed',
