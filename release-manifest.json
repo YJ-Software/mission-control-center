@@ -1,18 +1,23 @@
 {
   "latest": {
-    "version": "0.3.40",
-    "releaseDate": "2026-05-30T07:42:44.264Z",
+    "version": "0.3.41",
+    "releaseDate": "2026-06-01T07:16:07.199Z",
+    "notes": "- fix(jobs): runner now augments PATH for spawned shells (npm-global / brew / .local / .npm bin) so commands like `openclaw` resolve regardless of slim systemd PATH or non-interactive `.bashrc` early-return.\n- fix(jobs): exit 127 (command not found) is no longer eligible for `allowFailure` — silent green-tick on missing binaries was hiding install/PATH bugs in the upgrade flow.",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.40/mission-control-v0.3.40-linux-x64.tar.gz",
-        "sha256": "2b506976606c2f4d9237d2a64ac723d5dc24a6a2d4fb6a49a057517ef8e4ca1a",
-        "size": 154330602
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.41/mission-control-v0.3.41-linux-x64.tar.gz",
+        "sha256": "5d4368c716632729079620db7ebfd367ef5153be020a4b68f2c24d26e3ce2b43",
+        "size": 26604155
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.40",
+      "releaseDate": "2026-05-30T07:42:44.264Z"
+    },
     {
       "version": "0.3.39",
       "releaseDate": "2026-05-27T16:39:04.504Z"
@@ -48,10 +53,6 @@
     {
       "version": "0.3.31",
       "releaseDate": "2026-05-23T19:40:31.020Z"
-    },
-    {
-      "version": "0.3.30",
-      "releaseDate": "2026-05-23T19:29:07.150Z"
     }
   ]
 }
