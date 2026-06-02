@@ -1,7 +1,7 @@
 'use client'
 
 import * as Tabs from '@radix-ui/react-tabs'
-import { Globe, BookOpen, Lightbulb, Network } from 'lucide-react'
+import { Globe, BookOpen, Network } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { ObsidianDashboard } from './obsidian/obsidian-dashboard'
 import { NotebookLMDashboard } from './notebooklm/notebooklm-dashboard'
@@ -14,7 +14,6 @@ export function SecondBrainManager() {
     { value: 'obsidian', icon: Globe, label: t('tabs.obsidian') },
     { value: 'wiki', icon: Network, label: 'Wiki' },
     { value: 'notebooklm', icon: BookOpen, label: t('tabs.notebooklm') },
-    { value: 'notion', icon: Lightbulb, label: t('tabs.notion') },
   ]
 
   return (
@@ -43,11 +42,6 @@ export function SecondBrainManager() {
         </Tabs.Content>
         <Tabs.Content value="notebooklm">
           <NotebookLMDashboard />
-        </Tabs.Content>
-        <Tabs.Content value="notion">
-          <div className="flex items-center justify-center h-64 text-white/30 text-sm">
-            {t('comingSoon')}
-          </div>
         </Tabs.Content>
       </Tabs.Root>
     </div>

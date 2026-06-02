@@ -39,6 +39,8 @@ function childEnv(): NodeJS.ProcessEnv {
 export interface PhaseContext {
   /** mutate the job's expectedVersion (used by upgrade flows to record the target after extraction) */
   setExpectedVersion: (v: string) => void
+  /** publish a key/value pair to the job meta (e.g. device-code URL + user code) */
+  setExtra: (key: string, value: string) => void
 }
 
 export interface PhaseSpec {
@@ -145,6 +147,10 @@ export function startJob(spec: JobSpec): JobMeta {
             {
               setExpectedVersion: (v) => {
                 meta.expectedVersion = v
+                emitMeta(meta)
+              },
+              setExtra: (key, value) => {
+                meta.extra = { ...(meta.extra ?? {}), [key]: value }
                 emitMeta(meta)
               },
             },

@@ -10,6 +10,7 @@ export type JobKind =
   | 'disk-cleanup'
   | 'gc'
   | 'doctor'
+  | 'provider-login'
 
 export type JobStatus = 'running' | 'restarting' | 'success' | 'failed' | 'cancelled'
 
@@ -35,6 +36,8 @@ export interface JobMeta {
   phases: JobPhase[]
   /** for self-restart jobs: target version we expect after restart */
   expectedVersion?: string
+  /** free-form key/value the runner publishes during execution (e.g. device-code prompt URL + code) */
+  extra?: Record<string, string>
 }
 
 export type LogStream = 'stdout' | 'stderr' | 'phase' | 'system'

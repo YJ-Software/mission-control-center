@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Clock, Newspaper,
-  MessageSquare, Settings, BrainCircuit, TerminalSquare, Globe, Users, DollarSign, Zap, Container, HardDrive, Wrench, Bot, Headphones, ScrollText,
+  MessageSquare, Settings, BrainCircuit, TerminalSquare, Globe, Users, DollarSign, Zap, Container, HardDrive, Wrench, Bot, Headphones, ScrollText, KeyRound,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -22,11 +22,12 @@ export const navItems: NavItem[] = [
   { href: '/costs', icon: DollarSign, labelKey: 'costs', code: 'COST' },
   { href: '/live-feed', icon: Zap, labelKey: 'liveFeed', code: 'FEED' },
   { href: '/cron-jobs', icon: Clock, labelKey: 'cronJobs', code: 'CRON' },
-  { href: '/system-log', icon: ScrollText, labelKey: 'systemLog', code: 'LOG' },
   { href: '/morning-report', icon: Newspaper, labelKey: 'morningReport', code: 'RPT' },
   { href: '/second-brain', icon: BrainCircuit, labelKey: 'secondBrain', code: 'BRAIN' },
   { href: '/docker', icon: Container, labelKey: 'docker', code: 'DOCK' },
   { href: '/backup', icon: HardDrive, labelKey: 'backup', code: 'BKUP' },
+  { href: '/llm-auth', icon: KeyRound, labelKey: 'llmAuth', code: 'AUTH' },
   { href: '/setup', icon: Wrench, labelKey: 'setup', code: 'INIT' },
+  { href: '/system-log', icon: ScrollText, labelKey: 'systemLog', code: 'LOG' },
   { href: '/settings', icon: Settings, labelKey: 'settings', code: 'CONF' },
 ]
