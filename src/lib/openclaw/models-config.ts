@@ -174,3 +174,90 @@ export async function removeAlias(agent: string, alias: string): Promise<void> {
   const r = await runOpenclaw(['models', '--agent', agent, 'aliases', 'remove', alias])
   if (r.code !== 0) throw new Error(`alias remove failed (${r.code}): ${r.stderr.trim()}`)
 }
+
+// ── per-agent overrides ───────────────────────────────────────────────────
+// Per OpenClaw schema (docs.openclaw.ai/gateway/config-agents), per-agent
+// model config lives at `agents.list[i].model` in openclaw.json. The CLI
+// `models set / fallbacks add` commands only touch the global defaults; to
+// override per agent we go through `openclaw config set agents.list[<idx>].model …`.
+
+export interface AgentModelOverride {
+  primary?: string
+  fallbacks?: string[]
+}
+
+export interface AgentListEntry {
+  id: string
+  model?: AgentModelOverride
+}
+
+const SAFE_AGENT_ID = /^[a-zA-Z0-9_.-]+$/
+
+export async function getAgentsList(): Promise<AgentListEntry[]> {
+  const r = await runOpenclaw(['config', 'get', 'agents.list'])
+  if (r.code !== 0) throw new Error(`config get failed (${r.code}): ${r.stderr.trim()}`)
+  const parsed = JSON.parse(r.stdout) as Array<{ id?: string; model?: AgentModelOverride }>
+  if (!Array.isArray(parsed)) return []
+  return parsed
+    .filter((e) => typeof e?.id === 'string' && SAFE_AGENT_ID.test(e.id))
+    .map((e) => ({ id: e.id as string, model: e.model }))
+}
+
+async function findAgentIndex(agentId: string): Promise<number> {
+  if (!SAFE_AGENT_ID.test(agentId)) throw new Error(`invalid agent id: ${agentId}`)
+  const list = await getAgentsList()
+  const idx = list.findIndex((e) => e.id === agentId)
+  if (idx < 0) throw new Error(`agent not found in agents.list: ${agentId}`)
+  return idx
+}
+
+export async function setAgentModelOverride(
+  agentId: string,
+  override: AgentModelOverride,
+): Promise<void> {
+  // Validate each model id the same way globally to defang argv smuggling.
+  if (override.primary !== undefined) assertSafeModelId(override.primary)
+  if (override.fallbacks !== undefined) {
+    if (!Array.isArray(override.fallbacks)) throw new Error('fallbacks must be an array')
+    for (const m of override.fallbacks) assertSafeModelId(m)
+  }
+  const idx = await findAgentIndex(agentId)
+  const payload = JSON.stringify(override)
+  const r = await runOpenclaw([
+    'config',
+    'set',
+    `agents.list[${idx}].model`,
+    payload,
+    '--strict-json',
+  ])
+  if (r.code !== 0) throw new Error(`config set failed (${r.code}): ${r.stderr.trim()}`)
+}
+
+export async function clearAgentModelOverride(agentId: string): Promise<void> {
+  const idx = await findAgentIndex(agentId)
+  const r = await runOpenclaw(['config', 'unset', `agents.list[${idx}].model`])
+  if (r.code !== 0) throw new Error(`config unset failed (${r.code}): ${r.stderr.trim()}`)
+}
+
+/** Read the TRUE global defaults (agents.defaults.model) from openclaw.json,
+ * not the per-agent effective view (which `openclaw models status` returns).
+ * Used by the "Global defaults" tab so reorder/set writes match what's shown. */
+export async function getGlobalDefaults(): Promise<{
+  primary: string | null
+  fallbacks: string[]
+}> {
+  const r = await runOpenclaw(['config', 'get', 'agents.defaults.model'])
+  if (r.code !== 0) {
+    if (r.stderr.includes('not found')) return { primary: null, fallbacks: [] }
+    throw new Error(`config get failed (${r.code}): ${r.stderr.trim()}`)
+  }
+  try {
+    const parsed = JSON.parse(r.stdout) as { primary?: string; fallbacks?: string[] }
+    return {
+      primary: parsed.primary ?? null,
+      fallbacks: Array.isArray(parsed.fallbacks) ? parsed.fallbacks : [],
+    }
+  } catch {
+    return { primary: null, fallbacks: [] }
+  }
+}
