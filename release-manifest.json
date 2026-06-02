@@ -1,19 +1,23 @@
 {
   "latest": {
-    "version": "0.3.42",
-    "releaseDate": "2026-06-02T15:54:07.823Z",
-    "notes": "- feat(llm-auth): new unified \"LLM 管理\" page at /llm-auth with two tabs.\n- **Auth tab**: per-agent OpenClaw provider credentials — list with status (active/expiring/expired/cooldown), add via OAuth device-code (URL+code modal, opens browser flow for OpenAI Codex) or paste API key, copy to other agents, remove from one/all. Catalogue: openai-codex, anthropic, zai, kimi, google, minimax, minimax-cn, deepseek.\n- **Models tab**: set global default model, manage fallback ordering, alias CRUD.\n- chore: move /system-log nav item next to /settings.\n- chore: remove unused Notion placeholder tab from /second-brain.\n- chore: collapse repeated clack spinner frames in PTY job logs (no more \"Waiting for device authorization…\" flood).",
+    "version": "0.3.43",
+    "releaseDate": "2026-06-02T17:03:13.054Z",
+    "notes": "- feat(llm-auth): Models tab restructured — first \"預設模型\" tab shows TRUE global config (was leaking main agent's override view), then one tab per agent for per-agent overrides at `agents.list[].model`.\n- Per-agent editor: pick primary model or inherit global; optionally override fallbacks with reorderable list; \"Save\" auto-dispatches clear when both fields set to inherit.\n- Snappier UX: optimistic cache patches on set-default / fallbacks add/remove/reorder / agent override so badge + highlight track the spinner instead of waiting on the ~3s openclaw refetch.\n- Loader2 spinner + \"saving\" copy on model-card buttons, override editor buttons, and fallbacks section header during reorder.\n- Native \\<select\\> popups forced to dark color-scheme + per-option bg for Firefox / older Chrome (no more white-on-white dropdowns on light system themes).",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.42/mission-control-v0.3.42-linux-x64.tar.gz",
-        "sha256": "af52f2be81a0861fd2bc45d771e0f8d9c1b42d2e437fe1bc2e3042a29fc2e01f",
-        "size": 26682985
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.43/mission-control-v0.3.43-linux-x64.tar.gz",
+        "sha256": "af16f09affbc6e8dff5a27959299caaba29e8a3749f02496df55ed046ea1b83b",
+        "size": 26723733
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.42",
+      "releaseDate": "2026-06-02T15:54:07.823Z"
+    },
     {
       "version": "0.3.41",
       "releaseDate": "2026-06-01T07:16:07.199Z"
@@ -49,10 +53,6 @@
     {
       "version": "0.3.33",
       "releaseDate": "2026-05-23T20:13:22.390Z"
-    },
-    {
-      "version": "0.3.32",
-      "releaseDate": "2026-05-23T19:57:25.581Z"
     }
   ]
 }
