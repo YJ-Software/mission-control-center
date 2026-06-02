@@ -1,19 +1,23 @@
 {
   "latest": {
-    "version": "0.3.41",
-    "releaseDate": "2026-06-01T07:16:07.199Z",
-    "notes": "- fix(jobs): runner now augments PATH for spawned shells (npm-global / brew / .local / .npm bin) so commands like `openclaw` resolve regardless of slim systemd PATH or non-interactive `.bashrc` early-return.\n- fix(jobs): exit 127 (command not found) is no longer eligible for `allowFailure` — silent green-tick on missing binaries was hiding install/PATH bugs in the upgrade flow.",
+    "version": "0.3.42",
+    "releaseDate": "2026-06-02T15:54:07.823Z",
+    "notes": "- feat(llm-auth): new unified \"LLM 管理\" page at /llm-auth with two tabs.\n- **Auth tab**: per-agent OpenClaw provider credentials — list with status (active/expiring/expired/cooldown), add via OAuth device-code (URL+code modal, opens browser flow for OpenAI Codex) or paste API key, copy to other agents, remove from one/all. Catalogue: openai-codex, anthropic, zai, kimi, google, minimax, minimax-cn, deepseek.\n- **Models tab**: set global default model, manage fallback ordering, alias CRUD.\n- chore: move /system-log nav item next to /settings.\n- chore: remove unused Notion placeholder tab from /second-brain.\n- chore: collapse repeated clack spinner frames in PTY job logs (no more \"Waiting for device authorization…\" flood).",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.41/mission-control-v0.3.41-linux-x64.tar.gz",
-        "sha256": "5d4368c716632729079620db7ebfd367ef5153be020a4b68f2c24d26e3ce2b43",
-        "size": 26604155
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.42/mission-control-v0.3.42-linux-x64.tar.gz",
+        "sha256": "af52f2be81a0861fd2bc45d771e0f8d9c1b42d2e437fe1bc2e3042a29fc2e01f",
+        "size": 26682985
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.41",
+      "releaseDate": "2026-06-01T07:16:07.199Z"
+    },
     {
       "version": "0.3.40",
       "releaseDate": "2026-05-30T07:42:44.264Z"
@@ -49,10 +53,6 @@
     {
       "version": "0.3.32",
       "releaseDate": "2026-05-23T19:57:25.581Z"
-    },
-    {
-      "version": "0.3.31",
-      "releaseDate": "2026-05-23T19:40:31.020Z"
     }
   ]
 }
