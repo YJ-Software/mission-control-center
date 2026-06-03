@@ -119,15 +119,19 @@ async function main() {
     `--outfile=${join(STANDALONE, 'server.js')}`,
   ])
 
-  // Ensure native/runtime-only deps that Next.js's NFT tracing misses are
-  // present in standalone's node_modules. These are used only by our custom
-  // server.ts (not by API routes) so NFT doesn't see the import graph.
+  // Ensure native/runtime-only deps with native binaries are present in
+  // standalone's node_modules in full. Next.js NFT may create a partial dir
+  // (just lib/ + package.json from the JS entrypoints) without copying the
+  // build/ tree containing the .node binary; if we skipped on `dst exists`
+  // the resulting tarball would crash at runtime with "Cannot find module
+  // './prebuilds/linux-x64/pty.node'" (regression that shipped in v0.3.43
+  // when node-pty was first imported by an API-route-reachable lib).
   const mustCopyDeps = ['node-pty']
   for (const dep of mustCopyDeps) {
     const src = join(ROOT, 'node_modules', dep)
     const dst = join(STANDALONE, 'node_modules', dep)
     if (!existsSync(src)) continue
-    if (existsSync(dst)) continue
+    if (existsSync(dst)) rmSync(dst, { recursive: true, force: true })
     console.log(`\n$ cp -r node_modules/${dep} standalone/node_modules/`)
     cpSync(src, dst, { recursive: true })
   }
