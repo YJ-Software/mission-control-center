@@ -195,48 +195,67 @@ const SAFE_AGENT_ID = /^[a-zA-Z0-9_.-]+$/
 
 export async function getAgentsList(): Promise<AgentListEntry[]> {
   const r = await runOpenclaw(['config', 'get', 'agents.list'])
-  if (r.code !== 0) throw new Error(`config get failed (${r.code}): ${r.stderr.trim()}`)
-  const parsed = JSON.parse(r.stdout) as Array<{ id?: string; model?: AgentModelOverride }>
+  if (r.code !== 0) {
+    // Fresh openclaw.json doesn't have agents.list until something writes it.
+    if (r.stderr.includes('not found')) return []
+    throw new Error(`config get failed (${r.code}): ${r.stderr.trim()}`)
+  }
+  let parsed: Array<{ id?: string; model?: AgentModelOverride }>
+  try {
+    parsed = JSON.parse(r.stdout)
+  } catch {
+    return []
+  }
   if (!Array.isArray(parsed)) return []
   return parsed
     .filter((e) => typeof e?.id === 'string' && SAFE_AGENT_ID.test(e.id))
     .map((e) => ({ id: e.id as string, model: e.model }))
 }
 
-async function findAgentIndex(agentId: string): Promise<number> {
-  if (!SAFE_AGENT_ID.test(agentId)) throw new Error(`invalid agent id: ${agentId}`)
-  const list = await getAgentsList()
-  const idx = list.findIndex((e) => e.id === agentId)
-  if (idx < 0) throw new Error(`agent not found in agents.list: ${agentId}`)
-  return idx
+async function writeAgentsList(list: AgentListEntry[]): Promise<void> {
+  const r = await runOpenclaw([
+    'config',
+    'set',
+    'agents.list',
+    JSON.stringify(list),
+    '--strict-json',
+  ])
+  if (r.code !== 0) throw new Error(`config set failed (${r.code}): ${r.stderr.trim()}`)
 }
 
 export async function setAgentModelOverride(
   agentId: string,
   override: AgentModelOverride,
 ): Promise<void> {
+  if (!SAFE_AGENT_ID.test(agentId)) throw new Error(`invalid agent id: ${agentId}`)
   // Validate each model id the same way globally to defang argv smuggling.
   if (override.primary !== undefined) assertSafeModelId(override.primary)
   if (override.fallbacks !== undefined) {
     if (!Array.isArray(override.fallbacks)) throw new Error('fallbacks must be an array')
     for (const m of override.fallbacks) assertSafeModelId(m)
   }
-  const idx = await findAgentIndex(agentId)
-  const payload = JSON.stringify(override)
-  const r = await runOpenclaw([
-    'config',
-    'set',
-    `agents.list[${idx}].model`,
-    payload,
-    '--strict-json',
-  ])
-  if (r.code !== 0) throw new Error(`config set failed (${r.code}): ${r.stderr.trim()}`)
+  // Read-modify-write the whole agents.list because `config set` replaces
+  // array indexes only when the agent is already in the list; on a fresh
+  // openclaw.json with no agents.list we'd otherwise have no target index.
+  const list = await getAgentsList()
+  const idx = list.findIndex((e) => e.id === agentId)
+  if (idx >= 0) {
+    list[idx] = { ...list[idx], model: override }
+  } else {
+    list.push({ id: agentId, model: override })
+  }
+  await writeAgentsList(list)
 }
 
 export async function clearAgentModelOverride(agentId: string): Promise<void> {
-  const idx = await findAgentIndex(agentId)
-  const r = await runOpenclaw(['config', 'unset', `agents.list[${idx}].model`])
-  if (r.code !== 0) throw new Error(`config unset failed (${r.code}): ${r.stderr.trim()}`)
+  if (!SAFE_AGENT_ID.test(agentId)) throw new Error(`invalid agent id: ${agentId}`)
+  const list = await getAgentsList()
+  const idx = list.findIndex((e) => e.id === agentId)
+  if (idx < 0) return // already absent — no-op
+  const next = { ...list[idx] }
+  delete next.model
+  list[idx] = next
+  await writeAgentsList(list)
 }
 
 /** Read the TRUE global defaults (agents.defaults.model) from openclaw.json,
