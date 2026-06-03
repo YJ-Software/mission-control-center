@@ -1,19 +1,23 @@
 {
   "latest": {
-    "version": "0.3.44",
-    "releaseDate": "2026-06-03T06:23:39.348Z",
-    "notes": "- fix(release): node-pty native binary (pty.node) is now correctly bundled in the standalone tarball. v0.3.43 was broken on customer installs because Next.js NFT pre-created a partial node_modules/node-pty/ stub and the build script's existsSync fast-path skipped the full recursive copy, leaving out build/Release/pty.node. Anyone running v0.3.43 should upgrade — service won't start otherwise.\n- tests: new e2e spec llm-auth-kimi covers the full LLM 管理 flow (add Kimi API key → set per-agent override → chat reply).",
+    "version": "0.3.45",
+    "releaseDate": "2026-06-03T06:27:05.435Z",
+    "notes": "- fix(llm-auth): /llm-auth now correctly lists agents on a fresh OpenClaw install (was silently empty because the page required ~/.openclaw/agents/<id>/agent/auth-profiles.json to exist; now lists by dir presence and paste-api-key creates the file on first write).",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.44/mission-control-v0.3.44-linux-x64.tar.gz",
-        "sha256": "a76c4c9b7a52572402fb46bd1e06b62c466953a179209586cd758a08d35c997f",
-        "size": 26785269
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.45/mission-control-v0.3.45-linux-x64.tar.gz",
+        "sha256": "64e531693452745b9f4e0e714583d3b8ca809cd42eaab126303b48e7cae0d4eb",
+        "size": 29231778
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.44",
+      "releaseDate": "2026-06-03T06:23:39.348Z"
+    },
     {
       "version": "0.3.43",
       "releaseDate": "2026-06-02T17:03:13.054Z"
@@ -49,10 +53,6 @@
     {
       "version": "0.3.35",
       "releaseDate": "2026-05-24T17:29:34.828Z"
-    },
-    {
-      "version": "0.3.34",
-      "releaseDate": "2026-05-24T12:49:07.559Z"
     }
   ]
 }
