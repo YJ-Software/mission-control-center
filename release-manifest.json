@@ -1,19 +1,23 @@
 {
   "latest": {
-    "version": "0.3.46",
-    "releaseDate": "2026-06-03T07:14:41.526Z",
-    "notes": "- fix(llm-auth): per-agent model override works on a fresh openclaw.json (was throwing \"Config path not found\" because agents.list didn't exist yet). Now bootstraps the list entry on first override and no-ops cleanly when the agent isn't there.",
+    "version": "0.3.47",
+    "releaseDate": "2026-06-03T07:22:57.390Z",
+    "notes": "- fix(llm-auth): /llm-auth Models tab now works on a fresh openclaw.json (was showing \"agent not found: main\" because /overrides only listed agents already in agents.list config). Now merges filesystem agents with config overrides.",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.46/mission-control-v0.3.46-linux-x64.tar.gz",
-        "sha256": "3d6ccc85eb944fc83ee0026f65c91d74dc19bdba0295c156ba9cb513aca12211",
-        "size": 29037373
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.47/mission-control-v0.3.47-linux-x64.tar.gz",
+        "sha256": "737171e85186652f08015d580a19636cea95d1ec8d092182a8048dbb6eaed92b",
+        "size": 29848607
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.46",
+      "releaseDate": "2026-06-03T07:14:41.526Z"
+    },
     {
       "version": "0.3.45",
       "releaseDate": "2026-06-03T06:27:05.435Z"
@@ -49,10 +53,6 @@
     {
       "version": "0.3.37",
       "releaseDate": "2026-05-25T07:57:17.135Z"
-    },
-    {
-      "version": "0.3.36",
-      "releaseDate": "2026-05-24T19:27:11.421Z"
     }
   ]
 }
