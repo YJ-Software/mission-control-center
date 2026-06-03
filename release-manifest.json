@@ -1,19 +1,23 @@
 {
   "latest": {
-    "version": "0.3.47",
-    "releaseDate": "2026-06-03T07:22:57.390Z",
-    "notes": "- fix(llm-auth): /llm-auth Models tab now works on a fresh openclaw.json (was showing \"agent not found: main\" because /overrides only listed agents already in agents.list config). Now merges filesystem agents with config overrides.",
+    "version": "0.3.48",
+    "releaseDate": "2026-06-03T07:33:11.581Z",
+    "notes": "- feat(llm-auth): paste-api-key / device-code now auto-register the provider's models.providers.<id> in openclaw.json when missing, so a model added via MCC actually appears in the model dropdown afterward (was silently invisible on fresh installs because OpenClaw needs a baseUrl + api entry separate from the auth profile). Initial template: kimi/kimi-code. Idempotent — skips when the provider is already configured.",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.47/mission-control-v0.3.47-linux-x64.tar.gz",
-        "sha256": "737171e85186652f08015d580a19636cea95d1ec8d092182a8048dbb6eaed92b",
-        "size": 29848607
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.48/mission-control-v0.3.48-linux-x64.tar.gz",
+        "sha256": "3ab3a05de694a52a63e6c466e15a3f7ac2be838e09202123e22c667cec173dd3",
+        "size": 39442464
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.47",
+      "releaseDate": "2026-06-03T07:22:57.390Z"
+    },
     {
       "version": "0.3.46",
       "releaseDate": "2026-06-03T07:14:41.526Z"
@@ -49,10 +53,6 @@
     {
       "version": "0.3.38",
       "releaseDate": "2026-05-26T08:42:43.313Z"
-    },
-    {
-      "version": "0.3.37",
-      "releaseDate": "2026-05-25T07:57:17.135Z"
     }
   ]
 }
