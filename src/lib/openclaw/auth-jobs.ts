@@ -5,6 +5,7 @@ import * as pty from 'node-pty'
 import type { JobSpec } from '../jobs/runner'
 import type { LogStream, TriggerSource } from '../jobs/types'
 import { copyProfile, readProfiles } from './auth-profiles'
+import { findProvider } from './auth-providers'
 
 let cachedPath: string | null = null
 function augmentedPath(): string {
@@ -31,6 +32,50 @@ function augmentedPath(): string {
 
 function childEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return { ...process.env, ...extra, PATH: augmentedPath() }
+}
+
+// Spawn `openclaw config get models.providers.<id>` and resolve true if
+// the provider is already configured. Used to decide whether to seed
+// the provider template after paste-api-key / device-code.
+function isProviderConfigured(providerId: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const child = spawn('openclaw', ['config', 'get', `models.providers.${providerId}`], {
+      env: childEnv(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stderr = ''
+    child.stdout.on('data', () => {})
+    child.stderr.setEncoding('utf8')
+    child.stderr.on('data', (d: string) => (stderr += d))
+    child.on('error', () => resolve(false))
+    child.on('close', (code) => {
+      // Exit 0 means the path exists (config get returns the JSON).
+      // "Config path not found" → not configured yet.
+      if (code === 0) resolve(true)
+      else if (stderr.includes('not found')) resolve(false)
+      else resolve(false)
+    })
+  })
+}
+
+function writeProviderConfig(providerId: string, template: unknown): Promise<number> {
+  return new Promise((resolve) => {
+    const child = spawn(
+      'openclaw',
+      [
+        'config',
+        'set',
+        `models.providers.${providerId}`,
+        JSON.stringify(template),
+        '--strict-json',
+      ],
+      { env: childEnv(), stdio: ['ignore', 'pipe', 'pipe'] },
+    )
+    child.stdout.on('data', () => {})
+    child.stderr.on('data', () => {})
+    child.on('error', () => resolve(127))
+    child.on('close', (code) => resolve(code ?? 0))
+  })
 }
 
 function safeSpawn(
@@ -200,6 +245,7 @@ export function buildDeviceCodeLoginJob(opts: DeviceCodeLoginOptions): JobSpec {
           return 0
         },
       },
+      registerProviderPhase(provider),
       {
         name:
           applyToAgents.length > 0
@@ -220,6 +266,44 @@ export function buildDeviceCodeLoginJob(opts: DeviceCodeLoginOptions): JobSpec {
         },
       },
     ],
+  }
+}
+
+/** Phase that writes the provider's config template under
+ * `models.providers.<id>` if it isn't already there. Without this step,
+ * OpenClaw treats the saved auth profile as orphaned — the model never
+ * shows up in `models list` because there's no provider entry pointing
+ * at a baseUrl/api. Idempotent: skips when the provider is already
+ * configured. */
+function registerProviderPhase(providerId: string): {
+  name: string
+  inline: (
+    log: (s: LogStream, t: string) => void,
+  ) => Promise<number>
+  allowFailure?: boolean
+} {
+  return {
+    name: `register provider config (${providerId})`,
+    // Failing to seed the template doesn't break auth — keep going.
+    allowFailure: true,
+    inline: async (log) => {
+      const spec = findProvider(providerId)
+      if (!spec?.providerConfig) {
+        log('system', `no template for ${providerId} — skipping`)
+        return 0
+      }
+      if (await isProviderConfigured(providerId)) {
+        log('system', `${providerId} already configured — skipping`)
+        return 0
+      }
+      const code = await writeProviderConfig(providerId, spec.providerConfig)
+      if (code !== 0) {
+        log('stderr', `provider config write failed (${code})`)
+        return code
+      }
+      log('system', `registered ${providerId} with ${spec.providerConfig.models.length} model(s)`)
+      return 0
+    },
   }
 }
 
@@ -280,6 +364,7 @@ export function buildPasteApiKeyJob(opts: PasteApiKeyOptions): JobSpec {
           return 0
         },
       },
+      registerProviderPhase(provider),
       {
         name:
           applyToAgents.length > 0
