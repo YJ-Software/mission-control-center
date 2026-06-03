@@ -20,13 +20,8 @@ const actionDefs: ActionDef[] = [
   { id: 'update-openclaw', emoji: '⬆️', labelKey: 'updateOpenclaw', loadingKey: 'updating', danger: true },
   { id: 'update-mcc', emoji: '⬆️', labelKey: 'updateMcc', loadingKey: 'updating', danger: true, confirm: 'confirmUpdateMcc' },
   { id: 'restart-tailscale', emoji: '🌐', labelKey: 'restartTailscale', loadingKey: 'restarting', confirm: 'confirmRestartTailscale' },
-  { id: 'kill-tmux', emoji: '🧹', labelKey: 'killTmux', loadingKey: 'killing', confirm: 'confirmKillTmux' },
-  { id: 'gc', emoji: '♻️', labelKey: 'gitGc', loadingKey: 'runningGc' },
   { id: 'check-update', emoji: '🔍', labelKey: 'checkUpdates', loadingKey: 'checking' },
   { id: 'sys-update', emoji: '📦', labelKey: 'aptUpdate', loadingKey: 'updating', danger: true, confirm: 'confirmSysUpdate' },
-  { id: 'disk-cleanup', emoji: '💾', labelKey: 'diskCleanup', loadingKey: 'cleaning' },
-  { id: 'restart-claude', emoji: '🤖', labelKey: 'restartClaude', loadingKey: 'restarting' },
-  { id: 'scrape-usage', emoji: '📊', labelKey: 'usageScrape', loadingKey: 'scraping' },
 ]
 
 export function QuickActions() {
