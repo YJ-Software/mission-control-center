@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { exec } from 'child_process'
-import path from 'path'
-import os from 'os'
 import { startJob } from '@/lib/jobs/runner'
 import type { TriggerSource } from '@/lib/jobs/types'
 
@@ -21,9 +19,6 @@ function run(cmd: string, timeout = 30000): Promise<{ success: boolean; output?:
     })
   })
 }
-
-const WORKSPACE_DIR = os.homedir()
-const PROJ_DIR = path.join(WORKSPACE_DIR, 'projects')
 
 type ActionResult = { success: boolean; output?: string; error?: string; message?: string; jobId?: string }
 type ActionHandler = (ctx: { triggeredBy: TriggerSource }) => Promise<ActionResult>
@@ -184,26 +179,6 @@ const actions: Record<string, ActionHandler> = {
     return { success: true, jobId: meta.id, message: `Upgrading to v${expectedVersion} — service restart scheduled` }
   },
 
-  'kill-tmux': async () => {
-    return run('tmux kill-session -t claude-persistent 2>/dev/null; echo "Tmux sessions cleaned"')
-  },
-
-  'gc': async ({ triggeredBy }) => {
-    const meta = startJob({
-      kind: 'gc',
-      label: 'git gc on all projects',
-      triggeredBy,
-      phases: [
-        {
-          name: 'git gc',
-          shell:
-            `if [ -d "${PROJ_DIR}" ]; then for d in ${PROJ_DIR}/*/; do (cd "$d" && echo "→ $d" && git gc --quiet 2>&1); done; fi; echo "GC complete"`,
-        },
-      ],
-    })
-    return { success: true, jobId: meta.id }
-  },
-
   'check-update': async () => {
     return run('npm outdated -g openclaw 2>/dev/null || echo "All packages up to date"')
   },
@@ -216,38 +191,6 @@ const actions: Record<string, ActionHandler> = {
       phases: [
         { name: 'apt update', shell: 'sudo apt update 2>&1' },
         { name: 'apt upgrade', shell: 'sudo apt upgrade -y 2>&1' },
-      ],
-    })
-    return { success: true, jobId: meta.id }
-  },
-
-  'disk-cleanup': async ({ triggeredBy }) => {
-    const meta = startJob({
-      kind: 'disk-cleanup',
-      label: 'disk cleanup',
-      triggeredBy,
-      phases: [
-        { name: 'apt autoremove', shell: 'sudo apt autoremove -y 2>&1', allowFailure: true },
-        { name: 'apt clean', shell: 'sudo apt clean 2>&1', allowFailure: true },
-        { name: 'journalctl vacuum', shell: 'sudo journalctl --vacuum-time=7d 2>&1', allowFailure: true },
-      ],
-    })
-    return { success: true, jobId: meta.id }
-  },
-
-  'restart-claude': async ({ triggeredBy }) => {
-    const meta = startJob({
-      kind: 'restart-claude',
-      label: 'Restart Claude tmux session',
-      triggeredBy,
-      phases: [
-        {
-          name: 'restart claude-persistent tmux',
-          shell:
-            `tmux kill-session -t claude-persistent 2>/dev/null; sleep 1; ` +
-            `tmux new-session -d -s claude-persistent -x 200 -y 60 && ` +
-            `tmux send-keys -t claude-persistent "cd ${WORKSPACE_DIR} && claude" Enter && echo "Claude session started"`,
-        },
       ],
     })
     return { success: true, jobId: meta.id }

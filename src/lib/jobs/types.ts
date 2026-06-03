@@ -5,10 +5,7 @@ export type JobKind =
   | 'restart-openclaw'
   | 'restart-mcc'
   | 'restart-tailscale'
-  | 'restart-claude'
   | 'sys-update'
-  | 'disk-cleanup'
-  | 'gc'
   | 'doctor'
   | 'provider-login'
 
