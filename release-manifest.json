@@ -1,19 +1,23 @@
 {
   "latest": {
-    "version": "0.3.48",
-    "releaseDate": "2026-06-03T07:33:11.581Z",
-    "notes": "- feat(llm-auth): paste-api-key / device-code now auto-register the provider's models.providers.<id> in openclaw.json when missing, so a model added via MCC actually appears in the model dropdown afterward (was silently invisible on fresh installs because OpenClaw needs a baseUrl + api entry separate from the auth profile). Initial template: kimi/kimi-code. Idempotent — skips when the provider is already configured.",
+    "version": "0.3.49",
+    "releaseDate": "2026-06-03T12:39:30.728Z",
+    "notes": "- chore: remove 5 unused dashboard quick actions (Disk Cleanup / Restart Claude Tmux / Usage Scrape / Git GC All / Kill Tmux Sessions) along with their backend handlers and orphan i18n keys.",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.48/mission-control-v0.3.48-linux-x64.tar.gz",
-        "sha256": "3ab3a05de694a52a63e6c466e15a3f7ac2be838e09202123e22c667cec173dd3",
-        "size": 39442464
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.49/mission-control-v0.3.49-linux-x64.tar.gz",
+        "sha256": "387e2c210da18c42a9e1c491b42c470e2f230b52512bb1d83976108462ded42e",
+        "size": 26753851
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.48",
+      "releaseDate": "2026-06-03T07:33:11.581Z"
+    },
     {
       "version": "0.3.47",
       "releaseDate": "2026-06-03T07:22:57.390Z"
@@ -49,10 +53,6 @@
     {
       "version": "0.3.39",
       "releaseDate": "2026-05-27T16:39:04.504Z"
-    },
-    {
-      "version": "0.3.38",
-      "releaseDate": "2026-05-26T08:42:43.313Z"
     }
   ]
 }
