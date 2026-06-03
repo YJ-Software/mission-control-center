@@ -50,23 +50,33 @@ export interface ProfileUsage {
   lastFailureAt?: number
 }
 
+const SAFE_AGENT_DIR = /^[a-zA-Z0-9_.-]+$/
+
 export async function listAgents(): Promise<AgentPaths[]> {
-  let dirs: string[] = []
+  let entries: string[] = []
   try {
-    dirs = await readdir(AGENTS_ROOT)
+    entries = await readdir(AGENTS_ROOT)
   } catch {
     return []
   }
   const out: AgentPaths[] = []
-  for (const id of dirs) {
-    const profilesPath = join(AGENTS_ROOT, id, 'agent', 'auth-profiles.json')
-    const statePath = join(AGENTS_ROOT, id, 'agent', 'auth-state.json')
+  for (const id of entries) {
+    // Skip anything that doesn't look like a clean agent id (e.g. hidden
+    // files, stray dotfiles), so `find <agent>` doesn't accidentally surface
+    // unrelated entries on a fresh install.
+    if (!SAFE_AGENT_DIR.test(id)) continue
+    const dir = join(AGENTS_ROOT, id)
     try {
-      await stat(profilesPath)
-      out.push({ id, profilesPath, statePath })
+      const s = await stat(dir)
+      if (!s.isDirectory()) continue
     } catch {
-      // agent dir without an auth-profiles.json — skip
+      continue
     }
+    out.push({
+      id,
+      profilesPath: join(dir, 'agent', 'auth-profiles.json'),
+      statePath: join(dir, 'agent', 'auth-state.json'),
+    })
   }
   return out.sort((a, b) => a.id.localeCompare(b.id))
 }
