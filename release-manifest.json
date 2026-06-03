@@ -1,19 +1,23 @@
 {
   "latest": {
-    "version": "0.3.43",
-    "releaseDate": "2026-06-02T17:03:13.054Z",
-    "notes": "- feat(llm-auth): Models tab restructured — first \"預設模型\" tab shows TRUE global config (was leaking main agent's override view), then one tab per agent for per-agent overrides at `agents.list[].model`.\n- Per-agent editor: pick primary model or inherit global; optionally override fallbacks with reorderable list; \"Save\" auto-dispatches clear when both fields set to inherit.\n- Snappier UX: optimistic cache patches on set-default / fallbacks add/remove/reorder / agent override so badge + highlight track the spinner instead of waiting on the ~3s openclaw refetch.\n- Loader2 spinner + \"saving\" copy on model-card buttons, override editor buttons, and fallbacks section header during reorder.\n- Native \\<select\\> popups forced to dark color-scheme + per-option bg for Firefox / older Chrome (no more white-on-white dropdowns on light system themes).",
+    "version": "0.3.44",
+    "releaseDate": "2026-06-03T06:23:39.348Z",
+    "notes": "- fix(release): node-pty native binary (pty.node) is now correctly bundled in the standalone tarball. v0.3.43 was broken on customer installs because Next.js NFT pre-created a partial node_modules/node-pty/ stub and the build script's existsSync fast-path skipped the full recursive copy, leaving out build/Release/pty.node. Anyone running v0.3.43 should upgrade — service won't start otherwise.\n- tests: new e2e spec llm-auth-kimi covers the full LLM 管理 flow (add Kimi API key → set per-agent override → chat reply).",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.43/mission-control-v0.3.43-linux-x64.tar.gz",
-        "sha256": "af16f09affbc6e8dff5a27959299caaba29e8a3749f02496df55ed046ea1b83b",
-        "size": 26723733
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.44/mission-control-v0.3.44-linux-x64.tar.gz",
+        "sha256": "a76c4c9b7a52572402fb46bd1e06b62c466953a179209586cd758a08d35c997f",
+        "size": 26785269
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.43",
+      "releaseDate": "2026-06-02T17:03:13.054Z"
+    },
     {
       "version": "0.3.42",
       "releaseDate": "2026-06-02T15:54:07.823Z"
@@ -49,10 +53,6 @@
     {
       "version": "0.3.34",
       "releaseDate": "2026-05-24T12:49:07.559Z"
-    },
-    {
-      "version": "0.3.33",
-      "releaseDate": "2026-05-23T20:13:22.390Z"
     }
   ]
 }
