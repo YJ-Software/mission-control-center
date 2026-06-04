@@ -18,14 +18,14 @@ test.describe('ImunifyAV setup flow', () => {
     await page.goto(`${baseURL}/setup`)
     await page.getByRole('tab', { name: /防毒軟體|ImunifyAV/i }).click()
 
-    // Normalize starting state: if a previous run left ImunifyAV installed,
-    // purge it first so the rest of the spec runs against a clean baseline.
-    const alreadyInstalled = await page
-      .getByText(/服務狀態/)
-      .isVisible({ timeout: 3_000 })
-      .catch(() => false)
-    if (alreadyInstalled) {
-      await page.getByRole('button', { name: /完整移除/ }).click()
+    // Normalize starting state: the status panel takes a few seconds to
+    // load (the `/api/setup/imunifyav/status` poll). Wait until we see
+    // either the install or the purge button, then branch.
+    const installBtn = page.getByRole('button', { name: '一鍵安裝' })
+    const purgeBtn = page.getByRole('button', { name: /完整移除/ }).first()
+    await expect(installBtn.or(purgeBtn)).toBeVisible({ timeout: 15_000 })
+    if (await purgeBtn.isVisible().catch(() => false)) {
+      await purgeBtn.click()
       await page.getByRole('button', { name: /確認完整移除/ }).click()
       await expect(page.getByText('尚未安裝')).toBeVisible({ timeout: PURGE_TIMEOUT })
     }
