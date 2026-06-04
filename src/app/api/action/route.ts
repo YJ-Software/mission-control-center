@@ -89,13 +89,17 @@ const actions: Record<string, ActionHandler> = {
   },
 
   'update-openclaw': async ({ triggeredBy }) => {
+    // `openclaw update --yes` runs the bundled upgrade pipeline: global npm
+    // update + **plugin update sync** (which a plain `npm install -g openclaw`
+    // misses, leaving externally-installed plugins like @openclaw/codex pinned
+    // to their nested openclaw version) + completion refresh + gateway
+    // restart + doctor. We rely on it instead of issuing the steps ourselves.
     const meta = startJob({
       kind: 'upgrade-openclaw',
       label: 'Upgrade OpenClaw CLI',
       triggeredBy,
       phases: [
-        { name: 'npm install -g openclaw@latest', shell: 'npm install -g openclaw@latest 2>&1' },
-        { name: 'openclaw doctor --fix --non-interactive', shell: 'openclaw doctor --fix --non-interactive 2>&1', allowFailure: true },
+        { name: 'openclaw update --yes', shell: 'openclaw update --yes 2>&1' },
       ],
     })
     return { success: true, jobId: meta.id, message: 'Upgrade job started' }
