@@ -9,6 +9,20 @@ Two layers:
   throwaway environment (VPS / container) — they mutate system state
   (apt installs, dpkg, systemd units).
 
+## E2E is the release gate
+
+The E2E suite **is the mechanism that validates the openclaw-MCC pairing** stamped on every release tag (`2026.6.1-v0.3.52`). The pairing is a claim of fact: *this MCC tarball passed the full E2E against that openclaw version on a throwaway box*. A release that hasn't been through the suite is not a real release — it's a bet.
+
+Workflow when cutting a new MCC version:
+
+1. Find out what openclaw is running on the throwaway (`openclaw --version`).
+2. `MCC_OPENCLAW_VERSION=<that version> npm run build:release` — bakes the pairing into `version.json`.
+3. Push the tarball to the throwaway, upgrade, wait for `/api/health` to come up at the new version.
+4. Run `npm run test:e2e` against the throwaway.
+5. **Only after the suite is green** → `npm run publish:release` (which pushes the manifest + GitHub release with the paired tag).
+
+If a test fails, fix it (in MCC or the spec) and rebuild. Never publish past a red E2E — the paired tag would be a lie. The full procedure including copy-paste commands lives in `.claude/skills/release/SKILL.md`.
+
 ## Quick commands
 
 ```bash
