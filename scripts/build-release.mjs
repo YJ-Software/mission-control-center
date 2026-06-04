@@ -67,13 +67,44 @@ function archTag() {
   return `${platform}-${arch}`
 }
 
-/** Detect the openclaw version we're pairing this release with. Looks in
- *  npm-global / linuxbrew / PATH and parses `openclaw --version` output
- *  like "OpenClaw 2026.6.1 (sha)". Returns null if not found — release
- *  still ships, the version is just unpaired. */
+/** Resolve the openclaw version this release should claim pairing with.
+ *
+ *  Precedence (highest first):
+ *    1. `MCC_OPENCLAW_VERSION` env override — set when the operator just ran
+ *       throwaway E2E against a NEW openclaw and wants to roll the prefix
+ *       forward. The skill enforces "E2E must be green" before this gets set.
+ *    2. `release-manifest.json` latest.openclawVersion — STICKY. Mcc-only
+ *       patch releases reuse the last validated openclaw pairing so they
+ *       don't have to re-run E2E for a logic-only fix.
+ *    3. Local `openclaw --version` — last-resort fallback for first-time
+ *       setup before any manifest exists.
+ *    4. null — release still ships, version is just unpaired. */
+function openclawPinnedInManifest() {
+  try {
+    const manifestPath = join(ROOT, 'release-manifest.json')
+    if (!existsSync(manifestPath)) return null
+    const parsed = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    const pinned = parsed?.latest?.openclawVersion
+    return typeof pinned === 'string' && pinned ? pinned : null
+  } catch {
+    return null
+  }
+}
+
 function detectOpenclawVersion() {
   const override = process.env.MCC_OPENCLAW_VERSION
   if (override) return override.trim()
+  // Sticky: read the last validated pairing from the in-repo manifest.
+  try {
+    const manifestPath = join(ROOT, 'release-manifest.json')
+    if (existsSync(manifestPath)) {
+      const parsed = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      const pinned = parsed?.latest?.openclawVersion
+      if (typeof pinned === 'string' && pinned) return pinned
+    }
+  } catch {
+    // ignore — fall through to local detect
+  }
   const candidates = [
     join(os.homedir(), '.npm-global', 'bin', 'openclaw'),
     join(os.homedir(), '.linuxbrew', 'bin', 'openclaw'),
@@ -95,6 +126,13 @@ function detectOpenclawVersion() {
 async function main() {
   const mccVersion = readPkgVersion()
   const openclawVersion = detectOpenclawVersion()
+  const ocSource = process.env.MCC_OPENCLAW_VERSION
+    ? 'env MCC_OPENCLAW_VERSION (operator override — implies fresh E2E pass)'
+    : openclawPinnedInManifest()
+      ? `sticky from release-manifest.json (mcc-patch release reuses last validated pairing)`
+      : openclawVersion
+        ? `local openclaw --version (first-time setup — run E2E to validate)`
+        : '(not detected)'
   const displayVersion = openclawVersion ? `${openclawVersion}-v${mccVersion}` : mccVersion
   const commit = gitShortSha()
   const buildTime = new Date().toISOString()
@@ -106,7 +144,8 @@ async function main() {
   console.log(`Mission Control release build`)
   console.log(`  display:   ${displayVersion}`)
   console.log(`  mcc:       ${mccVersion}`)
-  console.log(`  openclaw:  ${openclawVersion || '(not detected; release will be unpaired)'}`)
+  console.log(`  openclaw:  ${openclawVersion || '(unpaired — manifest will have no openclawVersion)'}`)
+  console.log(`             source: ${ocSource}`)
   console.log(`  commit:    ${commit || '(no git)'}`)
   console.log(`  buildTime: ${buildTime}`)
   console.log(`  target:    ${tag}`)

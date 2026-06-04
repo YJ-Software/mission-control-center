@@ -11,15 +11,20 @@ The procedure below is **rigid** — do the steps in order, don't skip. The buil
 
 ## Versioning convention
 
-Each release is **paired with an openclaw version**. The display version is `<openclawVersion>-v<mccVersion>`, e.g. `2026.6.1-v0.3.52`. The pairing means: this MCC tarball passed the full Playwright E2E on a throwaway box running that openclaw version. Customers see the combined string in the sidebar, manifest, and GitHub release tag.
+Each release is **paired with an openclaw version**. Display: `<openclawVersion>-v<mccVersion>`, e.g. `2026.6.1-v0.3.52`. The pairing claims: *this MCC tarball passed the full Playwright E2E on a throwaway box running that openclaw version*.
 
-`build-release.mjs` detects the local `openclaw --version` at build time and bakes it into `version.json`. When validating against a throwaway running a different openclaw (common — the dev machine usually lags), override with:
+**The prefix is sticky. The suffix is free.**
 
-```bash
-MCC_OPENCLAW_VERSION=2026.6.1 npm run build:release
-```
+- **Bumping the MCC suffix** (`2026.6.1-v0.3.52` → `2026.6.1-v0.3.53`): no E2E required. The openclaw pairing isn't changing, the prior validation still stands for that openclaw version. `build-release.mjs` defaults the prefix from `release-manifest.json`'s `latest.openclawVersion`, so a normal `npm run build:release` just reuses it.
+- **Bumping the openclaw prefix** (`2026.6.1-v0.3.x` → `2026.6.2-v0.3.x`): **requires a fresh throwaway E2E pass** against that openclaw version. Set `MCC_OPENCLAW_VERSION=2026.6.2` to claim the new pairing — the env override is the operator's "I just validated this" attestation. Don't set it without running E2E.
 
-If `openclaw` isn't on PATH at all, the build still works but the release publishes unpaired (display falls back to `v0.3.52` only).
+`build-release.mjs` resolution precedence:
+1. `MCC_OPENCLAW_VERSION` env override (use only after E2E pass on the new openclaw)
+2. `release-manifest.json` → `latest.openclawVersion` (sticky from prior validated release)
+3. Local `openclaw --version` (first-time setup before any manifest exists)
+4. Unpaired — display falls back to `v0.3.52`
+
+Build output prints the source so you can see which path won.
 
 ## Before starting
 
@@ -62,66 +67,72 @@ systemctl --user stop mission-control
 
 `npm run build:release` runs `rm -rf .next` for a clean build. The dev unit's Turbopack cache lives in `.next/dev/` — nuking it while running corrupts the cache. Stop first, restart in step 8.
 
-## Build the tarball (step 5)
+## Decide the openclaw pairing (step 5)
 
-First check the openclaw version running on the throwaway you'll validate against — that's the pairing we want baked into the tarball:
+Before building, ask: **am I bumping the openclaw prefix this release, or just the MCC suffix?**
+
+- **MCC-only patch** (the common case — bug fix, small feature, reusing the prior validated openclaw): nothing to do. Just `npm run build:release`. The prefix sticks to whatever `release-manifest.json` last validated.
+- **Openclaw prefix bump** (you want this release tagged with a newer openclaw): you MUST run a fresh throwaway E2E against that openclaw first. Set `MCC_OPENCLAW_VERSION=<new>` only after the suite is green.
+
+To check what openclaw version the throwaway is running (helps decide):
 
 ```bash
-# On the throwaway (or via SSH using .env.e2e.local creds):
-sudo -u openclaw /home/openclaw/.npm-global/bin/openclaw --version
+ssh $E2E_SSH_USER@$E2E_SSH_HOST 'sudo -u openclaw /home/openclaw/.npm-global/bin/openclaw --version'
 # → OpenClaw 2026.6.1 (sha)
 ```
 
-Then build, overriding the openclaw version if the local one differs:
+## Build the tarball (step 6)
+
+For an MCC-only patch (most cases):
 
 ```bash
-MCC_OPENCLAW_VERSION=2026.6.1 npm run build:release
+npm run build:release
 ```
 
-Takes 20–40 s. Produces `dist/mission-control-vX.Y.Z-linux-x64.tar.gz` (~25 MB) plus the install scripts. Pipeline lives in `scripts/build-release.mjs`.
+For a prefix bump (after fresh E2E pass on the new openclaw):
 
-Verify the bake before continuing:
+```bash
+MCC_OPENCLAW_VERSION=2026.6.2 npm run build:release
+```
+
+Takes 20–40 s. Produces `dist/mission-control-vX.Y.Z-linux-x64.tar.gz` (~25 MB) plus the install scripts. Pipeline lives in `scripts/build-release.mjs`. The build output prints the resolved openclaw source — verify it matches your intent before proceeding.
+
+Verify the bake:
 
 ```bash
 tar xzOf dist/mission-control-v*-linux-x64.tar.gz ./version.json
-# Should show { "version": "2026.6.1-v0.X.Y", "mccVersion": "0.X.Y", "openclawVersion": "2026.6.1", ... }
+# { "version": "2026.6.1-v0.X.Y", "mccVersion": "0.X.Y", "openclawVersion": "2026.6.1", ... }
 ```
 
-## Validate on throwaway (step 6) — required gate before publish
+## Validate on throwaway (step 7) — required ONLY for openclaw prefix bumps
 
-**This step is what gives the paired version its meaning.** Don't skip — the whole point of `2026.6.1-v0.3.52` is "this MCC passed E2E against that openclaw". A release that hasn't gone through this is a lie.
+**When the prefix is unchanged from the prior release**, the existing pairing claim still holds — the throwaway has been validated for that openclaw version, and a logic-only MCC change inherits that validation. **Skip this step.**
 
-Upgrade the throwaway to the freshly-built tarball, then run the full E2E suite against it:
+**When you're bumping the openclaw prefix**, this step is what gives the new pairing its meaning. Don't publish past a red E2E — the new paired tag would be a lie.
 
 ```bash
-# 1. Trigger upgrade via the dashboard's update-mcc action — the throwaway's
-#    /api/upgrade/check will pick up the new manifest entry only AFTER publish,
-#    so for pre-publish validation push the tarball manually:
+# 1. Push the tarball + upgrade the throwaway in place
 source <(grep -v '^#' .env.e2e.local | grep -v '^$')
 scp dist/mission-control-v*.tar.gz $E2E_SSH_USER@$E2E_SSH_HOST:/tmp/
 ssh $E2E_SSH_USER@$E2E_SSH_HOST 'sudo -u openclaw bash /home/openclaw/mission-control/current/install/upgrade.sh /tmp/mission-control-v*.tar.gz'
 
 # 2. Wait for the new version to come up healthy
-until curl -s --max-time 5 http://$E2E_SSH_HOST:3737/api/health | grep -q "\"mccVersion\":\"$(node -p 'require(\"./package.json\").version')\""; do sleep 5; done
+NEW_MCC="$(node -p 'require("./package.json").version')"
+until curl -s --max-time 5 http://$E2E_SSH_HOST:3737/api/health | grep -q "\"mccVersion\":\"$NEW_MCC\""; do sleep 5; done
 curl -s http://$E2E_SSH_HOST:3737/api/health
-# → "version":"2026.6.1-v0.3.52","mccVersion":"0.3.52","openclawVersion":"2026.6.1"
 
-# 3. Run the full Playwright E2E suite
+# 3. Full Playwright E2E
 PLAYWRIGHT_BASE_URL=http://$E2E_SSH_HOST:3737 AUTH_PASSWORD=$AUTH_PASSWORD npm run test:e2e
 ```
 
-**Pass criteria:** all tests green (or only known-upstream failures, like the openclaw isolated-cron model-default bug — flag those to the user before proceeding).
+**Pass criteria:** all tests green, or only known-upstream failures (flag those to the user before proceeding).
 
 If E2E fails:
-- Fix the bug (in MCC or note as upstream-known)
-- Rebuild (`npm run build:release`)
-- Re-upgrade the throwaway
-- Re-run E2E
-- Only proceed to publish when the suite is clean
+- Logic bug → fix in MCC, rebuild, re-upgrade, re-run.
+- Spec is environment-flaky → fix the spec to be idempotent. Don't waive.
+- Upstream openclaw bug → either pin to the prior openclaw (drop the env override, rebuild) or note as known-issue in release notes.
 
-If the failure is environmental (e.g. throwaway state pollution from a prior run), the spec is buggy — fix the spec to be idempotent, don't waive.
-
-## Publish (steps 7–8)
+## Publish (steps 8–9)
 
 With release notes:
 
@@ -148,13 +159,13 @@ Useful escape hatches:
 - `MCC_NO_GH=1 npm run publish:release` — skip the GitHub upload (manifest-only)
 - `MCC_NO_PUSH=1 npm run publish:release` — skip the git commit + push
 
-## Restart the dev server (step 9)
+## Restart the dev server (step 10)
 
 ```bash
 systemctl --user start mission-control
 ```
 
-## Verify (step 10)
+## Verify (step 11)
 
 ```bash
 # Public manifest — should show the new version (raw.githubusercontent has up to ~5 min cache)
@@ -202,25 +213,40 @@ Customer dashboards on the bad version will see the manifest report an "older" `
 
 ## One-shot copy-paste version
 
+### MCC-only patch (common case — pairing inherited from prior release)
+
+```bash
+git status && git branch --show-current
+npm version patch
+git push --follow-tags
+systemctl --user stop mission-control
+npm run build:release                          # prefix sticks from manifest
+MCC_NOTES="- …" npm run publish:release        # MCC_NOTES optional
+systemctl --user start mission-control
+curl -sL https://raw.githubusercontent.com/YJ-Software/mission-control-center/main/release-manifest.json | head -30
+```
+
+### Openclaw prefix bump (rare — requires E2E validation)
+
 ```bash
 # 1. Pre-flight + bump
 git status && git branch --show-current
 npm version patch
 git push --follow-tags
 
-# 2. Build paired with throwaway's openclaw
+# 2. Build paired with the NEW openclaw on the throwaway
 systemctl --user stop mission-control
 source <(grep -v '^#' .env.e2e.local | grep -v '^$')
 OC_VER="$(ssh $E2E_SSH_USER@$E2E_SSH_HOST 'sudo -u openclaw /home/openclaw/.npm-global/bin/openclaw --version' | sed -En 's/OpenClaw ([0-9.]+).*/\1/p')"
 MCC_OPENCLAW_VERSION="$OC_VER" npm run build:release
 
-# 3. Validate on throwaway (REQUIRED — pairing claim depends on this)
+# 3. Validate on throwaway — REQUIRED for the new pairing claim
 scp dist/mission-control-v*.tar.gz $E2E_SSH_USER@$E2E_SSH_HOST:/tmp/
 ssh $E2E_SSH_USER@$E2E_SSH_HOST 'sudo -u openclaw bash /home/openclaw/mission-control/current/install/upgrade.sh /tmp/mission-control-v*.tar.gz'
 PLAYWRIGHT_BASE_URL=http://$E2E_SSH_HOST:3737 AUTH_PASSWORD=$AUTH_PASSWORD npm run test:e2e
 
 # 4. Only after E2E green: publish + restart
-MCC_NOTES="- …" npm run publish:release       # MCC_NOTES optional
+MCC_NOTES="- …" npm run publish:release
 systemctl --user start mission-control
 curl -sL https://raw.githubusercontent.com/YJ-Software/mission-control-center/main/release-manifest.json | head -30
 ```
