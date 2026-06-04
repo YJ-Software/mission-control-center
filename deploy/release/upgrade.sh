@@ -33,7 +33,13 @@ log() { echo "• $*"; }
 
 VERSION="$(basename "$TARBALL" | sed -En 's/^mission-control-v([0-9]+\.[0-9]+\.[0-9]+)-.*\.tar\.gz$/\1/p')"
 if [[ -z "$VERSION" ]]; then
-  VERSION="$(tar xzOf "$TARBALL" ./version.json 2>/dev/null | sed -En 's/.*"version": *"([^"]+)".*/\1/p' || true)"
+  # Prefer the bare semver (mccVersion) if the build added it, otherwise fall
+  # back to whatever's in `version` (older builds before openclaw pairing).
+  VERSION_JSON="$(tar xzOf "$TARBALL" ./version.json 2>/dev/null || true)"
+  VERSION="$(echo "$VERSION_JSON" | sed -En 's/.*"mccVersion": *"([^"]+)".*/\1/p')"
+  if [[ -z "$VERSION" ]]; then
+    VERSION="$(echo "$VERSION_JSON" | sed -En 's/.*"version": *"([^"]+)".*/\1/p' || true)"
+  fi
 fi
 [[ -n "$VERSION" ]] || die "could not determine version from $TARBALL"
 
@@ -112,7 +118,9 @@ log "waiting up to ${HEALTH_TIMEOUT}s for v$VERSION on $HEALTH_URL …"
 HEALTHY=""
 for i in $(seq 1 "$HEALTH_TIMEOUT"); do
   RESPONSE="$(curl -sf "$HEALTH_URL" 2>/dev/null || true)"
-  if echo "$RESPONSE" | grep -q "\"version\":\"$VERSION\""; then
+  # Match either "mccVersion":"X.Y.Z" (post-pairing builds expose it) or
+  # the legacy "version":"X.Y.Z" (semver-only builds before openclaw pairing).
+  if echo "$RESPONSE" | grep -qE "\"(mccVersion|version)\":\"$VERSION\""; then
     HEALTHY=yes
     break
   fi

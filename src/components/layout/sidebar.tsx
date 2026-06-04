@@ -26,12 +26,17 @@ export function Sidebar() {
   })
   const ocVersion = versionData?.openclawVersion?.installed
 
-  const { data: appVersion } = useQuery<{ version: string; commit: string | null }>({
+  const { data: appVersion } = useQuery<{ version: string; commit: string | null; openclawVersion: string | null }>({
     queryKey: ['app-version'],
     queryFn: () => fetch('/api/health').then(r => r.json()),
     staleTime: Infinity,
-    select: (data) => ({ version: data.version, commit: data.commit }),
+    select: (data) => ({
+      version: data.version,
+      commit: data.commit,
+      openclawVersion: data.openclawVersion ?? null,
+    }),
   })
+  const mccDisplay = appVersion?.version
 
   return (
     <aside
@@ -57,9 +62,14 @@ export function Sidebar() {
             <div className="text-sm font-semibold text-white tracking-wide truncate">
               Mission Ctrl
             </div>
-            <div className="font-mono text-[10px] text-white/30 tracking-widest leading-tight" suppressHydrationWarning>
-              {ocVersion ? `OPENCLAW v${ocVersion}` : 'OPENCLAW'}
+            <div className="font-mono text-[10px] text-white/30 tracking-widest leading-tight truncate" suppressHydrationWarning>
+              {mccDisplay ? `MCC ${mccDisplay}` : 'MCC'}
             </div>
+            {ocVersion && (
+              <div className="font-mono text-[9px] text-white/20 tracking-widest leading-tight truncate" suppressHydrationWarning>
+                OPENCLAW v{ocVersion}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -126,7 +136,7 @@ export function Sidebar() {
           </div>
           {appVersion?.version && (
             <div className="mt-1 font-mono text-[10px] tracking-wide text-white/25" suppressHydrationWarning>
-              v{appVersion.version}
+              {appVersion.version}
               {appVersion.commit && <span className="text-white/20"> · {appVersion.commit}</span>}
             </div>
           )}

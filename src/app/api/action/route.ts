@@ -120,7 +120,11 @@ const actions: Record<string, ActionHandler> = {
       return { success: false, error: `manifest fetch failed: ${err instanceof Error ? err.message : String(err)}` }
     }
 
-    const current = getVersionInfo().version
+    const versionInfo = getVersionInfo()
+    const currentMcc = versionInfo.mccVersion
+    const currentDisplay = versionInfo.version
+    const { parseMccVersion } = await import('@/lib/version')
+    const latestMcc = manifest.latest.mccVersion || parseMccVersion(manifest.latest.version)
     const cmp = (a: string, b: string) => {
       const pa = a.split('.').map(n => parseInt(n, 10) || 0)
       const pb = b.split('.').map(n => parseInt(n, 10) || 0)
@@ -130,8 +134,8 @@ const actions: Record<string, ActionHandler> = {
       }
       return 0
     }
-    if (cmp(manifest.latest.version, current) <= 0) {
-      return { success: true, output: `Already at latest v${current}` }
+    if (cmp(latestMcc, currentMcc) <= 0) {
+      return { success: true, output: `Already at latest ${currentDisplay}` }
     }
 
     const artifact = pickArtifact(manifest)
@@ -142,13 +146,13 @@ const actions: Record<string, ActionHandler> = {
 
     const meta = startJob({
       kind: 'upgrade-mcc',
-      label: `Upgrade Mission Control v${current} → v${expectedVersion}`,
+      label: `Upgrade Mission Control ${currentDisplay} → ${expectedVersion}`,
       triggeredBy,
       expectedVersion,
       restartingBeforeLastPhase: true,
       phases: [
         {
-          name: `download v${expectedVersion}`,
+          name: `download ${expectedVersion}`,
           inline: async (log) => {
             try {
               log('stdout', `downloading ${artifact.url}…`)
@@ -176,7 +180,7 @@ const actions: Record<string, ActionHandler> = {
       ],
     })
 
-    return { success: true, jobId: meta.id, message: `Upgrading to v${expectedVersion} — service restart scheduled` }
+    return { success: true, jobId: meta.id, message: `Upgrading to ${expectedVersion} — service restart scheduled` }
   },
 
   'check-update': async () => {

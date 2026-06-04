@@ -3,9 +3,22 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 interface VersionInfo {
+  /** Display version: `<openclawVersion>-v<mccVersion>` when paired, else `<mccVersion>`. */
   version: string
+  /** Raw MCC semver (e.g. "0.3.52"). Use this for ordering / upgrade comparisons. */
+  mccVersion: string
+  /** OpenClaw version this build was paired with (e.g. "2026.6.1"). null if unknown. */
+  openclawVersion: string | null
   commit: string | null
   buildTime: string
+}
+
+interface BakedVersion {
+  version?: string
+  mccVersion?: string
+  openclawVersion?: string | null
+  commit?: string
+  buildTime?: string
 }
 
 function readPackageVersion(): string {
@@ -43,22 +56,38 @@ function computeBuildTime(): string {
   return new Date().toISOString()
 }
 
-function loadBakedVersionJson(): Partial<VersionInfo> | null {
+function loadBakedVersionJson(): BakedVersion | null {
   // Release tarballs ship a version.json alongside server.js so the server
   // doesn't need to invoke git at runtime (the deployed tree has no .git).
   try {
     const p = path.resolve(process.cwd(), 'version.json')
     const raw = readFileSync(p, 'utf8')
-    const parsed = JSON.parse(raw) as Partial<VersionInfo>
-    return parsed
+    return JSON.parse(raw) as BakedVersion
   } catch {
     return null
   }
 }
 
+/** Combine semver + openclaw version into the display string we ship on
+ *  release tags, manifest entries, and /api/health. */
+export function formatDisplayVersion(mccVersion: string, openclawVersion: string | null): string {
+  return openclawVersion ? `${openclawVersion}-v${mccVersion}` : mccVersion
+}
+
+/** Extract MCC semver from a display version like `2026.6.1-v0.3.52`.
+ *  Tolerates the unpaired form `0.3.52`. */
+export function parseMccVersion(s: string): string {
+  const m = s.match(/-v(\d+\.\d+\.\d+(?:[-+][\w.]+)?)$/)
+  return m ? m[1] : s
+}
+
 const baked = loadBakedVersionJson()
+const mccVersion = baked?.mccVersion || readPackageVersion()
+const openclawVersion = baked?.openclawVersion ?? null
 const cached: VersionInfo = {
-  version: baked?.version || readPackageVersion(),
+  version: baked?.version || formatDisplayVersion(mccVersion, openclawVersion),
+  mccVersion,
+  openclawVersion,
   commit: baked?.commit ?? readGitCommit(),
   buildTime: baked?.buildTime || computeBuildTime(),
 }

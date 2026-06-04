@@ -107,11 +107,22 @@ export interface ReleaseArtifact {
 
 export interface ReleaseManifest {
   latest: {
+    /** Display version: `<openclawVersion>-v<mccVersion>` when paired, else `<mccVersion>`. */
     version: string
+    /** MCC semver (e.g. "0.3.52"). Compare on this — `version` contains the openclaw prefix. */
+    mccVersion?: string
+    /** OpenClaw version this release was paired with (informational). */
+    openclawVersion?: string | null
     releaseDate?: string
     notes?: string
     artifacts: ReleaseArtifact[]
   }
+  history?: Array<{
+    version: string
+    mccVersion?: string
+    openclawVersion?: string | null
+    releaseDate?: string | null
+  }>
 }
 
 export async function fetchManifest(manifestUrl: string): Promise<ReleaseManifest> {
@@ -177,18 +188,20 @@ export async function applyUpgrade(opts: ApplyUpgradeOptions): Promise<ApplyUpgr
   }
 
   // 2. Determine version from the tarball itself — the filename is untrusted.
-  const version = await readTarballVersion(tarballPath)
-  if (!version) throw new Error('could not read version.json from tarball')
+  const tarballVersion = await readTarballVersion(tarballPath)
+  if (!tarballVersion) throw new Error('could not read version.json from tarball')
+  const { display: version, mcc: mccVersion } = tarballVersion
   if (opts.expectedVersion && opts.expectedVersion !== version) {
     throw new Error(`tarball version ${version} does not match expected ${opts.expectedVersion}`)
   }
   if (version === info.currentVersion) {
-    throw new Error(`v${version} is already the running version`)
+    throw new Error(`${version} is already the running version`)
   }
 
-  // 3. Extract to versions/vNEW/ (fresh; if it already exists, nuke it first
-  //    to guarantee a clean state — we're about to symlink into it).
-  const newDir = path.join(info.prefix, 'versions', `v${version}`)
+  // 3. Extract to versions/v<mccSemver>/ — keep dir naming free of the
+  //    openclaw prefix so existing rollback / GC logic that sorts by semver
+  //    stays valid, and `versions/` listings remain readable.
+  const newDir = path.join(info.prefix, 'versions', `v${mccVersion}`)
   if (existsSync(newDir)) rmSync(newDir, { recursive: true, force: true })
   mkdirSync(newDir, { recursive: true })
   await execFileP('tar', ['xzf', tarballPath, '-C', newDir])
@@ -294,11 +307,19 @@ async function sha256File(filePath: string): Promise<string> {
   return hash.digest('hex')
 }
 
-async function readTarballVersion(tarballPath: string): Promise<string | null> {
+/** Returns { display, mcc } parsed from the tarball's version.json.
+ *  - `display`: paired string (`2026.6.1-v0.3.52`) used in user-facing logs.
+ *  - `mcc`: bare semver used for `versions/v<x.y.z>/` directory naming and
+ *    cross-version comparisons. Falls back to `display` for older tarballs
+ *    that didn't bake the `mccVersion` field. */
+async function readTarballVersion(tarballPath: string): Promise<{ display: string; mcc: string } | null> {
   try {
     const { stdout } = await execFileP('tar', ['xzOf', tarballPath, './version.json'])
-    const parsed = JSON.parse(stdout) as { version?: string }
-    return typeof parsed.version === 'string' ? parsed.version : null
+    const parsed = JSON.parse(stdout) as { version?: string; mccVersion?: string }
+    const display = typeof parsed.version === 'string' ? parsed.version : null
+    if (!display) return null
+    const mcc = typeof parsed.mccVersion === 'string' && parsed.mccVersion ? parsed.mccVersion : display
+    return { display, mcc }
   } catch {
     return null
   }

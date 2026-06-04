@@ -67,15 +67,35 @@ if (tarballs.length === 0) die(`no tarball in ${DIST} — run \`npm run build:re
 const tarball = tarballs[0]
 const versionMatch = tarball.name.match(/^mission-control-v(\d+\.\d+\.\d+)-([^.]+)\.tar\.gz$/)
 if (!versionMatch) die(`cannot parse version/tag from ${tarball.name}`)
-const [, version, tag] = versionMatch
+const [, mccVersion, tag] = versionMatch
 const [platform, arch] = tag.split('-')
 
+// Pull the paired openclaw version baked into the tarball's version.json
+// at build time (build-release.mjs writes it). Falls back to unpaired.
+function bakedOpenclawVersion() {
+  try {
+    const raw = execFileSync('tar', ['xzOf', tarball.path, './version.json'], {
+      encoding: 'utf8',
+      timeout: 30000,
+    })
+    const parsed = JSON.parse(raw)
+    return typeof parsed.openclawVersion === 'string' && parsed.openclawVersion ? parsed.openclawVersion : null
+  } catch {
+    return null
+  }
+}
+const openclawVersion = process.env.MCC_OPENCLAW_VERSION?.trim() || bakedOpenclawVersion()
+const DISPLAY_VERSION = openclawVersion ? `${openclawVersion}-v${mccVersion}` : `v${mccVersion}`
+
 const REPO = detectRepo()
-const TAG = `v${version}`
+// GitHub release tag mirrors the display string (`2026.6.1-v0.3.52`) when
+// paired, or `v0.3.52` otherwise. Tarball URL follows that tag.
+const TAG = openclawVersion ? `${openclawVersion}-v${mccVersion}` : `v${mccVersion}`
 const TARBALL_URL = `https://github.com/${REPO}/releases/download/${TAG}/${tarball.name}`
 const MANIFEST_URL = `https://raw.githubusercontent.com/${REPO}/main/release-manifest.json`
 
-console.log(`• publishing ${TAG} (${tag}) to GitHub repo ${REPO}`)
+console.log(`• publishing ${DISPLAY_VERSION} (${tag}) to GitHub repo ${REPO}`)
+if (!openclawVersion) console.log(`  (no openclaw version pairing — tag falls back to v${mccVersion})`)
 
 const size = statSync(tarball.path).size
 const sha = sha256File(tarball.path)
@@ -113,16 +133,27 @@ for (const a of prevArts) {
 
 const manifest = {
   latest: {
-    version,
+    // Combined display string when paired, semver-only otherwise. Customer
+    // dashboards render this directly (sidebar, /api/upgrade/check, etc.).
+    version: openclawVersion ? `${openclawVersion}-v${mccVersion}` : mccVersion,
+    mccVersion,
+    openclawVersion: openclawVersion || null,
     releaseDate: new Date().toISOString(),
     ...(notes ? { notes } : {}),
     artifacts: mergedArtifacts,
   },
 }
 
-if (prevManifest?.latest?.version && prevManifest.latest.version !== version) {
+const prevDisplay = prevManifest?.latest?.version
+const prevMcc = prevManifest?.latest?.mccVersion || prevDisplay
+if (prevDisplay && prevMcc !== mccVersion) {
   manifest.history = [
-    { version: prevManifest.latest.version, releaseDate: prevManifest.latest.releaseDate || null },
+    {
+      version: prevDisplay,
+      mccVersion: prevMcc,
+      openclawVersion: prevManifest?.latest?.openclawVersion || null,
+      releaseDate: prevManifest.latest.releaseDate || null,
+    },
     ...(prevManifest.history || []).slice(0, 9),
   ]
 }

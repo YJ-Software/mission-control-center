@@ -36,7 +36,13 @@ log() { echo "• $*"; }
 # tarball if the filename doesn't match the expected pattern.
 VERSION="$(basename "$TARBALL" | sed -En 's/^mission-control-v([0-9]+\.[0-9]+\.[0-9]+)-.*\.tar\.gz$/\1/p')"
 if [[ -z "$VERSION" ]]; then
-  VERSION="$(tar xzOf "$TARBALL" ./version.json 2>/dev/null | sed -En 's/.*"version": *"([^"]+)".*/\1/p' || true)"
+  # Prefer the bare semver (mccVersion); fall back to `version` for older
+  # builds before openclaw pairing.
+  VERSION_JSON="$(tar xzOf "$TARBALL" ./version.json 2>/dev/null || true)"
+  VERSION="$(echo "$VERSION_JSON" | sed -En 's/.*"mccVersion": *"([^"]+)".*/\1/p')"
+  if [[ -z "$VERSION" ]]; then
+    VERSION="$(echo "$VERSION_JSON" | sed -En 's/.*"version": *"([^"]+)".*/\1/p' || true)"
+  fi
 fi
 [[ -n "$VERSION" ]] || die "could not determine version from $TARBALL"
 

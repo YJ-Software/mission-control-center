@@ -165,7 +165,7 @@ export function UpgradeCard() {
   const handleApplyFromManifest = async () => {
     if (!check?.artifact) return
     setPhase('applying')
-    setMessage(`Starting upgrade to v${check.latest}…`)
+    setMessage(`Starting upgrade to ${check.latest}…`)
     try {
       const res = await fetch('/api/upgrade/apply', {
         method: 'POST',
@@ -259,7 +259,7 @@ export function UpgradeCard() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-white/75">
-            Current: <span className="font-mono text-cyan-300">v{status?.current.version || '—'}</span>
+            Current: <span className="font-mono text-cyan-300">{status?.current.version || '—'}</span>
             {status?.current.commit && (
               <span className="font-mono text-[11px] text-white/40"> · {status.current.commit}</span>
             )}
@@ -305,7 +305,7 @@ export function UpgradeCard() {
 
           {check && !check.hasUpdate && (
             <p className="text-[11px] text-white/40">
-              You are on the latest version (v{check.current}).
+              You are on the latest version ({check.current}).
             </p>
           )}
 
@@ -314,8 +314,8 @@ export function UpgradeCard() {
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <p className="text-sm text-white/85">
-                    v{check.latest} available
-                    <span className="text-white/30 text-xs"> (from v{check.current})</span>
+                    {check.latest} available
+                    <span className="text-white/30 text-xs"> (from {check.current})</span>
                   </p>
                   {check.releaseDate && (
                     <p className="font-mono text-[10px] text-white/35">{check.releaseDate}</p>

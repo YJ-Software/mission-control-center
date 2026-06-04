@@ -67,15 +67,46 @@ function archTag() {
   return `${platform}-${arch}`
 }
 
+/** Detect the openclaw version we're pairing this release with. Looks in
+ *  npm-global / linuxbrew / PATH and parses `openclaw --version` output
+ *  like "OpenClaw 2026.6.1 (sha)". Returns null if not found — release
+ *  still ships, the version is just unpaired. */
+function detectOpenclawVersion() {
+  const override = process.env.MCC_OPENCLAW_VERSION
+  if (override) return override.trim()
+  const candidates = [
+    join(os.homedir(), '.npm-global', 'bin', 'openclaw'),
+    join(os.homedir(), '.linuxbrew', 'bin', 'openclaw'),
+    '/home/linuxbrew/.linuxbrew/bin/openclaw',
+    'openclaw',
+  ]
+  for (const bin of candidates) {
+    try {
+      const out = execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: 5000 }).toString()
+      const m = out.match(/OpenClaw\s+([\d.]+)/) || out.match(/\b(\d+\.\d+(?:\.\d+)?)\b/)
+      if (m) return m[1]
+    } catch {
+      // try next candidate
+    }
+  }
+  return null
+}
+
 async function main() {
-  const version = readPkgVersion()
+  const mccVersion = readPkgVersion()
+  const openclawVersion = detectOpenclawVersion()
+  const displayVersion = openclawVersion ? `${openclawVersion}-v${mccVersion}` : mccVersion
   const commit = gitShortSha()
   const buildTime = new Date().toISOString()
   const tag = archTag()
-  const tarballName = `mission-control-v${version}-${tag}.tar.gz`
+  // Tarball file name keeps the semver-only suffix — install.sh / upgrade.sh
+  // parse it back out and customers see a stable artifact filename.
+  const tarballName = `mission-control-v${mccVersion}-${tag}.tar.gz`
 
   console.log(`Mission Control release build`)
-  console.log(`  version:   ${version}`)
+  console.log(`  display:   ${displayVersion}`)
+  console.log(`  mcc:       ${mccVersion}`)
+  console.log(`  openclaw:  ${openclawVersion || '(not detected; release will be unpaired)'}`)
   console.log(`  commit:    ${commit || '(no git)'}`)
   console.log(`  buildTime: ${buildTime}`)
   console.log(`  target:    ${tag}`)
@@ -166,10 +197,16 @@ async function main() {
     cpSync(join(ROOT, 'messages'), join(STANDALONE, 'messages'), { recursive: true })
   }
 
-  // Bake version metadata so the running server has it even without .git
+  // Bake version metadata so the running server has it even without .git.
+  // `version` is the display string (paired or not); `mccVersion` is the
+  // raw semver kept separate so upgrade-poll comparisons stay numeric.
   writeFileSync(
     join(STANDALONE, 'version.json'),
-    JSON.stringify({ version, commit, buildTime }, null, 2),
+    JSON.stringify(
+      { version: displayVersion, mccVersion, openclawVersion, commit, buildTime },
+      null,
+      2,
+    ),
   )
 
   // Ship the deploy/release scripts inside the tarball at ./install/ so the

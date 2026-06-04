@@ -12,6 +12,8 @@ export async function GET() {
     service: info.service,
     current: {
       version: v.version,
+      mccVersion: v.mccVersion,
+      openclawVersion: v.openclawVersion,
       commit: v.commit,
       buildTime: v.buildTime,
     },

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { fetchManifest, getConfiguredManifestUrl, pickArtifact } from '@/lib/upgrade/manager'
-import { getVersionInfo } from '@/lib/version'
+import { getVersionInfo, parseMccVersion } from '@/lib/version'
 
 // Always evaluate this route on each call. Without this Next.js may
 // statically cache the response, masking new releases until the server
@@ -31,12 +31,18 @@ export async function GET(request: Request) {
 
   try {
     const manifest = await fetchManifest(manifestUrl)
-    const current = getVersionInfo().version
-    const hasUpdate = compareSemver(manifest.latest.version, current) > 0
+    const info = getVersionInfo()
+    // Compare semver, not the display string — display contains the openclaw
+    // prefix (e.g. "2026.6.1-v0.3.52") which would break the per-segment cmp.
+    const latestMcc = manifest.latest.mccVersion || parseMccVersion(manifest.latest.version)
+    const hasUpdate = compareSemver(latestMcc, info.mccVersion) > 0
     const artifact = pickArtifact(manifest)
     return NextResponse.json({
-      current,
+      current: info.version,
+      currentMcc: info.mccVersion,
       latest: manifest.latest.version,
+      latestMcc,
+      openclawVersion: manifest.latest.openclawVersion || null,
       hasUpdate,
       releaseDate: manifest.latest.releaseDate || null,
       notes: manifest.latest.notes || null,
