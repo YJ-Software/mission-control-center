@@ -33,9 +33,9 @@ interface RunResult {
 
 function runOpenclaw(args: string[], timeoutMs = 15000): Promise<RunResult> {
   return new Promise((resolve) => {
-    // `--log-level silent` and `--no-color` suppress doctor/state-migration
-    // boxes that openclaw 2026.6.1+ otherwise emits to stdout, which would
-    // break downstream JSON.parse on `--json`/`--status-json` subcommands.
+    // `--log-level silent` + `--no-color` suppress most banners, but openclaw
+    // 2026.6.1+ still prints the clack "Doctor warnings" box to stdout for
+    // `--status-json` subcommands. We strip it post-hoc via extractJson().
     const child = spawn('openclaw', ['--log-level', 'silent', '--no-color', ...args], {
       env: { ...process.env, PATH: augmentedPath() },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -56,6 +56,35 @@ function runOpenclaw(args: string[], timeoutMs = 15000): Promise<RunResult> {
       resolve({ code: code ?? 0, stdout, stderr })
     })
   })
+}
+
+/** Extract the first balanced JSON object/array from `s`, skipping any
+ *  preceding noise (e.g. openclaw 2026.6.1's clack Doctor-warnings box).
+ *  Throws if no top-level JSON value is found. */
+function extractJson(s: string): unknown {
+  const start = s.search(/[{[]/)
+  if (start < 0) throw new Error(`no JSON value in output: ${s.slice(0, 80)}`)
+  const open = s[start]
+  const close = open === '{' ? '}' : ']'
+  let depth = 0
+  let inStr = false
+  let esc = false
+  for (let i = start; i < s.length; i++) {
+    const c = s[i]
+    if (inStr) {
+      if (esc) esc = false
+      else if (c === '\\') esc = true
+      else if (c === '"') inStr = false
+      continue
+    }
+    if (c === '"') inStr = true
+    else if (c === open) depth++
+    else if (c === close) {
+      depth--
+      if (depth === 0) return JSON.parse(s.slice(start, i + 1))
+    }
+  }
+  throw new Error(`unbalanced JSON in output: ${s.slice(start, start + 80)}`)
 }
 
 export interface ModelsStatus {
@@ -84,7 +113,7 @@ export interface AvailableModel {
 export async function getStatus(agent: string): Promise<ModelsStatus> {
   const r = await runOpenclaw(['models', '--agent', agent, '--status-json'])
   if (r.code !== 0) throw new Error(`models status failed (${r.code}): ${r.stderr.trim()}`)
-  const parsed = JSON.parse(r.stdout) as Record<string, unknown>
+  const parsed = extractJson(r.stdout) as Record<string, unknown>
   return {
     configPath: String(parsed.configPath ?? ''),
     agentDir: String(parsed.agentDir ?? ''),
@@ -103,7 +132,7 @@ export async function getStatus(agent: string): Promise<ModelsStatus> {
 export async function listAvailable(agent: string): Promise<AvailableModel[]> {
   const r = await runOpenclaw(['models', '--agent', agent, 'list', '--json'])
   if (r.code !== 0) throw new Error(`models list failed (${r.code}): ${r.stderr.trim()}`)
-  const parsed = JSON.parse(r.stdout) as { models?: AvailableModel[] }
+  const parsed = extractJson(r.stdout) as { models?: AvailableModel[] }
   return parsed.models ?? []
 }
 
@@ -205,7 +234,7 @@ export async function getAgentsList(): Promise<AgentListEntry[]> {
   }
   let parsed: Array<{ id?: string; model?: AgentModelOverride }>
   try {
-    parsed = JSON.parse(r.stdout)
+    parsed = extractJson(r.stdout) as Array<{ id?: string; model?: AgentModelOverride }>
   } catch {
     return []
   }
@@ -274,7 +303,7 @@ export async function getGlobalDefaults(): Promise<{
     throw new Error(`config get failed (${r.code}): ${r.stderr.trim()}`)
   }
   try {
-    const parsed = JSON.parse(r.stdout) as { primary?: string; fallbacks?: string[] }
+    const parsed = extractJson(r.stdout) as { primary?: string; fallbacks?: string[] }
     return {
       primary: parsed.primary ?? null,
       fallbacks: Array.isArray(parsed.fallbacks) ? parsed.fallbacks : [],

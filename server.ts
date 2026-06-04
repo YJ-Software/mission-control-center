@@ -192,14 +192,21 @@ async function tryAutoApproveDevice(): Promise<boolean> {
   const { promisify } = await import('util')
   const execFileAsync = promisify(execFile)
 
+  // openclaw 2026.6.1+ may prefix --json output with a clack "Doctor warnings"
+  // box on stdout. Strip anything before the first '{' before parsing.
+  const parseJsonLoose = (s: string): unknown => {
+    const i = s.search(/[{[]/)
+    return JSON.parse(i < 0 ? s : s.slice(i))
+  }
+
   const findRequestId = async (): Promise<string | null> => {
     const { stdout } = await execFileAsync(
       'openclaw',
       ['--log-level', 'silent', '--no-color', 'devices', 'list', '--json'],
       { timeout: 10000, env: process.env },
     )
-    const data = JSON.parse(stdout)
-    const pending: Array<{ requestId?: string; deviceId?: string }> = Array.isArray(data?.pending) ? data.pending : []
+    const data = parseJsonLoose(stdout) as { pending?: Array<{ requestId?: string; deviceId?: string }> }
+    const pending = Array.isArray(data?.pending) ? data.pending : []
     const req = pending.find((r) => r.deviceId === DEVICE_IDENTITY.deviceId)
     return req?.requestId ?? null
   }
