@@ -39,10 +39,11 @@ function childEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 // the provider template after paste-api-key / device-code.
 function isProviderConfigured(providerId: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const child = spawn('openclaw', ['config', 'get', `models.providers.${providerId}`], {
-      env: childEnv(),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
+    const child = spawn(
+      'openclaw',
+      ['--log-level', 'silent', '--no-color', 'config', 'get', `models.providers.${providerId}`],
+      { env: childEnv(), stdio: ['ignore', 'pipe', 'pipe'] },
+    )
     let stderr = ''
     child.stdout.on('data', () => {})
     child.stderr.setEncoding('utf8')
@@ -63,6 +64,9 @@ function writeProviderConfig(providerId: string, template: unknown): Promise<num
     const child = spawn(
       'openclaw',
       [
+        '--log-level',
+        'silent',
+        '--no-color',
         'config',
         'set',
         `models.providers.${providerId}`,

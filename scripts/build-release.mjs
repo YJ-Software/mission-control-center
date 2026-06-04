@@ -229,13 +229,13 @@ async function main() {
     cpSync(mcpSourceDir, join(STANDALONE, 'deploy', 'mcp'), { recursive: true })
   }
 
-  // Restore bundled default templates that the strip step nuked alongside
-  // user runtime data. src/lib/morning-report/default-templates.ts reads
-  // these via readFileSync at module load — without them the morning-report
-  // API throws ENOENT on first import.
+  // Bundled default templates: copy under `assets/` (not `data/`) so that
+  // install.sh / upgrade.sh's `ln -sf $STATE/data $VERSION_DIR/data` swap
+  // does not delete them. default-templates.ts checks `assets/` first then
+  // falls back to `data/`, which keeps dev mode working from a source tree.
   const tmplSrc = join(ROOT, 'data', 'morning-report', 'default-templates')
   if (existsSync(tmplSrc)) {
-    cpSync(tmplSrc, join(STANDALONE, 'data', 'morning-report', 'default-templates'), { recursive: true })
+    cpSync(tmplSrc, join(STANDALONE, 'assets', 'morning-report', 'default-templates'), { recursive: true })
   }
 
   // 4. Tarball

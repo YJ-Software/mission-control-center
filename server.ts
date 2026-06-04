@@ -193,10 +193,11 @@ async function tryAutoApproveDevice(): Promise<boolean> {
   const execFileAsync = promisify(execFile)
 
   const findRequestId = async (): Promise<string | null> => {
-    const { stdout } = await execFileAsync('openclaw', ['devices', 'list', '--json'], {
-      timeout: 10000,
-      env: process.env,
-    })
+    const { stdout } = await execFileAsync(
+      'openclaw',
+      ['--log-level', 'silent', '--no-color', 'devices', 'list', '--json'],
+      { timeout: 10000, env: process.env },
+    )
     const data = JSON.parse(stdout)
     const pending: Array<{ requestId?: string; deviceId?: string }> = Array.isArray(data?.pending) ? data.pending : []
     const req = pending.find((r) => r.deviceId === DEVICE_IDENTITY.deviceId)
@@ -215,10 +216,11 @@ async function tryAutoApproveDevice(): Promise<boolean> {
       return false
     }
     console.log(`[Gateway] Approving pairing request ${requestId}...`)
-    await execFileAsync('openclaw', ['devices', 'approve', requestId], {
-      timeout: 10000,
-      env: process.env,
-    })
+    await execFileAsync(
+      'openclaw',
+      ['--log-level', 'silent', '--no-color', 'devices', 'approve', requestId],
+      { timeout: 10000, env: process.env },
+    )
     return true
   } catch (err) {
     console.error('[Gateway] Auto-approve failed:', (err as Error).message)

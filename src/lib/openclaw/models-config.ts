@@ -33,7 +33,10 @@ interface RunResult {
 
 function runOpenclaw(args: string[], timeoutMs = 15000): Promise<RunResult> {
   return new Promise((resolve) => {
-    const child = spawn('openclaw', args, {
+    // `--log-level silent` and `--no-color` suppress doctor/state-migration
+    // boxes that openclaw 2026.6.1+ otherwise emits to stdout, which would
+    // break downstream JSON.parse on `--json`/`--status-json` subcommands.
+    const child = spawn('openclaw', ['--log-level', 'silent', '--no-color', ...args], {
       env: { ...process.env, PATH: augmentedPath() },
       stdio: ['ignore', 'pipe', 'pipe'],
     })

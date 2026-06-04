@@ -1,16 +1,22 @@
 /**
  * Default templates bundled with the project.
- * Templates are stored as individual MD files in data/morning-report/default-templates/
- * and loaded at runtime.
+ * Source lives in `data/morning-report/default-templates/`.
+ *
+ * In release builds we also copy these into `assets/morning-report/default-templates/`,
+ * because release install/upgrade scripts replace `data/` with a symlink to the
+ * user state dir — that symlink would otherwise nuke the bundled templates.
  */
 
-import { readFileSync } from 'fs'
+import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 
-const TEMPLATES_DIR = join(process.cwd(), 'data', 'morning-report', 'default-templates')
+const ASSETS_DIR = join(process.cwd(), 'assets', 'morning-report', 'default-templates')
+const DATA_DIR = join(process.cwd(), 'data', 'morning-report', 'default-templates')
 
 function loadTemplate(filename: string): string {
-  return readFileSync(join(TEMPLATES_DIR, filename), 'utf-8')
+  const fromAssets = join(ASSETS_DIR, filename)
+  if (existsSync(fromAssets)) return readFileSync(fromAssets, 'utf-8')
+  return readFileSync(join(DATA_DIR, filename), 'utf-8')
 }
 
 export const DEFAULT_FORMAT_TEMPLATE = loadTemplate('_format.md')
