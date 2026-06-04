@@ -422,39 +422,140 @@ Production uses a **tarball + symlink swap** model. Tarballs live on GitHub Rele
 
 `upgrade.sh` diffs the new and existing unit content and only runs `daemon-reload` when they differ. This makes service-template changes (e.g. `PATH`, `StandardOutput`) ship automatically on the next upgrade — no SSH-into-machine needed.
 
+### Version naming convention
+
+Starting with v0.3.52, every release is **paired with an openclaw version**:
+
+```
+<openclawVersion>-v<mccVersion>
+e.g. 2026.6.1-v0.3.53
+```
+
+This combined string appears in the GitHub release tag / title, `release-manifest.json` `latest.version`, `/api/health` `version`, and the dashboard sidebar.
+
+**The pairing is a fact, not metadata: "this MCC tarball passed the full Playwright E2E on a throwaway box running that openclaw version."**
+
+**Prefix is sticky, suffix is free:**
+
+| Case | Throwaway E2E required? | How to build |
+|------|-------------------------|--------------|
+| MCC-only change (bug fix / small feature) — prefix unchanged | ❌ No | `npm run build:release` (prefix sticks from manifest) |
+| Openclaw prefix bump — claiming a new pairing | ✅ Yes, must be green | `MCC_OPENCLAW_VERSION=<new> npm run build:release` |
+
+`build-release.mjs` resolution precedence:
+1. `MCC_OPENCLAW_VERSION` env override (operator attestation — fresh E2E pass)
+2. `release-manifest.json`'s `latest.openclawVersion` (sticky — reuse last validated pairing)
+3. Local `openclaw --version` (first-time setup before any manifest exists)
+4. Unpaired — display falls back to `v0.3.53`
+
+`/api/health` exposes the breakdown so clients can pick the right field:
+```json
+{
+  "version": "2026.6.1-v0.3.53",   // combined display string
+  "mccVersion": "0.3.53",          // pure semver — use for upgrade comparison
+  "openclawVersion": "2026.6.1"    // paired openclaw
+}
+```
+
+Upgrade comparison uses `mccVersion` only — splitting the combined string with `split('.')` would smash the openclaw prefix.
+
 ### Release workflow
 
-```bash
-# 1. Confirm a clean main branch
-git status && git branch --show-current
+#### MCC-only patch (common: bug fix / small feature, prefix unchanged)
 
-# 2. Bump version + tag + push
-npm version patch                    # or minor / major
+```bash
+# 1. Clean main + bump semver
+git status && git branch --show-current
+npm version patch
 git push --follow-tags
 
-# 3. Build (rm -rf .next; stop the dev server first)
+# 2. Build (prefix auto-sticks from manifest)
 systemctl --user stop mission-control
-npm run build:release                # outputs dist/mission-control-vX.Y.Z-linux-x64.tar.gz
+npm run build:release
 
-# 4. Publish: upload to GitHub Releases + update release-manifest.json + git push
+# 3. Publish
 MCC_NOTES="- fixed X" npm run publish:release
+
+# 4. Restart dev
+systemctl --user start mission-control
+```
+
+#### Openclaw prefix bump (rare: claiming a new pairing)
+
+Requires a full throwaway E2E pass first — without it, the pairing claim would be a lie.
+
+```bash
+# 1. Clean main + bump semver
+git status && git branch --show-current
+npm version patch
+git push --follow-tags
+
+# 2. Read the throwaway's openclaw version and build paired
+systemctl --user stop mission-control
+source <(grep -v '^#' .env.e2e.local | grep -v '^$')
+OC_VER="$(ssh $E2E_SSH_USER@$E2E_SSH_HOST 'sudo -u openclaw /home/openclaw/.npm-global/bin/openclaw --version' | sed -En 's/OpenClaw ([0-9.]+).*/\1/p')"
+MCC_OPENCLAW_VERSION="$OC_VER" npm run build:release
+
+# 3. Push tarball to throwaway + upgrade + full E2E (must be green to proceed)
+scp dist/mission-control-v*.tar.gz $E2E_SSH_USER@$E2E_SSH_HOST:/tmp/
+ssh $E2E_SSH_USER@$E2E_SSH_HOST 'sudo -u openclaw bash /home/openclaw/mission-control/current/install/upgrade.sh /tmp/mission-control-v*.tar.gz'
+PLAYWRIGHT_BASE_URL=http://$E2E_SSH_HOST:3737 AUTH_PASSWORD=$AUTH_PASSWORD npm run test:e2e
+
+# 4. Only after E2E green: publish
+MCC_NOTES="- bumped openclaw to X and validated" npm run publish:release
 
 # 5. Restart dev
 systemctl --user start mission-control
 ```
 
 `publish:release` will:
-1. Compute sha256 / size and update `release-manifest.json` (rotating the previous entry into `history[]`)
-2. `gh release create|upload v$VERSION dist/*.tar.gz` (requires `gh` CLI logged in)
-3. `git add release-manifest.json && git commit && git push origin HEAD`
+1. Read `openclawVersion` from the tarball's `version.json` (or env override) and assemble the GitHub release tag (`2026.6.1-v0.3.53`)
+2. Compute sha256 / size and update `release-manifest.json` (combined `latest.version` plus separate `mccVersion` / `openclawVersion`; rotate prior entry into `history[]`)
+3. `gh release create|upload <tag> dist/*.tar.gz` (requires `gh` CLI logged in)
+4. `git add release-manifest.json && git commit && git push origin HEAD`
 
-Environment variables: `MCC_REPO` (defaults to the parsed git remote), `MCC_NO_GH=1` to skip the GitHub upload, `MCC_NO_PUSH=1` to skip the git push.
+Environment variables: `MCC_REPO` (defaults to the parsed git remote), `MCC_OPENCLAW_VERSION` (override the paired openclaw version), `MCC_NO_GH=1` to skip the GitHub upload, `MCC_NO_PUSH=1` to skip the git push.
 
 Public manifest URL: `https://raw.githubusercontent.com/<owner>/<repo>/main/release-manifest.json`.
+
+Full procedure plus troubleshooting in `.claude/skills/release/SKILL.md`; the rationale for E2E as a release gate lives in `tests/README.md`.
 
 ### fail2ban Integration (optional)
 
 Failed `/api/auth` logins write `[mc-auth] failed login from <ip>` to the log for fail2ban to match. Configuration templates live in `deploy/fail2ban/` (the jail is `mission-control.conf.tmpl`, with the log path placeholder `__LOGPATH__`); see `deploy/fail2ban/README.md` for details. When running behind a proxy / tunnel, set `TRUST_PROXY=1` in `.env.local` so the real client IP is recorded.
+
+---
+
+## Recent major changes
+
+> Full history is in `git log` or GitHub Releases; this section lists only the changes that touch user-facing behaviour or release semantics.
+
+### 2026.6.1-v0.3.53 (2026-06-04) — openclaw upgrade now syncs plugins
+- **The dashboard's "Update OpenClaw" quick action now runs `openclaw update --yes`** instead of `npm install -g openclaw@latest` + `openclaw doctor --fix`. The old flow only updated the host package, leaving externally-installed plugins (e.g. `@openclaw/codex`) pinned to their old nested openclaw and breaking with `ERR_PACKAGE_PATH_NOT_EXPORTED` when their code reached for a subpath the new host openclaw didn't export. `openclaw update` runs the bundled "plugin update sync after core update" step, fixing host + plugins in one shot
+- If your morning-report topics on `codex/gpt-5.5` keep failing, this is most likely it — click upgrade once in the dashboard
+
+### 2026.6.1-v0.3.52 (2026-06-04) — release paired with openclaw version
+- **New paired version format `<openclawVersion>-v<mccVersion>`** (e.g. `2026.6.1-v0.3.53`), surfacing in the GitHub release tag / title, `release-manifest.json`, `/api/health`, and the dashboard sidebar
+- The pairing is a **fact, not metadata**: the tarball has passed the full Playwright E2E on a throwaway box running the openclaw version in the prefix
+- **Prefix sticky, suffix free**: MCC-only patches don't re-run E2E (prefix auto-inherits from `release-manifest.json`); only openclaw prefix bumps need a fresh throwaway E2E pass (set `MCC_OPENCLAW_VERSION=<new>` to attest)
+- `/api/health` adds `mccVersion` and `openclawVersion` fields. Upgrade comparison switched to `mccVersion` (pure semver) so the openclaw prefix doesn't break per-segment `split('.')`
+- See "Version naming convention" above plus `.claude/skills/release/SKILL.md`
+
+### 2026.6.1-v0.3.51 (2026-06-04) — openclaw 2026.6.1 compatibility
+- **openclaw 2026.6.1 started writing its Doctor warnings box to stdout** → MCC's `JSON.parse` blew up in `/api/openclaw/models`, `/api/openclaw/auth`, etc., leaving the LLM management dropdown empty
+- Fix: every openclaw spawn now passes `--log-level silent --no-color`, and JSON parsing strips any non-JSON prefix so future upstream banners can't break us again
+
+### v0.3.50 (2026-06-04) — bundle morning-report default templates outside `data/`
+- Moved `data/morning-report/default-templates/` into `assets/` in the release tarball. `install.sh`'s `ln -sf $STATE/data` symlink used to clobber the bundled templates and fresh installs threw `ENOENT _format.md`
+
+### v0.3.49 (2026-06-03) — quick-action cleanup
+- Removed 5 unused dashboard buttons: Disk Cleanup, Restart Claude Tmux, Usage Scrape, Git GC All, Kill Tmux Sessions (with their backend dead code + i18n keys)
+
+### v0.3.41 → v0.3.48 (2026-06-03) — LLM management page
+- New `/llm-auth` page combining:
+  - **Auth profiles** for 8 providers (OpenAI Codex / Anthropic / Z.ai / Kimi / Google / MiniMax / MiniMax CN / DeepSeek), OAuth device-code + API key login methods, copy-profile-to-other-agents support
+  - **Models tab**: global defaults + per-agent overrides; primary model / fallbacks / aliases all editable from the UI with optimistic updates
+- E2E spec `tests/e2e/llm-auth-kimi.spec.ts` now covers add-key → set-override → chat as part of the release gate
 
 ---
 

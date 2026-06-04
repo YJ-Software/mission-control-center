@@ -422,39 +422,140 @@ curl http://localhost:3737/api/health
 
 `upgrade.sh` 會比對新舊 unit 內容，有差才 `daemon-reload`。這讓 service template 的更動（例如 PATH、`StandardOutput`）能在下一次 upgrade 自動套用，operator 不用 SSH 手動改。
 
+### 版本命名規則
+
+從 v0.3.52 起，每個 release **與一個 openclaw 版本配對**，顯示形式：
+
+```
+<openclawVersion>-v<mccVersion>
+例：2026.6.1-v0.3.53
+```
+
+這個 tag 同時出現在 GitHub release tag / title、`release-manifest.json` 的 `latest.version`、`/api/health` 的 `version` 欄位，以及 dashboard 左側 sidebar。
+
+**配對的語意：「這個 MCC tarball 在 throwaway 環境上跑過完整 Playwright E2E，搭配的 openclaw 版本就是前綴」**，所以前綴是個事實宣告，不只是 metadata。
+
+**前綴 sticky / 後綴自由：**
+
+| 情境 | 是否要 throwaway E2E | 怎麼跑 |
+|------|---------------------|--------|
+| 純 MCC 改動（bug fix、小功能） — 前綴不變 | ❌ 不用 | `npm run build:release`（前綴自動沿用 manifest 上一筆） |
+| 升 openclaw 版本 — 前綴改動 | ✅ 必須跑且全綠 | `MCC_OPENCLAW_VERSION=<新版> npm run build:release` |
+
+`build-release.mjs` 解析 openclaw 版本的優先順序：
+1. `MCC_OPENCLAW_VERSION` 環境變數（operator 明確宣告剛驗證過新 openclaw）
+2. `release-manifest.json` 的 `latest.openclawVersion`（sticky — 沿用上一筆驗證過的配對）
+3. 本機 `openclaw --version`（首次部署、manifest 尚未存在）
+4. 都拿不到 → unpaired，display 退回純 `v0.3.53`
+
+`/api/health` 同步暴露三個欄位給 client 區分：
+```json
+{
+  "version": "2026.6.1-v0.3.53",   // 顯示用組合字串
+  "mccVersion": "0.3.53",          // 純 semver，升級比對用
+  "openclawVersion": "2026.6.1"    // 配對的 openclaw
+}
+```
+
+升級比對統一用 `mccVersion` — 直接拿組合字串做 `split('.')` 會把 openclaw 前綴拆爛。
+
 ### Release 發版流程
 
-```bash
-# 1. 確認乾淨 main 分支
-git status && git branch --show-current
+#### MCC-only patch（常見：bug fix、小功能，前綴不變）
 
-# 2. 版號 + tag + push
-npm version patch                    # 或 minor / major
+```bash
+# 1. 乾淨 main + 升 semver
+git status && git branch --show-current
+npm version patch
 git push --follow-tags
 
-# 3. 打包（會 rm -rf .next，先停掉 dev server）
+# 2. 打包（前綴自動 sticky）
 systemctl --user stop mission-control
-npm run build:release                # 產出 dist/mission-control-vX.Y.Z-linux-x64.tar.gz
+npm run build:release
 
-# 4. 發佈：上 GitHub Releases + 更新 release-manifest.json + git push
+# 3. 發佈
 MCC_NOTES="- 修了 X" npm run publish:release
+
+# 4. 恢復 dev
+systemctl --user start mission-control
+```
+
+#### openclaw prefix 升版（rare：要升 openclaw 配對）
+
+需要先在 throwaway 上完整 E2E 過再發版，否則配對宣告就是說謊。
+
+```bash
+# 1. 乾淨 main + 升 semver
+git status && git branch --show-current
+npm version patch
+git push --follow-tags
+
+# 2. 讀 throwaway 跑的 openclaw 版本，並用它打包
+systemctl --user stop mission-control
+source <(grep -v '^#' .env.e2e.local | grep -v '^$')
+OC_VER="$(ssh $E2E_SSH_USER@$E2E_SSH_HOST 'sudo -u openclaw /home/openclaw/.npm-global/bin/openclaw --version' | sed -En 's/OpenClaw ([0-9.]+).*/\1/p')"
+MCC_OPENCLAW_VERSION="$OC_VER" npm run build:release
+
+# 3. 推 tarball 到 throwaway + 升級 + 全套 E2E（必須全綠才能進下一步）
+scp dist/mission-control-v*.tar.gz $E2E_SSH_USER@$E2E_SSH_HOST:/tmp/
+ssh $E2E_SSH_USER@$E2E_SSH_HOST 'sudo -u openclaw bash /home/openclaw/mission-control/current/install/upgrade.sh /tmp/mission-control-v*.tar.gz'
+PLAYWRIGHT_BASE_URL=http://$E2E_SSH_HOST:3737 AUTH_PASSWORD=$AUTH_PASSWORD npm run test:e2e
+
+# 4. E2E 通過才能發版
+MCC_NOTES="- 升 openclaw 至 X 並驗證" npm run publish:release
 
 # 5. 恢復 dev
 systemctl --user start mission-control
 ```
 
 `publish:release` 預設會：
-1. 算 sha256 / size，更新 `release-manifest.json`（舊版進 `history[]`）
-2. `gh release create|upload v$VERSION dist/*.tar.gz`（需要 `gh` CLI 已登入）
-3. `git add release-manifest.json && git commit && git push origin HEAD`
+1. 從 tarball 內 `version.json` 讀 `openclawVersion`（或環境變數覆寫），組合成 GitHub release tag（`2026.6.1-v0.3.53`）
+2. 算 sha256 / size，更新 `release-manifest.json`（`latest.version` 為組合字串，另存 `mccVersion` + `openclawVersion`，舊版進 `history[]`）
+3. `gh release create|upload <tag> dist/*.tar.gz`（需要 `gh` CLI 已登入）
+4. `git add release-manifest.json && git commit && git push origin HEAD`
 
-環境變數：`MCC_REPO`（預設從 git remote 解析）、`MCC_NO_GH=1` skip GitHub upload、`MCC_NO_PUSH=1` skip git push。
+環境變數：`MCC_REPO`（預設從 git remote 解析）、`MCC_OPENCLAW_VERSION`（覆寫配對的 openclaw 版本）、`MCC_NO_GH=1` skip GitHub upload、`MCC_NO_PUSH=1` skip git push。
 
 Manifest 公開網址：`https://raw.githubusercontent.com/<owner>/<repo>/main/release-manifest.json`。
+
+完整步驟與排錯指引在 `.claude/skills/release/SKILL.md`；E2E 為什麼是 release gate 的解釋在 `tests/README.md`。
 
 ### fail2ban 整合（optional）
 
 `/api/auth` 失敗登入會寫 `[mc-auth] failed login from <ip>` 到 log，供 fail2ban 比對。設定檔模板在 `deploy/fail2ban/`（jail 是 `mission-control.conf.tmpl`，log 路徑以 `__LOGPATH__` 佔位），詳見 `deploy/fail2ban/README.md`。若走 proxy/tunnel，要在 `.env.local` 加 `TRUST_PROXY=1`，才能拿到真實客戶端 IP。
+
+---
+
+## 近期重大更新
+
+> 完整 commit 紀錄請看 `git log` 或 GitHub Releases；以下只列影響使用者操作或語意的關鍵變動。
+
+### 2026.6.1-v0.3.53（2026-06-04）— 升 openclaw 帶 plugin sync
+- **dashboard 的「Update OpenClaw」按鈕改跑 `openclaw update --yes`**，原本只跑 `npm install -g openclaw@latest` + `openclaw doctor --fix`，會把外掛 plugin（如 `@openclaw/codex`）留在舊版的 nested openclaw → 升完 host 後跑 codex 模型噴 `ERR_PACKAGE_PATH_NOT_EXPORTED`。`openclaw update` 內建「plugin update sync after core update」，一指令搞定 host + 所有 plugin
+- 若你的晨報主題選 `codex/gpt-5.5` 一直失敗，多半就是這個 — 在 dashboard 點一次升級即可
+
+### 2026.6.1-v0.3.52（2026-06-04）— release 與 openclaw 版本配對
+- **新增配對版本格式 `<openclawVersion>-v<mccVersion>`**（例：`2026.6.1-v0.3.53`），同步出現在 GitHub release tag / title、`release-manifest.json`、`/api/health`、dashboard sidebar
+- 配對的意義：tarball **在 throwaway 跑過 Playwright E2E 全綠**，配對的 openclaw 版本就是前綴 → 是個事實宣告而非裝飾
+- 前綴 sticky / 後綴自由：純 MCC 修補不用重跑 E2E，前綴自動沿用 `release-manifest.json` 的上一筆；換 openclaw 配對才要重跑 E2E（用 `MCC_OPENCLAW_VERSION=<新版>` 宣告）
+- `/api/health` 多了 `mccVersion` 與 `openclawVersion` 兩個欄位，升級比對改用 `mccVersion`（純 semver），避免 openclaw 前綴搞壞 `split('.')` 排序
+- 詳見上面「版本命名規則」與 `.claude/skills/release/SKILL.md`
+
+### 2026.6.1-v0.3.51（2026-06-04）— openclaw 2026.6.1 兼容
+- **openclaw 2026.6.1 開始把 Doctor warnings 框寫到 stdout** → MCC 的 `JSON.parse` 在 `/api/openclaw/models`、`/api/openclaw/auth` 等路由噴錯，導致 LLM 管理頁面模型下拉選空白
+- 修法：openclaw spawn 全面加 `--log-level silent --no-color`，並在 JSON 解析前剝掉非 JSON 前綴（防止上游又把 banner 寫到 stdout）
+
+### v0.3.50（2026-06-04）— release tarball 包 morning-report 預設模板
+- `data/morning-report/default-templates/` 的預設模板搬到 `assets/`，避開 `install.sh` 的 `ln -sf $STATE/data` 把模板 symlink 蓋掉的問題（過去 fresh install 會噴 `ENOENT _format.md`）
+
+### v0.3.49（2026-06-03）— Dashboard 快速操作精簡
+- 移除 5 個 unused 按鈕：Disk Cleanup / Restart Claude Tmux / Usage Scrape / Git GC All / Kill Tmux Sessions（含後端 dead code + i18n key）
+
+### v0.3.41 → v0.3.48（2026-06-03）— LLM 管理頁面
+- 新增 `/llm-auth` 頁，整合：
+  - **Auth profiles**：8 個 provider（OpenAI Codex / Anthropic / Z.ai / Kimi / Google / MiniMax / MiniMax CN / DeepSeek）、OAuth device-code 與 API key 兩種登入方式，支援複製到其他 agent
+  - **Models 分頁**：全域預設 + per-agent override，模型 / 備用模型 / Alias 全部走 UI，optimistic update 即時回顯
+- E2E spec `tests/e2e/llm-auth-kimi.spec.ts` 把 add-key → set-override → chat 全流程包進 release gate
 
 ---
 
