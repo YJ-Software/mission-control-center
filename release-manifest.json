@@ -1,19 +1,23 @@
 {
   "latest": {
-    "version": "0.3.50",
-    "releaseDate": "2026-06-04T05:12:48.528Z",
-    "notes": "- fix(openclaw): suppress Doctor warning box / state-migration banner on stdout via `--log-level silent --no-color`; fixes broken JSON parse in /api/openclaw/models and other endpoints under openclaw 2026.6.1+ (LLM 管理 model dropdown was empty)\n- fix(release): bundle morning-report default templates under `assets/` instead of `data/` so install.sh's data symlink does not delete them (was causing ENOENT for `_format.md` on fresh release installs)\n- test(e2e): make setup-imunifyav.spec idempotent — purge any prior install before running the full lifecycle\n- known issue: under openclaw 2026.6.1, cron jobs with `sessionTarget=isolated` may fall back to `qwen-oauth/coder-model` (the default-tagged model) instead of `agents.defaults.model.primary`; if that provider has no auth, the run errors with `FailoverError: Unknown model`. Workaround: configure auth for the default-tagged provider, or wait for the upstream openclaw fix.",
+    "version": "0.3.51",
+    "releaseDate": "2026-06-04T05:18:59.486Z",
+    "notes": "- fix(openclaw): defensively strip clack Doctor-warnings box from openclaw 2026.6.1+ JSON output before parsing; v0.3.50 added `--log-level silent` which suppresses most banners but `--status-json` still emits the box (LLM 管理 model dropdown was still empty in v0.3.50)",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.50/mission-control-v0.3.50-linux-x64.tar.gz",
-        "sha256": "94fffe6c9da1a28d1b219de51a8a6e754f0899a684ed849024e8752f6bb6654b",
-        "size": 59286481
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.51/mission-control-v0.3.51-linux-x64.tar.gz",
+        "sha256": "3193d1125b386fbefe13e649cc1b0a0cc67c9eb8753be75cf45f9162f53360e1",
+        "size": 59288837
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.50",
+      "releaseDate": "2026-06-04T05:12:48.528Z"
+    },
     {
       "version": "0.3.49",
       "releaseDate": "2026-06-03T12:39:30.728Z"
@@ -49,10 +53,6 @@
     {
       "version": "0.3.41",
       "releaseDate": "2026-06-01T07:16:07.199Z"
-    },
-    {
-      "version": "0.3.40",
-      "releaseDate": "2026-05-30T07:42:44.264Z"
     }
   ]
 }
