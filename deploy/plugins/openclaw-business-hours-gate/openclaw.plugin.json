@@ -59,6 +59,11 @@
         "type": "boolean",
         "description": "Master kill switch. When true, claim every inbound message regardless of schedule (always silent / canned). When false (default), schedule controls when to claim.",
         "default": false
+      },
+      "allowSlashCommands": {
+        "type": "array",
+        "description": "Slash commands allowed through the customer-side block (e.g. [\"/reset\"]). Matched on the first whitespace-delimited token, case-insensitive.",
+        "items": { "type": "string" }
       }
     }
   }

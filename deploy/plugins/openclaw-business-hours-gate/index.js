@@ -195,6 +195,15 @@ export default definePluginEntry({
       replyText: { type: "string" },
       channels: { type: "array", items: { type: "string" } },
       pauseAi: { type: "boolean" },
+      // Slash-command allowlist. Inbound text starting with "/" is normally
+      // swallowed so customers can't hit openclaw's built-in dispatcher.
+      // Anything listed here (matched on first whitespace-delimited token,
+      // case-insensitive) is allowed through. Useful for letting operators
+      // send /reset etc. via the live channel during testing.
+      allowSlashCommands: {
+        type: "array",
+        items: { type: "string" },
+      },
       // Mission Control integration. When unset, the cs-event mirror
       // and per-user pause check are skipped — plugin behaves like the
       // legacy hours-only gate.
@@ -267,8 +276,23 @@ export default definePluginEntry({
         // entirely — the inbound was already mirrored in message_received
         // above, so it still shows up in the Conversations tab and the
         // operator can decide whether to reply manually.
+        //
+        // `allowSlashCommands` is an explicit allowlist (e.g. ["/reset"])
+        // matched on the first token, case-insensitive.
         const inboundText = extractTextNonMedia(event);
         if (typeof inboundText === "string" && /^\s*\//.test(inboundText)) {
+          const firstToken = inboundText.trim().split(/\s+/, 1)[0].toLowerCase();
+          const allow = Array.isArray(cfg.allowSlashCommands)
+            ? cfg.allowSlashCommands.map((s) => String(s).toLowerCase())
+            : [];
+          if (allow.includes(firstToken)) {
+            // Allowed slash command: short-circuit the entire gate so
+            // openclaw's built-in dispatcher handles it. Skipping the
+            // hours/pauseAi check below is intentional — without this
+            // an in-window slash command would still get silently
+            // gated and never reach the dispatcher.
+            return;
+          }
           return { handled: true };
         }
 

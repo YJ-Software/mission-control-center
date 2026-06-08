@@ -1,6 +1,6 @@
 {
   "name": "openclaw-business-hours-gate",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Block AI replies during configured business hours so human agents can take over.",
   "type": "module",
