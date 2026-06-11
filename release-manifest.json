@@ -1,20 +1,27 @@
 {
   "latest": {
-    "version": "2026.6.1-v0.3.54",
-    "mccVersion": "0.3.54",
-    "openclawVersion": "2026.6.1",
-    "releaseDate": "2026-06-08T08:38:57.351Z",
+    "version": "2026.6.5-v0.3.56",
+    "mccVersion": "0.3.56",
+    "openclawVersion": "2026.6.5",
+    "releaseDate": "2026-06-11T09:38:26.916Z",
+    "notes": "- fix(release): name version dir from full paired version (version.json), not filename triple\n- Fixes WHMCS/OCD deploy failing its 'current symlink points at v<full version>' assertion (Ansible exit 2) — broke every <openclaw>-v<mcc> paired release\n- Also: install/upgrade health-wait 30/60→120s for slower OpenClaw onboarding",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.1-v0.3.54/mission-control-v0.3.54-linux-x64.tar.gz",
-        "sha256": "dd6adbe9baacbf2cb3423c5e588fb23a623b33078f169a38dcfde522e8d2ac04",
-        "size": 154444755
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.5-v0.3.56/mission-control-v0.3.56-linux-x64.tar.gz",
+        "sha256": "05f77a90e264413bf66ce84b227a4bf6b002136a352937a09c2c34ee2379596d",
+        "size": 133258537
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.6.1-v0.3.54",
+      "mccVersion": "0.3.54",
+      "openclawVersion": "2026.6.1",
+      "releaseDate": "2026-06-08T08:38:57.351Z"
+    },
     {
       "version": "2026.6.1-v0.3.53",
       "mccVersion": "0.3.53",
@@ -56,10 +63,6 @@
     {
       "version": "0.3.45",
       "releaseDate": "2026-06-03T06:27:05.435Z"
-    },
-    {
-      "version": "0.3.44",
-      "releaseDate": "2026-06-03T06:23:39.348Z"
     }
   ]
 }
