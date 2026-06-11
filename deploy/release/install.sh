@@ -37,19 +37,20 @@ log() { echo "• $*"; }
 [[ -n "$TARBALL" ]] || die "usage: bash install.sh <path/to/mission-control-vX.Y.Z-linux-x64.tar.gz>"
 [[ -f "$TARBALL" ]] || die "tarball not found: $TARBALL"
 
-# Determine the version directory name. It MUST equal the full release version
-# string the manifest advertises (e.g. "2026.6.5-v0.3.55"), because the OCD
-# deployer asserts `current` points at `versions/v<that exact string>`. So read
-# the baked version.json `version` field first — it is the authoritative full
-# (openclaw-prefix + mcc-suffix) version. Do NOT parse it out of the filename: a
-# filename like mission-control-v2026.6.5-v0.3.55-linux-x64.tar.gz would have the
-# old regex capture only the leading "2026.6.5", producing a mismatched dir.
+# Determine the version directory name. The OCD/WHMCS deployer asserts that
+# `current` points at `versions/v<mccVersion>` — the bare MCC semver (e.g.
+# "v0.3.57"), NOT the full openclaw-paired string. So read the baked
+# version.json `mccVersion` field. Do NOT derive it from the filename: a
+# full-version filename (mission-control-v2026.6.5-v0.3.57-...) makes a triple
+# regex capture only "2026.6.5", producing a mismatched dir.
 VERSION_JSON="$(tar xzOf "$TARBALL" ./version.json 2>/dev/null || true)"
-VERSION="$(printf '%s' "$VERSION_JSON" | sed -En 's/.*"version": *"([^"]+)".*/\1/p')"
+VERSION="$(printf '%s' "$VERSION_JSON" | sed -En 's/.*"mccVersion": *"([^"]+)".*/\1/p')"
 if [[ -z "$VERSION" ]]; then
-  # No version.json (very old build) — fall back to the filename, capturing the
-  # FULL version tail (everything between "-v" and "-linux-x64"), not just the
-  # first dotted-triple.
+  # Older unpaired builds had no mccVersion — `version` was already the bare
+  # semver there; fall back to it, then to the filename tail.
+  VERSION="$(printf '%s' "$VERSION_JSON" | sed -En 's/.*"version": *"([^"]+)".*/\1/p')"
+fi
+if [[ -z "$VERSION" ]]; then
   VERSION="$(basename "$TARBALL" | sed -En 's/^mission-control-v(.+)-linux-x64\.tar\.gz$/\1/p')"
 fi
 [[ -n "$VERSION" ]] || die "could not determine version from $TARBALL"

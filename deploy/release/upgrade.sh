@@ -31,16 +31,18 @@ log() { echo "• $*"; }
 [[ -f "$TARBALL" ]] || die "tarball not found: $TARBALL"
 [[ -d "$PREFIX/current" || -L "$PREFIX/current" ]] || die "no existing install at $PREFIX — run install.sh first"
 
-# The version dir name MUST equal the full release version string the manifest
-# advertises (e.g. "2026.6.5-v0.3.55") — the OCD deployer asserts `current`
-# points at `versions/v<that exact string>`. Read the baked version.json
-# `version` field (authoritative full openclaw-prefix + mcc-suffix); never parse
-# it from the filename, where the old regex captured only the leading triple.
+# The version dir name MUST equal `v<mccVersion>` — the bare MCC semver (e.g.
+# "v0.3.57"), matching the OCD deployer's `current` symlink assertion. Read the
+# baked version.json `mccVersion` field; never parse it from the filename, where
+# a full-version name would make a triple regex capture only the leading prefix.
 VERSION_JSON="$(tar xzOf "$TARBALL" ./version.json 2>/dev/null || true)"
-VERSION="$(printf '%s' "$VERSION_JSON" | sed -En 's/.*"version": *"([^"]+)".*/\1/p')"
+VERSION="$(printf '%s' "$VERSION_JSON" | sed -En 's/.*"mccVersion": *"([^"]+)".*/\1/p')"
 if [[ -z "$VERSION" ]]; then
-  # No version.json (very old build) — fall back to the filename, capturing the
-  # FULL version tail, not just the first dotted-triple.
+  # Older unpaired builds had no mccVersion — `version` was already the bare
+  # semver there; fall back to it, then to the filename tail.
+  VERSION="$(printf '%s' "$VERSION_JSON" | sed -En 's/.*"version": *"([^"]+)".*/\1/p')"
+fi
+if [[ -z "$VERSION" ]]; then
   VERSION="$(basename "$TARBALL" | sed -En 's/^mission-control-v(.+)-linux-x64\.tar\.gz$/\1/p')"
 fi
 [[ -n "$VERSION" ]] || die "could not determine version from $TARBALL"
