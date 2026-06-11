@@ -37,17 +37,20 @@ log() { echo "• $*"; }
 [[ -n "$TARBALL" ]] || die "usage: bash install.sh <path/to/mission-control-vX.Y.Z-linux-x64.tar.gz>"
 [[ -f "$TARBALL" ]] || die "tarball not found: $TARBALL"
 
-# Parse version from filename — falls back to reading version.json inside the
-# tarball if the filename doesn't match the expected pattern.
-VERSION="$(basename "$TARBALL" | sed -En 's/^mission-control-v([0-9]+\.[0-9]+\.[0-9]+)-.*\.tar\.gz$/\1/p')"
+# Determine the version directory name. It MUST equal the full release version
+# string the manifest advertises (e.g. "2026.6.5-v0.3.55"), because the OCD
+# deployer asserts `current` points at `versions/v<that exact string>`. So read
+# the baked version.json `version` field first — it is the authoritative full
+# (openclaw-prefix + mcc-suffix) version. Do NOT parse it out of the filename: a
+# filename like mission-control-v2026.6.5-v0.3.55-linux-x64.tar.gz would have the
+# old regex capture only the leading "2026.6.5", producing a mismatched dir.
+VERSION_JSON="$(tar xzOf "$TARBALL" ./version.json 2>/dev/null || true)"
+VERSION="$(printf '%s' "$VERSION_JSON" | sed -En 's/.*"version": *"([^"]+)".*/\1/p')"
 if [[ -z "$VERSION" ]]; then
-  # Prefer the bare semver (mccVersion); fall back to `version` for older
-  # builds before openclaw pairing.
-  VERSION_JSON="$(tar xzOf "$TARBALL" ./version.json 2>/dev/null || true)"
-  VERSION="$(echo "$VERSION_JSON" | sed -En 's/.*"mccVersion": *"([^"]+)".*/\1/p')"
-  if [[ -z "$VERSION" ]]; then
-    VERSION="$(echo "$VERSION_JSON" | sed -En 's/.*"version": *"([^"]+)".*/\1/p' || true)"
-  fi
+  # No version.json (very old build) — fall back to the filename, capturing the
+  # FULL version tail (everything between "-v" and "-linux-x64"), not just the
+  # first dotted-triple.
+  VERSION="$(basename "$TARBALL" | sed -En 's/^mission-control-v(.+)-linux-x64\.tar\.gz$/\1/p')"
 fi
 [[ -n "$VERSION" ]] || die "could not determine version from $TARBALL"
 
