@@ -1,5 +1,9 @@
 # Mission Control Center
 
+
+<!-- AUTO-PACKAGE-BADGES:START -->
+
+<!-- AUTO-PACKAGE-BADGES:END -->
 繁體中文 | [English](README.en.md)
 
 OpenClaw 任務控制面板 — 集中管理 AI Agent、任務排程、日報產出、備份、瀏覽器自動化與多項營運功能的儀表板系統。
