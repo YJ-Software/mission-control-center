@@ -1,10 +1,35 @@
 # Mission Control Center
 
+
+<!-- AUTO-PACKAGE-BADGES:START -->
+
+<!-- AUTO-PACKAGE-BADGES:END -->
 繁體中文 | [English](README.en.md)
 
 OpenClaw 任務控制面板 — 集中管理 AI Agent、任務排程、日報產出、備份、瀏覽器自動化與多項營運功能的儀表板系統。
 
 ---
+
+## Table of Contents
+1. [為什麼是這個 dashboard](#為什麼是這個-dashboard)
+2. [快速試玩](#快速試玩)
+3. [功能總覽](#功能總覽)
+4. [技術棧](#技術棧)
+5. [安裝與啟動](#安裝與啟動)
+6. [可用指令](#可用指令)
+7. [測試](#測試)
+8. [設定項目](#設定項目)
+9. [專案結構](#專案結構)
+10. [資料庫 Schema](#資料庫-schema)
+11. [即時通訊架構](#即時通訊架構)
+12. [認證機制](#認證機制)
+13. [多語系支援](#多語系支援)
+14. [健康檢查](#健康檢查)
+15. [Release / 部署](#release--部署)
+16. [近期重大更新](#近期重大更新)
+17. [致謝](#致謝)
+18. [免責聲明](#免責聲明)
+19. [License](#license)
 
 ## 為什麼是這個 dashboard
 
@@ -192,6 +217,7 @@ curl -fsSL https://raw.githubusercontent.com/YJ-Software/mission-control-center/
 ## 安裝與啟動
 
 ```bash
+
 # 安裝依賴
 npm install
 
@@ -235,6 +261,7 @@ npm run test:watch    # 檔案變動自動重跑
 打真實的 install/uninstall 流程，會污染系統（apt、dpkg、systemd）— **不要在生產或日常開發環境跑**。推薦在一次性 VPS / LXC / VM snapshot 上執行。
 
 ```bash
+
 # 首次：安裝 chromium
 npx playwright install chromium
 
@@ -464,6 +491,7 @@ curl http://localhost:3737/api/health
 #### MCC-only patch（常見：bug fix、小功能，前綴不變）
 
 ```bash
+
 # 1. 乾淨 main + 升 semver
 git status && git branch --show-current
 npm version patch
@@ -485,6 +513,7 @@ systemctl --user start mission-control
 需要先在 throwaway 上完整 E2E 過再發版，否則配對宣告就是說謊。
 
 ```bash
+
 # 1. 乾淨 main + 升 semver
 git status && git branch --show-current
 npm version patch
