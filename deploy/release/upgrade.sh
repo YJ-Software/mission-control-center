@@ -22,7 +22,7 @@ PREFIX="${PREFIX:-$HOME/mission-control}"
 STATE="${STATE:-$HOME/.mission-control}"
 SERVICE="${SERVICE:-mission-control}"
 KEEP_VERSIONS="${KEEP_VERSIONS:-3}"
-HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-60}"
+HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
 
 die() { echo "✗ $*" >&2; exit 1; }
 log() { echo "• $*"; }

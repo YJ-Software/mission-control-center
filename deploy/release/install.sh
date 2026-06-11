@@ -24,6 +24,11 @@ PREFIX="${PREFIX:-$HOME/mission-control}"
 STATE="${STATE:-$HOME/.mission-control}"
 SERVICE="${SERVICE:-mission-control}"
 INSTALL_PORT="${INSTALL_PORT:-3737}"
+# Seconds to wait for /api/health on first boot. Generous because a fresh box
+# also runs OpenClaw onboarding (plugin installs + gateway pairing/auth) before
+# the dashboard reports healthy — newer OpenClaw versions can push that past
+# the old 30s ceiling. Override via env if needed.
+HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
 SYSTEMD_DIR="$HOME/.config/systemd/user"
 
 die() { echo "✗ $*" >&2; exit 1; }
@@ -160,11 +165,11 @@ if command -v tailscale >/dev/null 2>&1; then
 fi
 
 # --- 6. Health check ---
-log "waiting for /api/health …"
+log "waiting up to ${HEALTH_TIMEOUT}s for /api/health …"
 PORT="$(grep -E '^PORT=' "$ENV_FILE" | head -1 | cut -d= -f2)"
 PORT="${PORT:-3737}"
 HEALTH_URL="http://127.0.0.1:$PORT/api/health"
-for i in $(seq 1 30); do
+for i in $(seq 1 "$HEALTH_TIMEOUT"); do
   RESPONSE="$(curl -sf "$HEALTH_URL" 2>/dev/null || true)"
   if [[ -n "$RESPONSE" ]]; then
     break
@@ -173,7 +178,7 @@ for i in $(seq 1 30); do
 done
 
 if [[ -z "${RESPONSE:-}" ]]; then
-  die "service failed to become healthy — inspect: journalctl --user -u $SERVICE -e"
+  die "service failed to become healthy within ${HEALTH_TIMEOUT}s — inspect: journalctl --user -u $SERVICE -e"
 fi
 
 PASSWORD="$(grep -E '^AUTH_PASSWORD=' "$ENV_FILE" | head -1 | cut -d= -f2)"
