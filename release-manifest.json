@@ -1,27 +1,20 @@
 {
   "latest": {
-    "version": "2026.6.5-v0.3.55",
-    "mccVersion": "0.3.55",
-    "openclawVersion": "2026.6.5",
-    "releaseDate": "2026-06-11T07:42:36.181Z",
-    "notes": "- fix(release): widen install/upgrade health-wait to 120s (env-overridable HEALTH_TIMEOUT)\n- Fixes WHMCS fresh-deploy reporting failure (Ansible exit 2) when OpenClaw 2026.6.5 onboarding pushes MCC first-healthy past the old 30s ceiling\n- Paired + validated against OpenClaw 2026.6.5",
+    "version": "2026.6.1-v0.3.54",
+    "mccVersion": "0.3.54",
+    "openclawVersion": "2026.6.1",
+    "releaseDate": "2026-06-08T08:38:57.351Z",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.5-v0.3.55/mission-control-v0.3.55-linux-x64.tar.gz",
-        "sha256": "624e30b28d05a5314b24a116caabc1f477b07dd915c8ff092638236954f28b5d",
-        "size": 137587661
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.1-v0.3.54/mission-control-v0.3.54-linux-x64.tar.gz",
+        "sha256": "dd6adbe9baacbf2cb3423c5e588fb23a623b33078f169a38dcfde522e8d2ac04",
+        "size": 154444755
       }
     ]
   },
   "history": [
-    {
-      "version": "2026.6.1-v0.3.54",
-      "mccVersion": "0.3.54",
-      "openclawVersion": "2026.6.1",
-      "releaseDate": "2026-06-08T08:38:57.351Z"
-    },
     {
       "version": "2026.6.1-v0.3.53",
       "mccVersion": "0.3.53",
@@ -63,6 +56,10 @@
     {
       "version": "0.3.45",
       "releaseDate": "2026-06-03T06:27:05.435Z"
+    },
+    {
+      "version": "0.3.44",
+      "releaseDate": "2026-06-03T06:23:39.348Z"
     }
   ]
 }
