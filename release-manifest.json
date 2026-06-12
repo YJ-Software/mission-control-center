@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.6.5-v0.3.57",
-    "mccVersion": "0.3.57",
+    "version": "2026.6.5-v0.3.58",
+    "mccVersion": "0.3.58",
     "openclawVersion": "2026.6.5",
-    "releaseDate": "2026-06-11T11:17:34.980Z",
-    "notes": "- fix(release): name version dir from mccVersion (bare semver) to match OCD deployer's updated current-symlink assertion\n- Completes the WHMCS fresh-deploy fix (paired with OpenClaw 2026.6.5)",
+    "releaseDate": "2026-06-12T08:22:24.235Z",
+    "notes": "- fix(llm-auth): adapt to openclaw 2026.6.5 sqlite auth store (openclaw-agent.sqlite) — list/add/remove/copy credentials + mem0 google key now read/write the sqlite store, JSON fallback for older openclaw\n- Fixes LLM-management add-credential not showing 登入成功 and showing empty list; verified llm-auth-kimi E2E green",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.5-v0.3.57/mission-control-v0.3.57-linux-x64.tar.gz",
-        "sha256": "c034adc46dddf87f2b8a23e1938ef360791cb23e546e784b4488d3f85dda05d1",
-        "size": 136863184
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.5-v0.3.58/mission-control-v0.3.58-linux-x64.tar.gz",
+        "sha256": "a371167a2ce6ae22dd95b349bb4b28563c16b8587b498be6d3286d0db013a256",
+        "size": 67530886
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.6.5-v0.3.57",
+      "mccVersion": "0.3.57",
+      "openclawVersion": "2026.6.5",
+      "releaseDate": "2026-06-11T11:17:34.980Z"
+    },
     {
       "version": "2026.6.5-v0.3.56",
       "mccVersion": "0.3.56",
@@ -61,10 +67,6 @@
     {
       "version": "0.3.47",
       "releaseDate": "2026-06-03T07:22:57.390Z"
-    },
-    {
-      "version": "0.3.46",
-      "releaseDate": "2026-06-03T07:14:41.526Z"
     }
   ]
 }
