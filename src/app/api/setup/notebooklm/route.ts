@@ -213,8 +213,12 @@ export async function POST(req: Request) {
           // from a prior incomplete install. Without it, `uv tool install`
           // bails with "Executable already exists" and the whole install
           // step fails.
+          // notebooklm-mcp-cli pulls a large dependency tree (uvicorn, starlette,
+          // sse-starlette, …). On a fresh box with a cold uv cache the first
+          // install can exceed 2 min, so 120s was too tight and flaked the
+          // setup. 5 min matches the UI/E2E INSTALL_TIMEOUT.
           await execFileAsync(uvBin, ['tool', 'install', '--force', 'notebooklm-mcp-cli'], {
-            timeout: 120000,
+            timeout: 300000,
             env: { ...process.env, HOME: homedir(), PATH: `${join(homedir(), '.local/bin')}:${process.env.PATH}` },
           })
           logs.push('notebooklm-mcp-cli installed')
