@@ -158,6 +158,61 @@ async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
   await rename(tmp, path)
 }
 
+/** Upsert the full profiles blob into the openclaw SQLite auth store. Mirrors
+ * openclaw's storage model (single store_key='primary' row holding store_json).
+ * Verified on a live openclaw 2026.6.5: a direct store_json write is reflected
+ * immediately by `openclaw models auth list`. Returns false if the DB/table is
+ * absent or the write fails (caller falls back to the legacy JSON file). */
+export function writeAuthStoreDb(dbPath: string, profiles: ProfilesFile): boolean {
+  if (!existsSync(dbPath)) return false
+  let db: Database.Database | undefined
+  try {
+    db = new Database(dbPath, { fileMustExist: true })
+    db.pragma('busy_timeout = 4000')
+    db.prepare(
+      `INSERT INTO auth_profile_store (store_key, store_json, updated_at)
+       VALUES ('primary', ?, ?)
+       ON CONFLICT(store_key) DO UPDATE SET store_json = excluded.store_json, updated_at = excluded.updated_at`,
+    ).run(JSON.stringify(profiles), Date.now())
+    return true
+  } catch {
+    return false
+  } finally {
+    db?.close()
+  }
+}
+
+function writeStateDb(dbPath: string, state: StateFile): boolean {
+  if (!existsSync(dbPath)) return false
+  let db: Database.Database | undefined
+  try {
+    db = new Database(dbPath, { fileMustExist: true })
+    db.pragma('busy_timeout = 4000')
+    db.prepare(
+      `INSERT INTO auth_profile_state (state_key, state_json, updated_at)
+       VALUES ('primary', ?, ?)
+       ON CONFLICT(state_key) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at`,
+    ).run(JSON.stringify(state), Date.now())
+    return true
+  } catch {
+    return false
+  } finally {
+    db?.close()
+  }
+}
+
+/** Persist profiles to whichever store the agent uses: the SQLite store if its
+ * DB exists (openclaw 2026.6.5+), else the legacy auth-profiles.json. */
+async function writeProfiles(agentId: string, profiles: ProfilesFile): Promise<void> {
+  if (writeAuthStoreDb(authDbPath(agentId), profiles)) return
+  await writeJsonAtomic(join(AGENTS_ROOT, agentId, 'agent', 'auth-profiles.json'), profiles)
+}
+
+async function writeStateStore(agentId: string, state: StateFile): Promise<void> {
+  if (writeStateDb(authDbPath(agentId), state)) return
+  await writeJsonAtomic(join(AGENTS_ROOT, agentId, 'agent', 'auth-state.json'), state)
+}
+
 export async function readProfiles(agentId: string): Promise<ProfilesFile> {
   // Prefer the openclaw 2026.6.5+ SQLite store; fall back to the legacy JSON
   // file for older openclaw installs.
@@ -232,17 +287,11 @@ export async function removeProfile(agentId: string, profileId: string): Promise
   if (profiles.usageStats && profileId in profiles.usageStats) {
     delete profiles.usageStats[profileId]
   }
-  await writeJsonAtomic(
-    join(AGENTS_ROOT, agentId, 'agent', 'auth-profiles.json'),
-    profiles,
-  )
+  await writeProfiles(agentId, profiles)
 
   if (state.lastGood && provider in state.lastGood) delete state.lastGood[provider]
   if (state.usageStats && profileId in state.usageStats) delete state.usageStats[profileId]
-  await writeJsonAtomic(
-    join(AGENTS_ROOT, agentId, 'agent', 'auth-state.json'),
-    state,
-  )
+  await writeStateStore(agentId, state)
 }
 
 export async function copyProfile(
@@ -262,10 +311,7 @@ export async function copyProfile(
     if (dst.lastGood && typeof dst.lastGood === 'object') {
       ;(dst.lastGood as Record<string, string>)[provider] = profileId
     }
-    await writeJsonAtomic(
-      join(AGENTS_ROOT, agentId, 'agent', 'auth-profiles.json'),
-      dst,
-    )
+    await writeProfiles(agentId, dst)
   }
 }
 

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { readAuthStoreDb, findProviderKey } from '@/lib/openclaw/auth-profiles'
+import { readAuthStoreDb, writeAuthStoreDb, findProviderKey } from '@/lib/openclaw/auth-profiles'
 
 // OpenClaw 2026.6.5 moved the per-agent auth store from auth-profiles.json into
 // openclaw-agent.sqlite (table auth_profile_store, store_key='primary',
@@ -62,6 +62,47 @@ describe('readAuthStoreDb', () => {
   it('returns null when there is no primary row', () => {
     const p = makeDb(dir, 'norow.sqlite', null)
     expect(readAuthStoreDb(p)).toBeNull()
+  })
+})
+
+describe('writeAuthStoreDb (used by removeProfile/copyProfile)', () => {
+  let dir: string
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'authdbw-'))
+  })
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('round-trips: write profiles then read them back', () => {
+    const p = makeDb(dir, 'rw.sqlite', {
+      version: 1,
+      profiles: { 'kimi:manual': { type: 'api_key', provider: 'kimi', key: 'sk-old' } },
+    })
+    // remove kimi, add google — simulating removeProfile + copyProfile
+    const ok = writeAuthStoreDb(p, {
+      version: 1,
+      profiles: { 'google:manual': { type: 'api_key', provider: 'google', key: 'AIza-new' } },
+    })
+    expect(ok).toBe(true)
+    const got = readAuthStoreDb(p)
+    expect(got?.profiles?.['kimi:manual']).toBeUndefined()
+    expect(got?.profiles?.['google:manual']?.key).toBe('AIza-new')
+  })
+
+  it('upserts when the store has the table but no primary row yet', () => {
+    const p = makeDb(dir, 'upsert.sqlite', null) // table exists, no row
+    expect(readAuthStoreDb(p)).toBeNull()
+    const ok = writeAuthStoreDb(p, {
+      version: 1,
+      profiles: { 'kimi:manual': { type: 'api_key', provider: 'kimi', key: 'sk-x' } },
+    })
+    expect(ok).toBe(true)
+    expect(readAuthStoreDb(p)?.profiles?.['kimi:manual']?.key).toBe('sk-x')
+  })
+
+  it('returns false when the db file does not exist (caller falls back to JSON)', () => {
+    expect(writeAuthStoreDb(join(dir, 'nope.sqlite'), { version: 1, profiles: {} })).toBe(false)
   })
 })
 
