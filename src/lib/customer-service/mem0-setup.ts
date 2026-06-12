@@ -18,6 +18,7 @@ import { promisify } from 'util'
 import { existsSync, readFileSync } from 'fs'
 import { homedir } from 'os'
 import { join, resolve } from 'path'
+import { readAuthStoreDb, findProviderKey, type ProfilesFile } from '@/lib/openclaw/auth-profiles'
 import { getServerEnv } from '@/lib/server-env'
 
 const execFileAsync = promisify(execFile)
@@ -299,10 +300,16 @@ export async function runInstall(progress: ProgressCallback): Promise<void> {
 
 function readGoogleApiKey(): string | null {
   try {
-    const path = join(homedir(), '.openclaw', 'agents', 'main', 'agent', 'auth-profiles.json')
-    if (!existsSync(path)) return null
-    const data = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, any>
-    return data?.profiles?.['google:default']?.key ?? null
+    const agentDir = join(homedir(), '.openclaw', 'agents', 'main', 'agent')
+    // openclaw 2026.6.5+ keeps the raw key in the SQLite auth store; older
+    // installs use auth-profiles.json. Match google by provider/`google:*` id
+    // (the profile suffix changed from `:default` to `:manual`).
+    const fromDb = readAuthStoreDb(join(agentDir, 'openclaw-agent.sqlite'))
+    if (fromDb) return findProviderKey(fromDb, 'google')
+    const jsonPath = join(agentDir, 'auth-profiles.json')
+    if (!existsSync(jsonPath)) return null
+    const data = JSON.parse(readFileSync(jsonPath, 'utf-8')) as ProfilesFile
+    return findProviderKey(data, 'google')
   } catch {
     return null
   }

@@ -1,9 +1,70 @@
 import { readFile, writeFile, readdir, rename, stat } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import os from 'node:os'
+import Database from 'better-sqlite3'
 
 const AGENTS_ROOT = join(os.homedir(), '.openclaw', 'agents')
+
+// OpenClaw 2026.6.5+ stores per-agent auth profiles in a SQLite DB
+// (openclaw-agent.sqlite) instead of the legacy auth-profiles.json. The
+// `auth_profile_store.store_json` column (store_key='primary') holds the SAME
+// {version,profiles} shape — including raw keys — that the JSON file used to.
+function authDbPath(agentId: string): string {
+  return join(AGENTS_ROOT, agentId, 'agent', 'openclaw-agent.sqlite')
+}
+
+/** Read the openclaw SQLite auth store. Returns the parsed ProfilesFile (with
+ * raw keys, same shape as the legacy JSON) or null if the DB / table / row is
+ * absent or unreadable — callers fall back to the legacy auth-profiles.json. */
+export function readAuthStoreDb(dbPath: string): ProfilesFile | null {
+  if (!existsSync(dbPath)) return null
+  let db: Database.Database | undefined
+  try {
+    db = new Database(dbPath, { readonly: true, fileMustExist: true })
+    const row = db
+      .prepare("SELECT store_json FROM auth_profile_store WHERE store_key = 'primary'")
+      .get() as { store_json?: string } | undefined
+    if (!row?.store_json) return null
+    return JSON.parse(row.store_json) as ProfilesFile
+  } catch {
+    return null
+  } finally {
+    db?.close()
+  }
+}
+
+/** Read the openclaw SQLite auth state store (cooldowns / usage). Returns null
+ * if absent/unreadable (the table is empty on fresh installs). */
+function readStateDb(dbPath: string): StateFile | null {
+  if (!existsSync(dbPath)) return null
+  let db: Database.Database | undefined
+  try {
+    db = new Database(dbPath, { readonly: true, fileMustExist: true })
+    const row = db
+      .prepare("SELECT state_json FROM auth_profile_state WHERE state_key = 'primary'")
+      .get() as { state_json?: string } | undefined
+    if (!row?.state_json) return null
+    return JSON.parse(row.state_json) as StateFile
+  } catch {
+    return null
+  } finally {
+    db?.close()
+  }
+}
+
+/** Pick a provider's raw API key from a ProfilesFile, matching by `provider`
+ * field or `<provider>:*` id (the suffix changed from `:default` to `:manual`
+ * across openclaw versions). Returns null if not found. */
+export function findProviderKey(profiles: ProfilesFile, provider: string): string | null {
+  for (const [id, entry] of Object.entries(profiles.profiles ?? {})) {
+    if (entry?.provider === provider || id.startsWith(`${provider}:`)) {
+      return typeof entry?.key === 'string' ? entry.key : null
+    }
+  }
+  return null
+}
 
 export interface AgentPaths {
   id: string
@@ -98,11 +159,17 @@ async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
 }
 
 export async function readProfiles(agentId: string): Promise<ProfilesFile> {
+  // Prefer the openclaw 2026.6.5+ SQLite store; fall back to the legacy JSON
+  // file for older openclaw installs.
+  const fromDb = readAuthStoreDb(authDbPath(agentId))
+  if (fromDb) return fromDb
   const p = join(AGENTS_ROOT, agentId, 'agent', 'auth-profiles.json')
   return readJson<ProfilesFile>(p, { version: 1, profiles: {} })
 }
 
 export async function readState(agentId: string): Promise<StateFile> {
+  const fromDb = readStateDb(authDbPath(agentId))
+  if (fromDb) return fromDb
   const p = join(AGENTS_ROOT, agentId, 'agent', 'auth-state.json')
   return readJson<StateFile>(p, { version: 1 })
 }
