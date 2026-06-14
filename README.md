@@ -73,6 +73,7 @@ curl -fsSL https://raw.githubusercontent.com/YJ-Software/mission-control-center/
 - **執行管線** — generate-prompts → 各主題執行 → finalize（合併 + HTML 轉換）→ podcast
 - **Podcast 生成** — edge-tts 語音合成 + ffmpeg 音訊合併，支援段落切分與 Agent 潤稿
 - **Cron 同步** — 主題自動同步為 OpenClaw cron jobs（`mr-*` 前綴）
+- **X/Twitter 來源流程**：social 主題可使用 [TweetClaw](https://github.com/Xquik-dev/tweetclaw)（`openclaw plugins install @xquik/tweetclaw`）搜尋推文、搜尋回覆、監控公開帳號，並在晨報 finalize 前引用 X/Twitter 來源
 - **公開發佈** — 可設定 public tunnel 對外提供晨報與 Podcast 存取
 - **Obsidian 匯出** — 完成後自動匯出至指定 Obsidian vault
 
@@ -577,7 +578,7 @@ Mission Control 站在許多開源專案肩上。以下整理 dashboard 直接 w
 
 **Headless 桌面 / 瀏覽器**
 - [noVNC](https://novnc.com/) — 瀏覽器內 VNC client（`src/lib/novnc/` 內含上游檔案）
-- [Xvfb](https://en.wikipedia.org/wiki/Xvfb) + [Openbox](http://openbox.org/) + [x11vnc](http://www.karlrunge.com/x11vnc/) + [websockify](https://github.com/novnc/websockify) — headless display stack
+- [Xvfb](https://en.wikipedia.org/wiki/Xvfb) + [Openbox](http://openbox.org/) + [x11vnc](https://github.com/LibVNC/x11vnc) + [websockify](https://github.com/novnc/websockify) - headless display stack
 - [Chromium](https://www.chromium.org/) headless — 瀏覽器自動化
 - [@jackwener/opencli](https://github.com/jackwener/opencli) — OpenCLI Chrome extension + daemon，dashboard 的 browser 自動化 / capture 流程透過它操作 Chrome
 
