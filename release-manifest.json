@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.6.5-v0.3.58",
-    "mccVersion": "0.3.58",
-    "openclawVersion": "2026.6.5",
-    "releaseDate": "2026-06-12T08:22:24.235Z",
-    "notes": "- fix(llm-auth): adapt to openclaw 2026.6.5 sqlite auth store (openclaw-agent.sqlite) — list/add/remove/copy credentials + mem0 google key now read/write the sqlite store, JSON fallback for older openclaw\n- Fixes LLM-management add-credential not showing 登入成功 and showing empty list; verified llm-auth-kimi E2E green",
+    "version": "2026.6.8-v0.3.59",
+    "mccVersion": "0.3.59",
+    "openclawVersion": "2026.6.8",
+    "releaseDate": "2026-06-18T03:19:31.756Z",
+    "notes": "- Paired with OpenClaw 2026.6.8 (full E2E green: deploy + 13/13 specs + telegram pair)\n- fix(notebooklm): widen nlm install timeout 120s→300s (avoids cold-box flake)\n- Carries the OpenClaw 2026.6.5+ sqlite auth-store compatibility fixes (LLM-management list/add/remove/copy + mem0)",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.5-v0.3.58/mission-control-v0.3.58-linux-x64.tar.gz",
-        "sha256": "a371167a2ce6ae22dd95b349bb4b28563c16b8587b498be6d3286d0db013a256",
-        "size": 67530886
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.8-v0.3.59/mission-control-v0.3.59-linux-x64.tar.gz",
+        "sha256": "d2b7d58ccac274842b89e4c9c58bcf07cc3a93e4d4874098d2d12f4413c97ab0",
+        "size": 26860887
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.6.5-v0.3.58",
+      "mccVersion": "0.3.58",
+      "openclawVersion": "2026.6.5",
+      "releaseDate": "2026-06-12T08:22:24.235Z"
+    },
     {
       "version": "2026.6.5-v0.3.57",
       "mccVersion": "0.3.57",
@@ -63,10 +69,6 @@
     {
       "version": "0.3.48",
       "releaseDate": "2026-06-03T07:33:11.581Z"
-    },
-    {
-      "version": "0.3.47",
-      "releaseDate": "2026-06-03T07:22:57.390Z"
     }
   ]
 }
