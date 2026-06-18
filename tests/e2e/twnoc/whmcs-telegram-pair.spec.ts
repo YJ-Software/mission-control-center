@@ -78,7 +78,9 @@ test('telegram pair via gramjs', async ({ page }) => {
     const reply = await dmBotAndAwaitReply(client, {
       botUsername: botUsername!,
       text: '/start',
-      timeoutMs: 60_000,
+      // 120s + periodic re-send (in the helper): a freshly-deployed bot can
+      // miss the first `/start` while its polling ingress is still starting up.
+      timeoutMs: 120_000,
     })
     const m = reply.match(/Pairing code:\s*\n*\s*([A-Z0-9]+)/i)
     if (!m) throw new Error(`unexpected reply: ${reply.slice(0, 200)}`)
