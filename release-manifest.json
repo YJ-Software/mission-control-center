@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.6.8-v0.3.59",
-    "mccVersion": "0.3.59",
+    "version": "2026.6.8-v0.3.60",
+    "mccVersion": "0.3.60",
     "openclawVersion": "2026.6.8",
-    "releaseDate": "2026-06-18T03:19:31.756Z",
-    "notes": "- Paired with OpenClaw 2026.6.8 (full E2E green: deploy + 13/13 specs + telegram pair)\n- fix(notebooklm): widen nlm install timeout 120s→300s (avoids cold-box flake)\n- Carries the OpenClaw 2026.6.5+ sqlite auth-store compatibility fixes (LLM-management list/add/remove/copy + mem0)",
+    "releaseDate": "2026-06-18T09:15:07.676Z",
+    "notes": "- fix(obsidian): reset-failed VNC services + clear stale Xvfb display lock on (re)install/uninstall (cleaner teardown)\n- Paired with OpenClaw 2026.6.8 (inherits v0.3.59's full E2E validation; product delta is the obsidian teardown improvement)",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.8-v0.3.59/mission-control-v0.3.59-linux-x64.tar.gz",
-        "sha256": "d2b7d58ccac274842b89e4c9c58bcf07cc3a93e4d4874098d2d12f4413c97ab0",
-        "size": 26860887
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.8-v0.3.60/mission-control-v0.3.60-linux-x64.tar.gz",
+        "sha256": "ad7fdcb18778bab10f49cd8d579360481811aaa929184fe0d84f2de2ce65bda5",
+        "size": 279803547
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.6.8-v0.3.59",
+      "mccVersion": "0.3.59",
+      "openclawVersion": "2026.6.8",
+      "releaseDate": "2026-06-18T03:19:31.756Z"
+    },
     {
       "version": "2026.6.5-v0.3.58",
       "mccVersion": "0.3.58",
@@ -65,10 +71,6 @@
     {
       "version": "0.3.49",
       "releaseDate": "2026-06-03T12:39:30.728Z"
-    },
-    {
-      "version": "0.3.48",
-      "releaseDate": "2026-06-03T07:33:11.581Z"
     }
   ]
 }
