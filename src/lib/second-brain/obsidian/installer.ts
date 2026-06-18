@@ -153,6 +153,9 @@ export function installObsidian(locale: string = 'zh-TW'): ReadableStream<Uint8A
   writeOpenboxConfig()
   writeHeadlessUnits(unitDir, locale)
 
+  // Display number (":5" → "5") for stale X-lock cleanup on reinstall.
+  const displayNum = getObsidianConfig('display').replace(/^:/, '')
+
   const commands = [
     { label: 'Installing Xvfb, openbox, x11vnc, websockify and dependencies', cmd: 'sudo', args: ['apt', 'install', '-y', 'xvfb', 'openbox', 'x11vnc', 'websockify', 'novnc', 'xdg-utils', 'libnotify4', 'libnss3', 'libsecret-1-0'] },
     { label: `Downloading Obsidian v${obsidianVersion}`, cmd: 'wget', args: ['-q', '--show-progress', '-O', '/tmp/obsidian.deb', `https://github.com/obsidianmd/obsidian-releases/releases/download/v${obsidianVersion}/obsidian_${obsidianVersion}_amd64.deb`] },
@@ -161,6 +164,12 @@ export function installObsidian(locale: string = 'zh-TW'): ReadableStream<Uint8A
     // system in a half-installed state.
     { label: 'Installing Obsidian', cmd: 'sudo', args: ['apt-get', 'install', '-y', '/tmp/obsidian.deb'] },
     { label: 'Reloading systemd user daemon', cmd: 'systemctl', args: ['--user', 'daemon-reload'] },
+    // Idempotency: a prior uninstall can leave these units in a failed /
+    // start-limit state and a stale Xvfb display lock, which makes the
+    // `enable --now` below silently refuse to start (reinstall hangs). Clear
+    // both before (re)starting the VNC stack.
+    { label: 'Clearing stale service state', cmd: 'systemctl', args: ['--user', 'reset-failed', 'xvfb.service', 'openbox.service', 'obsidian-headless.service', 'x11vnc.service', 'websockify.service'], optional: true },
+    { label: 'Removing stale X display lock', cmd: 'rm', args: ['-f', `/tmp/.X${displayNum}-lock`, `/tmp/.X11-unix/X${displayNum}`], optional: true },
     { label: 'Enabling and starting Xvfb', cmd: 'systemctl', args: ['--user', 'enable', '--now', 'xvfb.service'] },
     { label: 'Enabling and starting Openbox', cmd: 'systemctl', args: ['--user', 'enable', '--now', 'openbox.service'] },
     { label: 'Enabling and starting Obsidian', cmd: 'systemctl', args: ['--user', 'enable', '--now', 'obsidian-headless.service'] },
@@ -214,9 +223,16 @@ export function installHeadlessDeps(locale: string = 'zh-TW'): ReadableStream<Ui
   writeOpenboxConfig()
   writeHeadlessUnits(unitDir, locale)
 
+  // Display number (":5" → "5") for stale X-lock cleanup on reinstall.
+  const displayNum = getObsidianConfig('display').replace(/^:/, '')
+
   const commands = [
     { label: 'Installing Xvfb, openbox, x11vnc, websockify and dependencies', cmd: 'sudo', args: ['apt', 'install', '-y', 'xvfb', 'openbox', 'x11vnc', 'websockify', 'novnc', 'xdg-utils', 'libnotify4', 'libnss3', 'libsecret-1-0'] },
     { label: 'Reloading systemd user daemon', cmd: 'systemctl', args: ['--user', 'daemon-reload'] },
+    // Idempotency: clear failed/start-limit state + stale X display lock before
+    // (re)starting the VNC stack (see the main install for details).
+    { label: 'Clearing stale service state', cmd: 'systemctl', args: ['--user', 'reset-failed', 'xvfb.service', 'openbox.service', 'obsidian-headless.service', 'x11vnc.service', 'websockify.service'], optional: true },
+    { label: 'Removing stale X display lock', cmd: 'rm', args: ['-f', `/tmp/.X${displayNum}-lock`, `/tmp/.X11-unix/X${displayNum}`], optional: true },
     { label: 'Enabling and starting Xvfb', cmd: 'systemctl', args: ['--user', 'enable', '--now', 'xvfb.service'] },
     { label: 'Enabling and starting Openbox', cmd: 'systemctl', args: ['--user', 'enable', '--now', 'openbox.service'] },
     { label: 'Setting VNC password', cmd: 'x11vnc', args: ['-storepasswd', vncPassword, passwdFile] },
@@ -415,6 +431,8 @@ export function uninstallObsidian(deleteData = false): ReadableStream<Uint8Array
 
   commands.push(
     { label: 'Removing Obsidian package', cmd: 'sudo', args: ['dpkg', '-r', 'obsidian'] },
+    // Clear failed/start-limit state so a later reinstall can start cleanly.
+    { label: 'Clearing service state', cmd: 'systemctl', args: ['--user', 'reset-failed', 'xvfb.service', 'openbox.service', 'obsidian-headless.service', 'x11vnc.service', 'websockify.service'], optional: true },
     { label: 'Reloading systemd user daemon', cmd: 'systemctl', args: ['--user', 'daemon-reload'] },
   )
 
