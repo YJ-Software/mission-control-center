@@ -15,7 +15,7 @@
 
 import { execFile, execFileSync } from 'child_process'
 import { promisify } from 'util'
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { homedir } from 'os'
 import { db } from '@/lib/db'
@@ -32,6 +32,7 @@ export type StepName =
   | 'pull-bge-m3'
   | 'verify-embedding'
   | 'edit-openclaw-json'
+  | 'install-lancedb-plugin'
   | 'init-wiki-vault'
   | 'register-obsidian-vault'
   | 'mcc-defaults'
@@ -51,8 +52,23 @@ interface DetectResult {
   bgeM3Available: boolean
   embeddingsWork: boolean
   openclawConfigured: boolean
+  lancedbPluginInstalled: boolean
   vaultExists: boolean
   defuddleBin: string
+}
+
+const OPENCLAW_NPM_PROJECTS = join(homedir(), '.openclaw', 'npm', 'projects')
+
+/** memory-lancedb is an EXTERNAL OpenClaw plugin (`@openclaw/memory-lancedb`)
+ *  since 2026.6.x — it must be `openclaw plugins install`ed, not just
+ *  referenced in openclaw.json. Detect its installed npm project dir. */
+function lancedbPluginInstalled(): boolean {
+  try {
+    return existsSync(OPENCLAW_NPM_PROJECTS) &&
+      readdirSync(OPENCLAW_NPM_PROJECTS).some((d) => d.startsWith('openclaw-memory-lancedb-'))
+  } catch {
+    return false
+  }
 }
 
 async function which(cmd: string): Promise<string> {
@@ -148,8 +164,29 @@ export async function detect(): Promise<DetectResult> {
     bgeM3Available,
     embeddingsWork,
     openclawConfigured,
+    lancedbPluginInstalled: lancedbPluginInstalled(),
     vaultExists: existsSync(DEFAULT_WIKI_VAULT),
     defuddleBin: await which('defuddle'),
+  }
+}
+
+/** Install the external memory-lancedb plugin if missing. Idempotent — skips
+ *  when the plugin's npm project dir already exists. A newly installed plugin
+ *  only loads after a gateway restart, so we restart on fresh install. */
+async function ensureLancedbPlugin(progress: Progress): Promise<void> {
+  if (lancedbPluginInstalled()) {
+    progress('install-lancedb-plugin', 'memory-lancedb plugin 已安裝')
+    return
+  }
+  progress('install-lancedb-plugin', '安裝 @openclaw/memory-lancedb plugin...')
+  await execFileAsync('openclaw', ['plugins', 'install', '@openclaw/memory-lancedb'], { timeout: 180_000 })
+  // Plugin code is only picked up after a gateway restart.
+  try {
+    await execFileAsync('openclaw', ['gateway', 'restart'], { timeout: 60_000 })
+    progress('install-lancedb-plugin', 'memory-lancedb 已安裝，gateway 已重啟')
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
+    progress('install-lancedb-plugin', `plugin 已安裝，但 gateway restart 失敗（之後重啟即可生效）: ${message.slice(0, 160)}`)
   }
 }
 
@@ -345,6 +382,10 @@ export async function runSetup(progress: Progress): Promise<DetectResult> {
   } else {
     progress('edit-openclaw-json', 'openclaw.json 已配置完成')
   }
+
+  // Always ensure the external lancedb plugin is actually installed — config
+  // alone isn't enough, and existing installs predating this step need healing.
+  await ensureLancedbPlugin(progress)
 
   await initWikiVault(progress)
   registerObsidianVault(progress)

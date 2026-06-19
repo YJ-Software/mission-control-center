@@ -17,6 +17,7 @@ interface WikiDetect {
   bgeM3Available: boolean
   embeddingsWork: boolean
   openclawConfigured: boolean
+  lancedbPluginInstalled: boolean
   vaultExists: boolean
   defuddleBin: string
 }
@@ -119,7 +120,7 @@ function WikiManagePanel() {
     queryFn: () => fetch('/api/second-brain/wiki?type=settings').then(r => r.json()),
   })
 
-  const ready = !!detectQuery.data?.openclawConfigured && !!detectQuery.data?.embeddingsWork
+  const ready = !!detectQuery.data?.openclawConfigured && !!detectQuery.data?.embeddingsWork && !!detectQuery.data?.lancedbPluginInstalled
   const isCustomerService = purposeQuery.data?.purpose === 'customer-service'
 
   // Under customer-service purpose the personal management surface (ingest,
@@ -225,6 +226,7 @@ function SetupCard({
           <Row ok label={`Ollama: ${detect?.ollamaBin || '?'}`} />
           <Row ok label="bge-m3 已載入" />
           <Row ok label="OpenClaw 已配置 wiki/lancedb" />
+          <Row ok label="memory-lancedb plugin 已安裝" />
           <Row ok label="Wiki vault 存在" />
           <Row ok={!!detect?.defuddleBin} label={detect?.defuddleBin ? 'defuddle 已裝（URL ingest 會用 readability 萃取）' : 'defuddle 未裝（URL ingest 走 raw fetch）'} />
         </div>
@@ -251,6 +253,7 @@ function SetupCard({
         <Row ok={!!detect?.bgeM3Available} label="bge-m3 已 pull" />
         <Row ok={!!detect?.embeddingsWork} label="/v1/embeddings 可用" />
         <Row ok={!!detect?.openclawConfigured} label="OpenClaw 配置 wiki/lancedb" />
+        <Row ok={!!detect?.lancedbPluginInstalled} label="memory-lancedb plugin 已安裝" hint={detect?.lancedbPluginInstalled ? undefined : '需安裝外部 plugin'} />
         <Row ok={!!detect?.vaultExists} label="Wiki vault 已建立" />
         <Row ok={!!detect?.defuddleBin} label="defuddle (URL extractor)" hint={detect?.defuddleBin || '未安裝（可選）'} />
       </div>
