@@ -1763,31 +1763,6 @@
       "genericError": "操作失敗",
       "unsaved": "尚未儲存"
     },
-    "wikiConflict": {
-      "currentMode": "Wiki 模式",
-      "searchType": "Wiki 搜尋",
-      "searchText": "純文字比對",
-      "searchSemantic": "語意搜尋",
-      "embeddingBackend": "Embedding 後端",
-      "embeddingReady": "已就緒，未接上 wiki",
-      "cta": "前往第二大腦選擇",
-      "modeSwitch": {
-        "bridge": "切換為 bridge 模式（共享 + 語意搜尋）",
-        "isolated": "切回 isolated 模式（隔離 + 純文字）",
-        "bridgeSuccess": "已切換為 bridge 模式，Gateway 已重啟",
-        "isolatedSuccess": "已切回 isolated 模式，Gateway 已重啟",
-        "restartHint": "切換會自動重啟 Gateway"
-      },
-      "isolated-no-embedding": {
-        "title": "目前是 isolated 模式：純文字搜尋",
-        "description": "你的客服 wiki 在 isolated 模式（資料不會外流到其他 agent），目前用純文字比對搜尋。若想要更接近語意的搜尋（客戶用詞跟 wiki 不同也能命中），可以切到 bridge 模式（共用 wiki + lancedb embedding）。兩種都是合法選項，看你權衡：隔離 vs 語意命中率。請到「第二大腦」做選擇。"
-      },
-      "embedding-not-bound": {
-        "title": "Embedding 後端就緒，但 wiki 還沒接上",
-        "description": "memory-lancedb 有跑 embedding 後端，但 memory-wiki 的 search.backend 仍為 local（純文字）。如果你想讓 wiki 用語意搜尋，到「第二大腦」把 wiki search 改用 shared。"
-      },
-      "none": { "title": "", "description": "" }
-    },
     "memory": {
       "title": "客戶長期記憶 (mem0)",
       "description": "本機自架的 mem0 stack：Qdrant 向量庫 + Ollama bge-m3 embedding + 雲端 LLM 作 fact 萃取。AI 客服每次互動會自動 search 該客戶歷史、發現新事實時 add 進來。",
@@ -2168,7 +2143,7 @@
     "agent": "Agent 專用",
     "customerService": "客服專用",
     "agentDesc": "Wiki 作為 Agent 的個人／企業知識庫：完整語意記憶，對話中自動 recall。",
-    "customerServiceDesc": "Wiki 作為客服 Agent 的商業知識庫（RAG）：保留語意搜尋但關閉每則訊息的 auto-recall，客戶記憶走 mem0。",
+    "customerServiceDesc": "Wiki 作為客服 Agent 的商業知識庫：知識摘要會注入對話 context（slot=memory-wiki），客戶記憶走 mem0。",
     "switchTo": "切換為「{target}」",
     "confirmBody": "確定要切換為「{target}」？這會改寫 OpenClaw 設定並重啟 gateway，另一個用途會停用。",
     "confirm": "確認切換",

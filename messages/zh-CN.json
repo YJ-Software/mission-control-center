@@ -1763,31 +1763,6 @@
       "genericError": "操作失败",
       "unsaved": "尚未保存"
     },
-    "wikiConflict": {
-      "currentMode": "Wiki 模式",
-      "searchType": "Wiki 搜索",
-      "searchText": "纯文本匹配",
-      "searchSemantic": "语义搜索",
-      "embeddingBackend": "Embedding 后端",
-      "embeddingReady": "就绪，未接入 wiki",
-      "cta": "前往第二大脑选择",
-      "modeSwitch": {
-        "bridge": "切换为 bridge 模式（共享 + 语义搜索）",
-        "isolated": "切回 isolated 模式（隔离 + 纯文本）",
-        "bridgeSuccess": "已切换为 bridge 模式，Gateway 已重启",
-        "isolatedSuccess": "已切回 isolated 模式，Gateway 已重启",
-        "restartHint": "切换会自动重启 Gateway"
-      },
-      "isolated-no-embedding": {
-        "title": "当前是 isolated 模式：纯文本搜索",
-        "description": "客服 wiki 在 isolated 模式（数据不外溢），用纯文本匹配搜索。若想用语义搜索，可切到 bridge 模式（共享 + lancedb embedding）。两种均合理，看你取舍。请到「第二大脑」选择。"
-      },
-      "embedding-not-bound": {
-        "title": "Embedding 后端就绪，wiki 未接入",
-        "description": "memory-lancedb 在跑 embedding，但 memory-wiki 的 search.backend 仍为 local（纯文本）。要让 wiki 用语义搜索，到「第二大脑」改 wiki search 为 shared。"
-      },
-      "none": { "title": "", "description": "" }
-    },
     "memory": {
       "title": "客户长期记忆 (mem0)",
       "description": "本机自架的 mem0 stack：Qdrant + Ollama bge-m3 + 云端 LLM 萃取 fact。",
@@ -2151,7 +2126,7 @@
     "agent": "Agent 专用",
     "customerService": "客服专用",
     "agentDesc": "Wiki 作为 Agent 的个人／企业知识库：完整语意记忆，对话中自动 recall。",
-    "customerServiceDesc": "Wiki 作为客服 Agent 的商业知识库（RAG）：保留语意搜索但关闭每则讯息的 auto-recall，客户记忆走 mem0。",
+    "customerServiceDesc": "Wiki 作为客服 Agent 的商业知识库：知识摘要会注入对话 context（slot=memory-wiki），客户记忆走 mem0。",
     "switchTo": "切换为「{target}」",
     "confirmBody": "确定要切换为「{target}」？这会改写 OpenClaw 设置并重启 gateway，另一个用途会停用。",
     "confirm": "确认切换",

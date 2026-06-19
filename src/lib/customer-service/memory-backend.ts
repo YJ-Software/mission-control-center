@@ -150,9 +150,10 @@ const MEM0_DENY_PATTERN = 'openclaw-mem0__*'
 
 // Customer-service purpose: the plugin block (slot / lancedb / wiki search) is
 // owned by the shared purpose resolver so this flow can never disagree with the
-// second-brain setup flow. Under purpose 'customer-service', lancedb stays
-// ENABLED (it feeds wiki semantic search) but with auto-recall/capture OFF, so
-// there's no per-message recall latency — customer profiles go through mem0.
+// second-brain setup flow. Under purpose 'customer-service', slot=memory-wiki
+// (its knowledge digest is injected into the agent prompt) and lancedb is
+// DISABLED — OpenClaw disables a non-slot memory plugin anyway, so there's no
+// semantic-search benefit to keeping it on. Customer profiles go through mem0.
 //
 // On top of the shared plugin block, customer-service also clears the legacy
 // mem0 deny pattern from the bound agent's sandbox so it regains the

@@ -11,10 +11,16 @@
  * second-brain setup flow and the customer-service flow resolve their config
  * through `applyPurposeToConfig` so they can never write contradictory values.
  *
- * NOTE: the exact flag combination for 'customer-service' (lancedb enabled for
- * semantic wiki search, but auto-recall/capture off to avoid per-message
- * latency) must be validated on the throwaway test machine before relying on
- * it in production — it depends on OpenClaw-internal search-backend semantics.
+ * Slot/plugin layout per purpose (validated on a live OpenClaw 2026.6.8):
+ *   agent            → slot=memory-lancedb, lancedb ON (semantic recall + wiki
+ *                      semantic search via backend "shared").
+ *   customer-service → slot=memory-wiki (knowledge digest injected in prompt),
+ *                      lancedb OFF — a non-slot memory plugin is disabled by
+ *                      OpenClaw anyway, so there's no semantic-search benefit to
+ *                      keeping it on. Wiki search is local/text; customer
+ *                      profiles go through mem0. Semantic retrieval for a large
+ *                      CS knowledge base would need slot=memory-lancedb, a
+ *                      separate regime we don't default to.
  */
 
 import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from 'fs'
@@ -93,10 +99,16 @@ export function applyPurposeToConfig(cfg: Record<string, any>, purpose: WikiPurp
   // --- memory-lancedb: embedding base is identical; only auto-* differs. ---
   const prevLance = cfg.plugins.entries['memory-lancedb'] ?? {}
   const prevLanceCfg = prevLance.config ?? {}
+  // memory-lancedb only does anything when it IS the active memory slot —
+  // OpenClaw disables a non-slot memory plugin. So lancedb is enabled ONLY in
+  // the agent purpose (where it's the slot, providing semantic recall + wiki
+  // semantic search). In customer-service the slot is memory-wiki, so lancedb
+  // can't contribute and is left disabled; the embedding config is preserved
+  // for a clean switch back to agent. Customer memory goes through mem0.
   const lanceActive = purpose === 'agent'
   cfg.plugins.entries['memory-lancedb'] = {
     ...prevLance,
-    enabled: true, // option (b): lancedb stays on in BOTH purposes so wiki keeps semantic search
+    enabled: lanceActive,
     config: {
       ...prevLanceCfg,
       embedding: {
@@ -107,15 +119,17 @@ export function applyPurposeToConfig(cfg: Record<string, any>, purpose: WikiPurp
         ...(prevLanceCfg.embedding ?? {}),
       },
       dbPath: prevLanceCfg.dbPath ?? '~/.openclaw/memory/lancedb',
-      // Agent purpose: full memory (auto-capture/recall every turn).
-      // Customer-service: OFF — customer memory goes through mem0; lancedb is
-      // only here to provide embeddings for wiki semantic search, not per-turn recall.
       autoCapture: lanceActive,
       autoRecall: lanceActive,
     },
   }
 
-  // --- memory-wiki: same vault + render; search is semantic (shared) in both. ---
+  // --- memory-wiki: same vault + render in both; search backend differs. ---
+  //   agent            → backend "shared" leans on lancedb (the slot) for
+  //                      semantic wiki search across wiki+memory.
+  //   customer-service → backend "local", wiki-only text search (no lancedb to
+  //                      lean on); the wiki knowledge digest is injected in the
+  //                      agent's prompt because memory-wiki is the slot.
   const prevWiki = cfg.plugins.entries['memory-wiki'] ?? {}
   const prevWikiCfg = prevWiki.config ?? {}
   cfg.plugins.entries['memory-wiki'] = {
@@ -133,16 +147,17 @@ export function applyPurposeToConfig(cfg: Record<string, any>, purpose: WikiPurp
         ...(prevWikiCfg.obsidian ?? {}),
       },
       ingest: { autoCompile: true, maxConcurrentJobs: 1, allowUrlIngest: true, ...(prevWikiCfg.ingest ?? {}) },
-      // shared backend = lean on memory-lancedb embeddings for semantic search.
-      search: { backend: 'shared', corpus: 'all' },
+      search: lanceActive
+        ? { backend: 'shared', corpus: 'all' }
+        : { backend: 'local', corpus: 'wiki' },
       render: { preserveHumanBlocks: true, createBacklinks: true, createDashboards: true, ...(prevWikiCfg.render ?? {}) },
     },
   }
 
-  // The memory slot is the one thing that flips the agent's primary memory:
+  // The memory slot flips the agent's primary memory:
   //   agent            → lancedb is the live memory (semantic recall of everything)
   //   customer-service → wiki is the in-prompt knowledge supplement; customer
-  //                      profiles live in mem0, lancedb only feeds wiki search.
+  //                      profiles live in mem0; lancedb is disabled (see above).
   cfg.plugins.slots.memory = purpose === 'agent' ? 'memory-lancedb' : 'memory-wiki'
 
   // Drop stale entries that fight the slot setting.

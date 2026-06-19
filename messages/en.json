@@ -1763,31 +1763,6 @@
       "genericError": "Operation failed",
       "unsaved": "Unsaved changes"
     },
-    "wikiConflict": {
-      "currentMode": "Wiki mode",
-      "searchType": "Wiki search",
-      "searchText": "Plain text",
-      "searchSemantic": "Semantic",
-      "embeddingBackend": "Embedding backend",
-      "embeddingReady": "Ready (not wired to wiki)",
-      "cta": "Choose in Second Brain",
-      "modeSwitch": {
-        "bridge": "Switch to bridge mode (shared + semantic)",
-        "isolated": "Switch back to isolated (scoped + text)",
-        "bridgeSuccess": "Switched to bridge mode; Gateway restarted",
-        "isolatedSuccess": "Switched back to isolated; Gateway restarted",
-        "restartHint": "Switching restarts the Gateway"
-      },
-      "isolated-no-embedding": {
-        "title": "Currently isolated mode: plain text search",
-        "description": "Your customer-service wiki is in isolated mode (data stays scoped to this agent) and uses plain text matching. To enable closer-to-semantic search — so customer wording that differs from wiki phrasing still hits — switch to bridge mode (shared wiki + lancedb embedding). Both are valid: weigh isolation vs. better recall. Choose in Second Brain."
-      },
-      "embedding-not-bound": {
-        "title": "Embedding backend ready, wiki not wired",
-        "description": "memory-lancedb is running with embeddings, but memory-wiki search.backend is still local (text). To use semantic search on the wiki, switch wiki search to shared in Second Brain."
-      },
-      "none": { "title": "", "description": "" }
-    },
     "memory": {
       "title": "Long-term customer memory (mem0)",
       "description": "Self-hosted mem0 stack: Qdrant vector store + Ollama bge-m3 embeddings + cloud LLM for fact extraction. The AI assistant searches a customer's history at the start of each turn and adds new facts as it learns them.",
@@ -2151,7 +2126,7 @@
     "agent": "Agent",
     "customerService": "Customer Service",
     "agentDesc": "Wiki as an agent's personal/enterprise knowledge base: full semantic memory with auto-recall in conversation.",
-    "customerServiceDesc": "Wiki as the customer-service agent's business knowledge base (RAG): semantic search stays on, but per-message auto-recall is off; customer memory goes through mem0.",
+    "customerServiceDesc": "Wiki as the customer-service agent's business knowledge base: its knowledge digest is injected into the agent's prompt (slot=memory-wiki); customer memory goes through mem0.",
     "switchTo": "Switch to \"{target}\"",
     "confirmBody": "Switch to \"{target}\"? This rewrites OpenClaw config and restarts the gateway; the other purpose is disabled.",
     "confirm": "Confirm switch",
