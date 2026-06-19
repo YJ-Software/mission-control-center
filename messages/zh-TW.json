@@ -889,10 +889,83 @@
       "close": "關閉"
     },
     "obsidianSubTabs": {
+      "about": "關於",
       "overview": "總覽",
       "skills": "捕捉 Skills"
     },
+    "wikiSubTabs": {
+      "about": "關於",
+      "manage": "管理"
+    },
+    "wiki": {
+      "about": {
+        "tagline": "會自我編譯、帶出處與信心度的知識庫",
+        "intro": "把零散筆記與來源整理成一層「可被機器查詢」的知識——每個論點都帶證據、信心度與出處，不是一堆貼上的筆記。",
+        "whatTitle": "這是什麼，跟 Obsidian / NotebookLM 有什麼不同",
+        "whatBody": "Obsidian 是你手寫的個人 vault；NotebookLM 是丟資料進去問答。Wiki（OpenClaw memory-wiki）則是一層「belief layer」：ingest 來源後自動編譯成 entities / concepts / syntheses，並追蹤每個論點的證據、信心度與矛盾。它是 Agent 在對話中即時查詢、引用的結構化知識來源。",
+        "pillarsTitle": "三個特點",
+        "claimsTitle": "論點與證據",
+        "claimsBody": "每條知識都是一個 claim，帶 status、confidence 與 evidence 來源，可回溯到原始頁面。",
+        "compiledTitle": "自動編譯",
+        "compiledBody": "ingest 後自動 compile 成 entities / concepts / syntheses 與索引，Agent 直接查 digest，不必爬 Markdown。",
+        "provenanceTitle": "出處與矛盾追蹤",
+        "provenanceBody": "內建 dashboards 追蹤低信心、矛盾、待解問題與出處覆蓋率，知識品質看得見。",
+        "sharedTitle": "與客服共用同一個知識庫",
+        "sharedBody": "這個 wiki vault（~/.openclaw/wiki/main）同時是客服 Agent 的 RAG 知識庫。OpenClaw 一台機器只能有一個 wiki 用途，所以下面要二選一：給 Agent 個人/企業知識，或給客服當商業知識庫。同一時間只服務一種用途。",
+        "purposeTitle": "用途（二選一）"
+      },
+      "manage": {
+        "csLockTitle": "目前 Wiki 用途為「客服專用」",
+        "csLockBody": "知識庫條目改在「客服」頁面管理；這裡的個人 ingest / 搜尋 / synthesis 排程已停用。要改用 Agent 知識庫，請到「關於」分頁切換用途。"
+      },
+      "advanced": {
+        "title": "進階 / 維護",
+        "subtitle": "直接呼叫 openclaw wiki 的維護指令。多數情況用不到，知道自己在做什麼再用。",
+        "run": "執行",
+        "get": "取得",
+        "apply": "套用",
+        "import": "匯入",
+        "doctorTitle": "Doctor — 健康診斷",
+        "doctorDesc": "檢查 vault 完整性、出處缺口、plugin 連線狀態。",
+        "getTitle": "Get — 取單頁",
+        "getDesc": "依 id 或路徑取出單一頁面內容。",
+        "getPlaceholder": "例：entity.alpha 或 sources/foo.md",
+        "applyTitle": "Apply — 結構化寫入",
+        "applyDesc": "新增或更新一個頁面（synthesis / entity / concept / source），不走自由文字編輯。",
+        "applyTitlePlaceholder": "標題（例：Alpha Summary）",
+        "applyBodyPlaceholder": "內文（Markdown）",
+        "applySourcePlaceholder": "source id（選填，例：source.alpha）",
+        "bridgeTitle": "Bridge import — 從記憶匯入",
+        "bridgeDesc": "把 active memory plugin 的公開內容匯入 wiki vault。",
+        "okfTitle": "OKF import — 匯入知識包",
+        "okfDesc": "從本機目錄匯入 Open Knowledge Format (OKF) bundle。",
+        "okfPlaceholder": "bundle 目錄路徑（例：./bundles/ga4）"
+      }
+    },
     "obsidian": {
+      "about": {
+        "tagline": "你和 AI Agent 共用的第二大腦",
+        "intro": "自架在你自己的伺服器上，永遠在線、端對端加密，不被任何雲端綁架。",
+        "whatTitle": "這是什麼",
+        "whatBody": "Obsidian 在這裡不只是筆記軟體，而是你和 AI Agent 共用的一層記憶。你寫的筆記、Agent 捕捉的研究與剪報，都進到同一個 vault；你們看的是同一份知識庫。",
+        "pillarsTitle": "三個支柱",
+        "sharedTitle": "共享記憶",
+        "sharedBody": "Agent 透過「捕捉 Skills」主動把內容寫進同一個 vault。這是人機協作的記憶層，不是單機筆記本。",
+        "alwaysOnTitle": "永遠在線",
+        "alwaysOnBody": "Obsidian 以 headless 方式跑在伺服器上（Xvfb / VNC），不是你的筆電。即使你關機，Agent 半夜也能往裡面寫，你隔天從任何裝置打開都看得到。",
+        "sovereigntyTitle": "資料主權",
+        "sovereigntyBody": "透過自架 CouchDB LiveSync 跨裝置同步，並以端對端加密保護。資料是你的，同步但沒人偷看。",
+        "getStartedTitle": "接下來該做什麼",
+        "step1Title": "安裝元件",
+        "step1Body": "安裝 Obsidian 與 CouchDB，啟動 headless 桌面與同步資料庫。",
+        "step1Cta": "前往總覽",
+        "step2Title": "設定 LiveSync",
+        "step2Body": "在「總覽」設定 CouchDB LiveSync，把 vault 跨裝置端對端加密同步。",
+        "step2Cta": "前往總覽",
+        "step3Title": "啟用捕捉 Skills",
+        "step3Body": "安裝捕捉 Skills，讓 Agent 開始把研究與剪報寫進你的第二大腦。",
+        "step3Cta": "前往捕捉 Skills"
+      },
       "install": {
         "pageTitle": "安裝元件",
         "pageSubtitle": "勾選要安裝的元件，然後點擊開始安裝",
@@ -1545,6 +1618,9 @@
       "help": "可在 LINE Developer Console → 你的 Channel 找到上面三個值。Channel Secret 目前主要用於 webhook signature 驗證；對話功能只需要 Channel Access Token。Token 重新 issue 後請回來這裡更新。"
     },
     "wiki": {
+      "purposeIntro": "這個知識庫是客服 Agent 的 RAG 資料來源（房型、政策、借址等商業知識）。它與第二大腦共用同一個 wiki vault。",
+      "agentModeTitle": "Wiki 目前設為「Agent 專用」",
+      "agentModeBody": "這個 wiki vault 現在是 Agent 的個人／企業知識庫，客服 Agent 還不會使用這裡的條目。切換為「客服專用」後，下方的知識庫條目才會被客服 Agent 當作 RAG 來源。",
       "title": "知識庫條目",
       "description": "新增、編輯、刪除客服 agent 會用到的知識條目。儲存後 OpenClaw wiki 索引會自動 recompile。",
       "addNew": "新增條目",
@@ -2086,5 +2162,18 @@
     "removeTitle": "確認移除",
     "removeConfirm": "確定要移除這個 profile：",
     "removeFromAll": "同時從全部 {count} 個 agent 移除"
+  },
+  "wikiPurpose": {
+    "currentLabel": "目前用途",
+    "agent": "Agent 專用",
+    "customerService": "客服專用",
+    "agentDesc": "Wiki 作為 Agent 的個人／企業知識庫：完整語意記憶，對話中自動 recall。",
+    "customerServiceDesc": "Wiki 作為客服 Agent 的商業知識庫（RAG）：保留語意搜尋但關閉每則訊息的 auto-recall，客戶記憶走 mem0。",
+    "switchTo": "切換為「{target}」",
+    "confirmBody": "確定要切換為「{target}」？這會改寫 OpenClaw 設定並重啟 gateway，另一個用途會停用。",
+    "confirm": "確認切換",
+    "cancel": "取消",
+    "switching": "切換中…",
+    "restartNote": "切換會改寫 openclaw.json 並重啟 gateway，約需數秒。"
   }
 }

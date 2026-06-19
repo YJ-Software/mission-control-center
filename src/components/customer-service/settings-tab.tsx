@@ -8,7 +8,6 @@ import { LineChannelCard } from './line-channel-card'
 import { StorageCard } from './storage-card'
 import { MemoryProviderForm } from './memory-provider-form'
 import { QuickReplyLlmCard } from './quick-reply-llm-card'
-import { WikiConflictBanner } from './wiki-conflict-banner'
 import { PluginConfigCard } from './plugin-config-card'
 
 interface AgentInfo {
@@ -64,8 +63,6 @@ export function SettingsTab() {
 
   return (
     <div className="space-y-5 max-w-4xl">
-      <WikiConflictBanner />
-
       <div className="cyber-card p-5">
         <div className="flex items-center gap-2 mb-3">
           <SettingsIcon className="w-4 h-4 text-cyan-400" />

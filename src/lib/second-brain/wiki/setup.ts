@@ -21,6 +21,7 @@ import { homedir } from 'os'
 import { db } from '@/lib/db'
 import { settings } from '@/lib/schema'
 import { eq } from 'drizzle-orm'
+import { applyPurposeToConfig, getPurpose } from '@/lib/wiki/purpose'
 
 const execFileAsync = promisify(execFile)
 
@@ -131,10 +132,12 @@ export async function detect(): Promise<DetectResult> {
     const slot = c?.plugins?.slots?.memory
     const lancedb = c?.plugins?.entries?.['memory-lancedb']
     const wiki = c?.plugins?.entries?.['memory-wiki']
+    // Purpose-agnostic: either slot is valid. The wiki.purpose setting (not the
+    // slot value here) decides agent vs customer-service, so don't pin the slot.
     openclawConfigured =
       allow.includes('memory-lancedb') &&
       allow.includes('memory-wiki') &&
-      slot === 'memory-lancedb' &&
+      (slot === 'memory-lancedb' || slot === 'memory-wiki') &&
       lancedb?.enabled === true &&
       wiki?.enabled === true
   } catch { /* invalid json -> not configured */ }
@@ -233,56 +236,12 @@ async function pullBgeM3(progress: Progress): Promise<void> {
 
 function editOpenclawJson(progress: Progress): void {
   const c = readOpenclawJson() as any
-  c.plugins = c.plugins ?? {}
-  c.plugins.allow = c.plugins.allow ?? []
-  c.plugins.entries = c.plugins.entries ?? {}
-  c.plugins.slots = c.plugins.slots ?? {}
 
-  const allow = c.plugins.allow as string[]
-  for (const id of ['memory-lancedb', 'memory-wiki']) {
-    if (!allow.includes(id)) allow.push(id)
-  }
-  // memory-lancedb-pro is gone; remove if still listed.
-  c.plugins.allow = allow.filter((id) => id !== 'memory-lancedb-pro' && id !== 'memory-core')
-
-  // Pin the memory slot — implicit defaulting flips when entries change.
-  c.plugins.slots.memory = 'memory-lancedb'
-
-  c.plugins.entries['memory-lancedb'] = {
-    enabled: true,
-    config: {
-      embedding: {
-        apiKey: 'ollama-no-key-needed',
-        model: 'bge-m3',
-        baseUrl: 'http://127.0.0.1:11434/v1',
-        dimensions: 1024,
-      },
-      dbPath: '~/.openclaw/memory/lancedb',
-      autoCapture: true,
-      autoRecall: true,
-    },
-  }
-
-  c.plugins.entries['memory-wiki'] = {
-    enabled: true,
-    config: {
-      vaultMode: 'isolated',
-      vault: { path: '~/.openclaw/wiki/main', renderMode: 'obsidian' },
-      obsidian: {
-        enabled: true,
-        useOfficialCli: true,
-        vaultName: 'OpenClaw Wiki',
-        openAfterWrites: false,
-      },
-      ingest: { autoCompile: true, maxConcurrentJobs: 1, allowUrlIngest: true },
-      search: { backend: 'shared', corpus: 'all' },
-      render: { preserveHumanBlocks: true, createBacklinks: true, createDashboards: true },
-    },
-  }
-
-  // Drop stale entries that pollute warnings / fight the slot setting.
-  delete c.plugins.entries['memory-lancedb-pro']
-  delete c.plugins.entries['memory-core']
+  // The plugin block (allow + slots + entries) is owned by the shared purpose
+  // resolver so this install flow can never disagree with the customer-service
+  // flow. Fresh installs default to 'agent'; an existing choice is respected.
+  const purpose = getPurpose()
+  applyPurposeToConfig(c, purpose)
 
   // memory.backend (wrong key) — strip if present.
   if (c.memory && typeof c.memory === 'object' && 'backend' in c.memory) {
@@ -292,7 +251,7 @@ function editOpenclawJson(progress: Progress): void {
   }
 
   writeOpenclawJson(c)
-  progress('edit-openclaw-json', '寫入 ~/.openclaw/openclaw.json (allow + slots + entries)')
+  progress('edit-openclaw-json', `寫入 ~/.openclaw/openclaw.json (purpose=${purpose})`)
 }
 
 async function initWikiVault(progress: Progress): Promise<void> {

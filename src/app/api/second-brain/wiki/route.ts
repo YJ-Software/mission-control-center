@@ -9,6 +9,7 @@ import { settings } from '@/lib/schema'
 import { eq } from 'drizzle-orm'
 import * as wiki from '@/lib/second-brain/wiki/cli'
 import { detect } from '@/lib/second-brain/wiki/setup'
+import { getPurpose, setPurpose, isWikiPurpose } from '@/lib/wiki/purpose'
 
 const execFileAsync = promisify(execFile)
 
@@ -96,6 +97,20 @@ export async function GET(req: NextRequest) {
 
   if (type === 'lint') {
     return NextResponse.json(await wiki.lint())
+  }
+
+  if (type === 'purpose') {
+    return NextResponse.json({ purpose: getPurpose() })
+  }
+
+  if (type === 'doctor') {
+    return NextResponse.json(await wiki.doctor())
+  }
+
+  if (type === 'get') {
+    const id = searchParams.get('id') || ''
+    if (!id.trim()) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    return NextResponse.json(await wiki.get(id.trim()))
   }
 
   return NextResponse.json({ error: 'unknown type' }, { status: 400 })
@@ -205,6 +220,43 @@ export async function POST(req: NextRequest) {
   if (action === 'sync-cron') {
     const { syncWikiCronJob } = await import('@/lib/second-brain/wiki/sync-cron')
     return NextResponse.json(await syncWikiCronJob())
+  }
+
+  if (action === 'apply') {
+    const body = await req.json().catch(() => ({})) as { kind?: string; title?: string; body?: string; sourceId?: string }
+    if (!body.kind?.trim() || !body.title?.trim() || !body.body?.trim()) {
+      return NextResponse.json({ error: 'kind, title and body are required' }, { status: 400 })
+    }
+    return NextResponse.json(await wiki.apply({
+      kind: body.kind.trim(),
+      title: body.title.trim(),
+      body: body.body,
+      sourceId: body.sourceId,
+    }))
+  }
+
+  if (action === 'bridge-import') {
+    return NextResponse.json(await wiki.bridgeImport())
+  }
+
+  if (action === 'okf-import') {
+    const body = await req.json().catch(() => ({})) as { path?: string }
+    if (!body.path?.trim()) return NextResponse.json({ error: 'path required' }, { status: 400 })
+    return NextResponse.json(await wiki.okfImport(body.path.trim()))
+  }
+
+  if (action === 'purpose') {
+    const body = await req.json().catch(() => ({})) as { purpose?: string }
+    if (!isWikiPurpose(body.purpose)) {
+      return NextResponse.json({ error: 'purpose must be "agent" or "customer-service"' }, { status: 400 })
+    }
+    try {
+      const result = await setPurpose(body.purpose)
+      return NextResponse.json({ ok: true, purpose: body.purpose, ...result })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      return NextResponse.json({ ok: false, error: message }, { status: 500 })
+    }
   }
 
   if (action === 'synthesize-now') {

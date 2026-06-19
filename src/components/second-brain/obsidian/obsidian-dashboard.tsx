@@ -12,6 +12,7 @@ import { LiveSyncSetup } from './livesync-setup'
 import { MissingDepsCard } from './missing-deps-card'
 import { VaultPathDialog } from './vault-path-dialog'
 import { ObsidianLogs } from './obsidian-logs'
+import { AboutPanel } from './about-panel'
 import { SkillsPanel } from '@/components/second-brain/skills/skills-panel'
 
 interface DetectedComponents {
@@ -37,6 +38,7 @@ interface ObsidianConfig {
 export function ObsidianDashboard() {
   const t = useTranslations('secondBrain.obsidianSubTabs')
   const [forceView, setForceView] = useState<'dashboard' | 'install' | null>(null)
+  const [activeTab, setActiveTab] = useState('about')
   const [showVaultDialog, setShowVaultDialog] = useState(false)
   const [vaultAutoSet, setVaultAutoSet] = useState(false)
 
@@ -103,8 +105,16 @@ export function ObsidianDashboard() {
       {headlessMissing && detected && (
         <MissingDepsCard detected={detected} onInstallComplete={refetch} />
       )}
-      <Tabs.Root defaultValue="overview">
+      <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
         <Tabs.List className="flex gap-1 mb-4 border-b border-white/[0.08]">
+          <Tabs.Trigger
+            value="about"
+            className="px-3 py-2 text-sm text-white/50 border-b-2 border-transparent -mb-px
+              data-[state=active]:border-cyan-400 data-[state=active]:text-white
+              hover:text-white/80 transition-colors font-medium"
+          >
+            {t('about')}
+          </Tabs.Trigger>
           <Tabs.Trigger
             value="overview"
             className="px-3 py-2 text-sm text-white/50 border-b-2 border-transparent -mb-px
@@ -122,6 +132,10 @@ export function ObsidianDashboard() {
             {t('skills')}
           </Tabs.Trigger>
         </Tabs.List>
+
+        <Tabs.Content value="about">
+          <AboutPanel onNavigateAction={setActiveTab} />
+        </Tabs.Content>
 
         <Tabs.Content value="overview" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

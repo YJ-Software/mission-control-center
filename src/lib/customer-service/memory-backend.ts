@@ -16,6 +16,9 @@ import { existsSync, readFileSync, writeFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { getServerEnv } from '@/lib/server-env'
+import { applyPurposeToConfig, PURPOSE_KEY } from '@/lib/wiki/purpose'
+import { db } from '@/lib/db'
+import { settings } from '@/lib/schema'
 
 const execFileAsync = promisify(execFile)
 
@@ -145,24 +148,22 @@ function stripLegacyMemorySection(content: string): string {
 
 const MEM0_DENY_PATTERN = 'openclaw-mem0__*'
 
-// memory-wiki holds the memory slot in both modes — it provides the wiki
-// knowledge-base supplement (search/digest in prompt) regardless. memory-lancedb
-// is disabled outright (we use mem0 MCP for customer memory, lancedb's
-// auto-recall would just add per-message latency for nothing).
+// Customer-service purpose: the plugin block (slot / lancedb / wiki search) is
+// owned by the shared purpose resolver so this flow can never disagree with the
+// second-brain setup flow. Under purpose 'customer-service', lancedb stays
+// ENABLED (it feeds wiki semantic search) but with auto-recall/capture OFF, so
+// there's no per-message recall latency — customer profiles go through mem0.
 //
-// Older revisions toggled an MCP deny pattern for the now-removed wiki-person
-// mode. We always strip that pattern so agents upgraded from the old layout
-// regain access to openclaw-mem0__* tools.
+// On top of the shared plugin block, customer-service also clears the legacy
+// mem0 deny pattern from the bound agent's sandbox so it regains the
+// openclaw-mem0__* tools.
 function patchOpenclawConfig(agentId: string): string {
   if (!existsSync(OPENCLAW_CONFIG)) return 'openclaw.json missing — skipped'
   const raw = readFileSync(OPENCLAW_CONFIG, 'utf-8')
   const cfg = JSON.parse(raw) as Record<string, any>
 
-  cfg.plugins ??= {}
-  cfg.plugins.slots ??= {}
-  cfg.plugins.slots.memory = 'memory-wiki'
-  cfg.plugins.entries ??= {}
-  cfg.plugins.entries['memory-lancedb'] = { ...(cfg.plugins.entries['memory-lancedb'] ?? {}), enabled: false }
+  // Shared, conflict-free plugin config for the customer-service purpose.
+  applyPurposeToConfig(cfg, 'customer-service')
 
   cfg.agents ??= {}
   const list: any[] = Array.isArray(cfg.agents.list) ? cfg.agents.list : []
@@ -181,10 +182,16 @@ function patchOpenclawConfig(agentId: string): string {
     }
   }
 
-  const next = JSON.stringify(cfg, null, 2) + '\n'
-  if (next === raw) return 'openclaw.json unchanged'
-  writeFileSync(OPENCLAW_CONFIG, next, 'utf-8')
-  return 'openclaw.json updated (slots.memory=memory-wiki, lancedb=disabled, mem0 deny cleared)'
+  writeFileSync(OPENCLAW_CONFIG, JSON.stringify(cfg, null, 2) + '\n', 'utf-8')
+
+  // Persist the choice so the rest of the app (and the second-brain Wiki page)
+  // agrees this machine is now in customer-service mode.
+  db.insert(settings)
+    .values({ key: PURPOSE_KEY, value: 'customer-service' })
+    .onConflictDoUpdate({ target: settings.key, set: { value: 'customer-service' } })
+    .run()
+
+  return 'openclaw.json updated (purpose=customer-service: lancedb auto-recall off, mem0 deny cleared)'
 }
 
 export async function setMode(): Promise<{ output: string; agentId: string | null }> {

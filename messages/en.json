@@ -889,10 +889,83 @@
       "close": "Close"
     },
     "obsidianSubTabs": {
+      "about": "About",
       "overview": "Overview",
       "skills": "Capture Skills"
     },
+    "wikiSubTabs": {
+      "about": "About",
+      "manage": "Manage"
+    },
+    "wiki": {
+      "about": {
+        "tagline": "A self-compiling knowledge base with provenance and confidence",
+        "intro": "Turns scattered notes and sources into a machine-queryable knowledge layer — every claim carries evidence, confidence, and provenance, not a pile of pasted notes.",
+        "whatTitle": "What it is, and how it differs from Obsidian / NotebookLM",
+        "whatBody": "Obsidian is your hand-written personal vault; NotebookLM is drop-in Q&A over documents. Wiki (OpenClaw memory-wiki) is a belief layer: after you ingest sources it compiles them into entities / concepts / syntheses and tracks each claim's evidence, confidence, and contradictions. It's the structured knowledge an agent queries and cites live in conversation.",
+        "pillarsTitle": "Three traits",
+        "claimsTitle": "Claims & evidence",
+        "claimsBody": "Each fact is a claim with status, confidence, and evidence sources, traceable back to its origin page.",
+        "compiledTitle": "Auto-compiled",
+        "compiledBody": "Ingest compiles into entities / concepts / syntheses and indexes; agents read the digest instead of scraping Markdown.",
+        "provenanceTitle": "Provenance & contradiction tracking",
+        "provenanceBody": "Built-in dashboards surface low-confidence claims, contradictions, open questions, and provenance coverage — knowledge quality is visible.",
+        "sharedTitle": "Shares one knowledge base with Customer Service",
+        "sharedBody": "This wiki vault (~/.openclaw/wiki/main) is also the customer-service agent's RAG knowledge base. OpenClaw allows only one wiki purpose per machine, so you pick one below: an agent's personal/enterprise knowledge, or the customer-service business knowledge base. Only one purpose is active at a time.",
+        "purposeTitle": "Purpose (pick one)"
+      },
+      "manage": {
+        "csLockTitle": "Wiki purpose is currently \"Customer Service\"",
+        "csLockBody": "Knowledge-base entries are managed on the Customer Service page; personal ingest / search / synthesis scheduling are disabled here. To use it as an agent knowledge base, switch the purpose on the About tab."
+      },
+      "advanced": {
+        "title": "Advanced / Maintenance",
+        "subtitle": "Call openclaw wiki maintenance commands directly. Rarely needed — use only if you know what you're doing.",
+        "run": "Run",
+        "get": "Get",
+        "apply": "Apply",
+        "import": "Import",
+        "doctorTitle": "Doctor — health check",
+        "doctorDesc": "Checks vault integrity, provenance gaps, and plugin wiring.",
+        "getTitle": "Get — fetch a page",
+        "getDesc": "Retrieve a single page by id or path.",
+        "getPlaceholder": "e.g. entity.alpha or sources/foo.md",
+        "applyTitle": "Apply — structured write",
+        "applyDesc": "Create or update a page (synthesis / entity / concept / source) without freeform editing.",
+        "applyTitlePlaceholder": "Title (e.g. Alpha Summary)",
+        "applyBodyPlaceholder": "Body (Markdown)",
+        "applySourcePlaceholder": "source id (optional, e.g. source.alpha)",
+        "bridgeTitle": "Bridge import — from memory",
+        "bridgeDesc": "Import the active memory plugin's public artifacts into the wiki vault.",
+        "okfTitle": "OKF import — knowledge bundle",
+        "okfDesc": "Import an Open Knowledge Format (OKF) bundle from a local directory.",
+        "okfPlaceholder": "bundle directory path (e.g. ./bundles/ga4)"
+      }
+    },
     "obsidian": {
+      "about": {
+        "tagline": "A second brain you share with your AI agents",
+        "intro": "Self-hosted on your own server, always on, end-to-end encrypted — never locked into anyone's cloud.",
+        "whatTitle": "What this is",
+        "whatBody": "Here Obsidian isn't just a note app — it's a memory layer you share with your AI agents. Your notes and the research and clippings the agent captures land in the same vault; you both read the same knowledge base.",
+        "pillarsTitle": "Three pillars",
+        "sharedTitle": "Shared memory",
+        "sharedBody": "Agents actively write into the same vault through Capture Skills. It's a human–AI memory layer, not a single-device notebook.",
+        "alwaysOnTitle": "Always on",
+        "alwaysOnBody": "Obsidian runs headless on the server (Xvfb / VNC), not your laptop. Even while you're offline the agent can keep writing in, and you'll see it from any device the next day.",
+        "sovereigntyTitle": "Data sovereignty",
+        "sovereigntyBody": "Self-hosted CouchDB LiveSync syncs across devices with end-to-end encryption. The data is yours — synced, but unreadable to anyone else.",
+        "getStartedTitle": "What to do next",
+        "step1Title": "Install components",
+        "step1Body": "Install Obsidian and CouchDB, then start the headless desktop and sync database.",
+        "step1Cta": "Go to Overview",
+        "step2Title": "Set up LiveSync",
+        "step2Body": "Configure CouchDB LiveSync in Overview to sync your vault across devices with end-to-end encryption.",
+        "step2Cta": "Go to Overview",
+        "step3Title": "Enable Capture Skills",
+        "step3Body": "Install Capture Skills so agents can start writing research and clippings into your second brain.",
+        "step3Cta": "Go to Capture Skills"
+      },
       "install": {
         "pageTitle": "Install Components",
         "pageSubtitle": "Select components to install, then click Start Install",
@@ -1545,6 +1618,9 @@
       "help": "Find all three values in LINE Developer Console → your Channel. Channel Secret is mainly used for webhook signature verification; the Conversations feature only needs the Channel Access Token. Update here after re-issuing a token."
     },
     "wiki": {
+      "purposeIntro": "This knowledge base is the customer-service agent's RAG source (room types, policies, registered-address rules, and other business knowledge). It shares one wiki vault with the Second Brain.",
+      "agentModeTitle": "Wiki purpose is currently \"Agent\"",
+      "agentModeBody": "This wiki vault is currently an agent's personal/enterprise knowledge base, so the support agent won't use these entries yet. Switch to \"Customer Service\" to make the entries below the agent's RAG source.",
       "title": "Knowledge entries",
       "description": "Create, edit, and delete knowledge entries used by the customer-service agent. The OpenClaw wiki index recompiles automatically after each save.",
       "addNew": "Add entry",
@@ -2069,5 +2145,18 @@
     "removeTitle": "Confirm removal",
     "removeConfirm": "Remove this profile:",
     "removeFromAll": "Also remove from all {count} agents"
+  },
+  "wikiPurpose": {
+    "currentLabel": "Current purpose",
+    "agent": "Agent",
+    "customerService": "Customer Service",
+    "agentDesc": "Wiki as an agent's personal/enterprise knowledge base: full semantic memory with auto-recall in conversation.",
+    "customerServiceDesc": "Wiki as the customer-service agent's business knowledge base (RAG): semantic search stays on, but per-message auto-recall is off; customer memory goes through mem0.",
+    "switchTo": "Switch to \"{target}\"",
+    "confirmBody": "Switch to \"{target}\"? This rewrites OpenClaw config and restarts the gateway; the other purpose is disabled.",
+    "confirm": "Confirm switch",
+    "cancel": "Cancel",
+    "switching": "Switching…",
+    "restartNote": "Switching rewrites openclaw.json and restarts the gateway; takes a few seconds."
   }
 }

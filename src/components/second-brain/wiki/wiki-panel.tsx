@@ -2,10 +2,14 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
+import * as Tabs from '@radix-ui/react-tabs'
+import { useTranslations } from 'next-intl'
 import {
   CheckCircle2, AlertCircle, Loader2, Search, Upload,
-  PlayCircle, Settings, ExternalLink,
+  PlayCircle, Settings, ExternalLink, Headset,
 } from 'lucide-react'
+import { WikiAboutPanel } from './wiki-about-panel'
+import { WikiAdvancedCard } from './wiki-advanced-card'
 
 interface WikiDetect {
   ollamaBin: string
@@ -61,6 +65,44 @@ const STAGE_LABELS: Record<string, string> = {
 }
 
 export function WikiPanel() {
+  const t = useTranslations('secondBrain.wikiSubTabs')
+
+  const subTab = (value: string, label: string) => (
+    <Tabs.Trigger
+      value={value}
+      className="px-3 py-2 text-sm text-white/50 border-b-2 border-transparent -mb-px
+        data-[state=active]:border-violet-400 data-[state=active]:text-white
+        hover:text-white/80 transition-colors font-medium"
+    >
+      {label}
+    </Tabs.Trigger>
+  )
+
+  return (
+    <Tabs.Root defaultValue="about">
+      <Tabs.List className="flex gap-1 mb-4 border-b border-white/[0.08]">
+        {subTab('about', t('about'))}
+        {subTab('manage', t('manage'))}
+      </Tabs.List>
+
+      <Tabs.Content value="about">
+        <WikiAboutPanel />
+      </Tabs.Content>
+
+      <Tabs.Content value="manage">
+        <WikiManagePanel />
+      </Tabs.Content>
+    </Tabs.Root>
+  )
+}
+
+function WikiManagePanel() {
+  const t = useTranslations('secondBrain.wiki.manage')
+
+  const purposeQuery = useQuery<{ purpose: string }>({
+    queryKey: ['wiki-purpose'],
+    queryFn: () => fetch('/api/second-brain/wiki?type=purpose').then(r => r.json()),
+  })
   const detectQuery = useQuery<WikiDetect>({
     queryKey: ['wiki-detect'],
     queryFn: () => fetch('/api/second-brain/wiki?type=detect').then(r => r.json()),
@@ -78,6 +120,24 @@ export function WikiPanel() {
   })
 
   const ready = !!detectQuery.data?.openclawConfigured && !!detectQuery.data?.embeddingsWork
+  const isCustomerService = purposeQuery.data?.purpose === 'customer-service'
+
+  // Under customer-service purpose the personal management surface (ingest,
+  // synthesis schedule, ad-hoc search) belongs to the support agent's knowledge
+  // base — managed from the customer-service page — so we lock it here.
+  if (isCustomerService) {
+    return (
+      <div className="rounded-xl border border-amber-400/20 bg-amber-500/[0.05] p-5">
+        <div className="flex items-start gap-3">
+          <Headset className="w-5 h-5 text-amber-300 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-sm font-medium text-white mb-1.5">{t('csLockTitle')}</h3>
+            <p className="text-sm text-white/55 leading-relaxed">{t('csLockBody')}</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -94,6 +154,7 @@ export function WikiPanel() {
           {settingsQuery.data && (
             <SynthesisCard settings={settingsQuery.data} onChanged={() => settingsQuery.refetch()} />
           )}
+          <WikiAdvancedCard />
         </>
       )}
     </div>

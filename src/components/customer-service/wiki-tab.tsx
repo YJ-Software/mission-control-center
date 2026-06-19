@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { Plus, Loader2, Trash2, Save, BookText, X, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Plus, Loader2, Trash2, Save, BookText, X, AlertCircle, CheckCircle2, Brain } from 'lucide-react'
+import { WikiPurposeSwitch } from '@/components/wiki/wiki-purpose-switch'
 
 interface WikiEntrySummary {
   id: string
@@ -33,6 +34,12 @@ export function WikiTab() {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState<{ filename: string | null; title: string; content: string } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+
+  const purposeQuery = useQuery<{ purpose: string }>({
+    queryKey: ['wiki-purpose'],
+    queryFn: () => fetch('/api/second-brain/wiki?type=purpose').then(r => r.json()),
+  })
+  const isCustomerService = purposeQuery.data?.purpose === 'customer-service'
 
   const listQuery = useQuery<{ entries: WikiEntrySummary[] } | { error: string }>({
     queryKey: ['cs-wiki-entries'],
@@ -102,8 +109,37 @@ export function WikiTab() {
   const list = listQuery.data && 'entries' in listQuery.data ? listQuery.data.entries : []
   const listError = listQuery.data && 'error' in listQuery.data ? listQuery.data.error : null
 
+  // The wiki vault is shared with the Second Brain. When this machine's wiki
+  // purpose isn't 'customer-service', these entries aren't used by the support
+  // agent — show the purpose context and a switch instead of the CRUD.
+  if (purposeQuery.data && !isCustomerService) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-5">
+          <div className="flex items-start gap-3 mb-4">
+            <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-violet-500/10 border border-violet-400/20 flex items-center justify-center">
+              <Brain className="w-4 h-4 text-violet-300" />
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-white mb-1">{t('agentModeTitle')}</h3>
+              <p className="text-sm text-white/55 leading-relaxed">{t('agentModeBody')}</p>
+            </div>
+          </div>
+          <WikiPurposeSwitch onSwitchedAction={() => purposeQuery.refetch()} />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
+      <div className="rounded-xl border border-cyan-400/15 bg-cyan-500/[0.04] p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-white/55 leading-relaxed max-w-xl">{t('purposeIntro')}</p>
+          <WikiPurposeSwitch compact onSwitchedAction={() => purposeQuery.refetch()} />
+        </div>
+      </div>
+
       <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
         <div className="flex items-center justify-between mb-3">
           <div>
