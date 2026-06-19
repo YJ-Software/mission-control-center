@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { Plus, Loader2, Trash2, Save, BookText, X, AlertCircle, CheckCircle2, Brain } from 'lucide-react'
+import { Plus, Loader2, Trash2, Save, BookText, X, AlertCircle, CheckCircle2, Brain, Combine } from 'lucide-react'
 import { WikiPurposeSwitch } from '@/components/wiki/wiki-purpose-switch'
 
 interface WikiEntrySummary {
@@ -139,6 +139,8 @@ export function WikiTab() {
           <WikiPurposeSwitch compact onSwitchedAction={() => purposeQuery.refetch()} />
         </div>
       </div>
+
+      <CsSynthesizeBar t={t} />
 
       <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
         <div className="flex items-center justify-between mb-3">
@@ -330,6 +332,58 @@ export function WikiTab() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** Manual "Synthesize now" trigger for the customer-service knowledge base.
+ *  CS purpose locks the second-brain Manage tab, so this is the only place a
+ *  support operator can rebuild the belief layer after editing entries
+ *  (otherwise they wait for the global weekly synthesis cron). */
+function CsSynthesizeBar({ t }: { t: (key: string, values?: Record<string, string | number>) => string }) {
+  const [justStarted, setJustStarted] = useState(false)
+  const progressQuery = useQuery<{ running?: boolean }>({
+    queryKey: ['wiki-synthesis-progress'],
+    queryFn: () => fetch('/api/second-brain/wiki?type=synthesis-progress').then(r => r.json()),
+    refetchInterval: (q) => (q.state.data?.running ? 5000 : 60000),
+  })
+  const settingsQuery = useQuery<{ lastSynthesisAt?: string }>({
+    queryKey: ['wiki-settings'],
+    queryFn: () => fetch('/api/second-brain/wiki?type=settings').then(r => r.json()),
+  })
+  const trigger = useMutation({
+    mutationFn: async () => {
+      const r = await fetch('/api/second-brain/wiki?action=synthesize-now', { method: 'POST' })
+      return r.json()
+    },
+    onSuccess: () => { setJustStarted(true); progressQuery.refetch() },
+  })
+  const running = !!progressQuery.data?.running || trigger.isPending
+  const lastAt = settingsQuery.data?.lastSynthesisAt
+
+  return (
+    <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-start gap-2.5 min-w-0">
+          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-400/20 flex items-center justify-center">
+            <Combine className="w-4 h-4 text-violet-300/90" />
+          </div>
+          <div className="min-w-0">
+            <h4 className="text-sm font-medium text-white">{t('synthesizeTitle')}</h4>
+            <p className="text-xs text-white/45 leading-relaxed mt-0.5">{t('synthesizeDesc')}</p>
+            {lastAt && <p className="text-[11px] text-white/30 mt-1">{t('synthesizeLastRun', { time: fmtDate(lastAt) })}</p>}
+          </div>
+        </div>
+        <button
+          onClick={() => trigger.mutate()}
+          disabled={running}
+          className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-violet-200 bg-violet-500/15 border border-violet-400/25 hover:bg-violet-500/20 disabled:opacity-50"
+        >
+          {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Combine className="w-3.5 h-3.5" />}
+          {running ? t('synthesizing') : t('synthesizeNow')}
+        </button>
+      </div>
+      {justStarted && <p className="text-xs text-emerald-400 mt-2">{t('synthesizeStarted')}</p>}
     </div>
   )
 }
