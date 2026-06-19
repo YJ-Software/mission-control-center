@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.6.8-v0.3.60",
-    "mccVersion": "0.3.60",
+    "version": "2026.6.8-v0.3.61",
+    "mccVersion": "0.3.61",
     "openclawVersion": "2026.6.8",
-    "releaseDate": "2026-06-18T09:15:07.676Z",
-    "notes": "- fix(obsidian): reset-failed VNC services + clear stale Xvfb display lock on (re)install/uninstall (cleaner teardown)\n- Paired with OpenClaw 2026.6.8 (inherits v0.3.59's full E2E validation; product delta is the obsidian teardown improvement)",
+    "releaseDate": "2026-06-19T20:16:47.688Z",
+    "notes": "- feat(wiki): single \"wiki purpose\" switch (Agent / Customer Service) as one source of truth; both the Second Brain and Customer Service pages stay in sync\n- feat(wiki): new About pages for Wiki and Obsidian, with a full ingest → compile → synthesis (綜合整理) → query flow diagram\n- feat(wiki): surface advanced wiki commands — doctor / get / apply / bridge import / okf import\n- feat(customer-service): \"Synthesize now\" button on the knowledge tab\n- fix(wiki): install the external @openclaw/memory-lancedb plugin during setup (semantic memory was silently broken on OpenClaw 2026.6.x)\n- i18n: translate \"synthesis\" as 綜合整理 (zh-TW / zh-CN)",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.8-v0.3.60/mission-control-v0.3.60-linux-x64.tar.gz",
-        "sha256": "ad7fdcb18778bab10f49cd8d579360481811aaa929184fe0d84f2de2ce65bda5",
-        "size": 279803547
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.8-v0.3.61/mission-control-v0.3.61-linux-x64.tar.gz",
+        "sha256": "370eba0fb3487d6c887f0e21f26545397c2e3abde049a415f277c5d03c667183",
+        "size": 26885184
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.6.8-v0.3.60",
+      "mccVersion": "0.3.60",
+      "openclawVersion": "2026.6.8",
+      "releaseDate": "2026-06-18T09:15:07.676Z"
+    },
     {
       "version": "2026.6.8-v0.3.59",
       "mccVersion": "0.3.59",
@@ -67,10 +73,6 @@
     {
       "version": "0.3.50",
       "releaseDate": "2026-06-04T05:12:48.528Z"
-    },
-    {
-      "version": "0.3.49",
-      "releaseDate": "2026-06-03T12:39:30.728Z"
     }
   ]
 }
