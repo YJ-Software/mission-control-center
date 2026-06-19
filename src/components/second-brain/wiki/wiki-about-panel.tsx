@@ -1,7 +1,11 @@
 'use client'
 
+import { Fragment } from 'react'
 import { useTranslations } from 'next-intl'
-import { Network, FileSearch, GitBranch, ShieldQuestion, Users } from 'lucide-react'
+import {
+  Network, FileSearch, GitBranch, ShieldQuestion, Users,
+  Upload, RefreshCw, Combine, Search, ChevronRight, Info,
+} from 'lucide-react'
 import { WikiPurposeSwitch } from '@/components/wiki/wiki-purpose-switch'
 
 export function WikiAboutPanel() {
@@ -11,6 +15,13 @@ export function WikiAboutPanel() {
     { icon: FileSearch, title: t('claimsTitle'), body: t('claimsBody') },
     { icon: GitBranch, title: t('compiledTitle'), body: t('compiledBody') },
     { icon: ShieldQuestion, title: t('provenanceTitle'), body: t('provenanceBody') },
+  ]
+
+  const flowSteps = [
+    { key: 'ingest', icon: Upload, label: t('ingestLabel'), sub: t('ingestSub'), desc: t('ingestDesc'), tag: t('ingestTag'), auto: false },
+    { key: 'compile', icon: RefreshCw, label: t('compileLabel'), sub: t('compileSub'), desc: t('compileDesc'), tag: t('compileTag'), auto: true },
+    { key: 'synthesis', icon: Combine, label: t('synthesisLabel'), sub: t('synthesisSub'), desc: t('synthesisDesc'), tag: t('synthesisTag'), auto: false },
+    { key: 'query', icon: Search, label: t('queryLabel'), sub: t('querySub'), desc: t('queryDesc'), tag: t('queryTag'), auto: true },
   ]
 
   return (
@@ -32,6 +43,40 @@ export function WikiAboutPanel() {
       <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-5">
         <h3 className="text-sm font-medium text-white mb-2">{t('whatTitle')}</h3>
         <p className="text-sm text-white/50 leading-relaxed">{t('whatBody')}</p>
+      </div>
+
+      {/* Full flow + diagram */}
+      <div>
+        <h3 className="text-sm font-medium text-white mb-1">{t('flowTitle')}</h3>
+        <p className="text-xs text-white/45 mb-4 leading-relaxed">{t('flowIntro')}</p>
+        <div className="flex flex-col md:flex-row md:items-stretch gap-2">
+          {flowSteps.map((s, i) => (
+            <Fragment key={s.key}>
+              <div className="flex-1 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-400/20 flex items-center justify-center">
+                    <s.icon className="w-4 h-4 text-violet-300/90" />
+                  </div>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${s.auto ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300'}`}>
+                    {s.tag}
+                  </span>
+                </div>
+                <h4 className="text-sm font-medium text-white leading-tight">{s.label}</h4>
+                <p className="text-[10px] font-mono text-white/30 mb-1.5">{s.sub}</p>
+                <p className="text-xs text-white/45 leading-relaxed">{s.desc}</p>
+              </div>
+              {i < flowSteps.length - 1 && (
+                <div className="flex items-center justify-center text-white/25 shrink-0">
+                  <ChevronRight className="w-5 h-5 rotate-90 md:rotate-0" />
+                </div>
+              )}
+            </Fragment>
+          ))}
+        </div>
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-400/15 bg-amber-500/[0.04] p-3">
+          <Info className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+          <p className="text-xs text-white/55 leading-relaxed">{t('flowNote')}</p>
+        </div>
       </div>
 
       {/* Three pillars */}

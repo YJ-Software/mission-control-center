@@ -56,7 +56,7 @@ const STAGE_ORDER = [
 ]
 const STAGE_LABELS: Record<string, string> = {
   preparing: '準備',
-  'agent-running': 'Agent 編 synthesis',
+  'agent-running': 'Agent 綜合整理',
   compile: '編譯索引',
   lint: 'Lint 檢查',
   'render-html': '產生 HTML',
@@ -437,7 +437,7 @@ function SynthesisCard({ settings, onChanged }: { settings: WikiSettings; onChan
     <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-4">
       <div className="flex items-center gap-2 mb-3">
         <Settings className="w-4 h-4 text-cyan-400" />
-        <h3 className="text-sm font-medium text-white/90">Synthesis 排程（Phase 3）</h3>
+        <h3 className="text-sm font-medium text-white/90">綜合整理排程（Synthesis）</h3>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
         <label className="text-xs text-white/60">
@@ -483,7 +483,7 @@ function SynthesisCard({ settings, onChanged }: { settings: WikiSettings; onChan
           disabled={triggerMutation.isPending}
           className="px-3 py-1.5 rounded-md text-xs bg-white/[0.06] text-white/80 border border-white/[0.08] hover:bg-white/[0.1] disabled:opacity-50"
         >
-          {triggerMutation.isPending ? '啟動中...' : '立即執行 synthesis'}
+          {triggerMutation.isPending ? '啟動中...' : '立即綜合整理'}
         </button>
         {(settings.tunnelUrl || settings.localReportUrl) && (
           <a
