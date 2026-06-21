@@ -2,6 +2,7 @@ export type JobKind =
   | 'upgrade-openclaw'
   | 'upgrade-mcc'
   | 'upgrade-mcc-tarball'
+  | 'upgrade-nlm'
   | 'restart-openclaw'
   | 'restart-mcc'
   | 'restart-tailscale'

@@ -23,6 +23,7 @@ interface NlmStatus {
   notebooks?: Notebook[]
   version?: string
   updateAvailable?: boolean
+  upgradeInProgress?: boolean
 }
 
 interface BrowserConfig {
@@ -65,28 +66,22 @@ export function NotebookLMDashboard() {
   const vncPassword = browserConfig?.vnc_password
   const browserInstalled = browserConfig?.installed === 'true'
 
-  const [upgrading, setUpgrading] = useState(false)
+  // Auto-upgrade when a new version is available. The upgrade runs as a tracked
+  // job (visible on the System Log page); we only kick it off once per mount and
+  // never while one is already running.
   const upgradeTriggered = useRef(false)
-
-  // Auto-upgrade when update available
   useEffect(() => {
-    if (nlmStatus?.updateAvailable && !upgrading && !upgradeTriggered.current) {
+    if (nlmStatus?.updateAvailable && !nlmStatus?.upgradeInProgress && !upgradeTriggered.current) {
       upgradeTriggered.current = true
-      setUpgrading(true)
       fetch('/api/second-brain/notebooklm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'upgrade' }),
+        body: JSON.stringify({ action: 'upgrade', triggeredBy: 'auto' }),
       })
-        .then(() => fetch('/api/setup/notebooklm', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'patch' }),
-        }))
         .then(() => queryClient.invalidateQueries({ queryKey: ['nlm-status'] }))
-        .finally(() => setUpgrading(false))
+        .catch(() => { upgradeTriggered.current = false })
     }
-  }, [nlmStatus?.updateAvailable, upgrading, queryClient])
+  }, [nlmStatus?.updateAvailable, nlmStatus?.upgradeInProgress, queryClient])
 
   const createMutation = useMutation({
     mutationFn: async (title: string) => {
@@ -183,12 +178,17 @@ export function NotebookLMDashboard() {
                 {nlmStatus.version && (
                   <span className="text-[11px] font-mono text-white/25">v{nlmStatus.version}</span>
                 )}
-                {upgrading && (
-                  <span className="flex items-center gap-1 text-[11px] text-cyan-400/70">
+                {nlmStatus.upgradeInProgress ? (
+                  <span className="flex items-center gap-1 text-[11px] text-cyan-400/80">
                     <ArrowUpCircle className="w-3 h-3 animate-spin" />
                     {t('upgrading')}
                   </span>
-                )}
+                ) : nlmStatus.updateAvailable ? (
+                  <span className="flex items-center gap-1 text-[11px] text-amber-300/80">
+                    <ArrowUpCircle className="w-3 h-3" />
+                    {t('updateBadge')}
+                  </span>
+                ) : null}
               </div>
               <p className="text-xs text-white/40 mt-0.5">
                 {nlmStatus.authenticated ? t('authDesc') : t('notAuthDesc')}

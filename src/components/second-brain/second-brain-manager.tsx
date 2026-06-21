@@ -4,7 +4,7 @@ import * as Tabs from '@radix-ui/react-tabs'
 import { Globe, BookOpen, Network } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { ObsidianDashboard } from './obsidian/obsidian-dashboard'
-import { NotebookLMDashboard } from './notebooklm/notebooklm-dashboard'
+import { NotebookLMPanel } from './notebooklm/notebooklm-panel'
 import { WikiPanel } from './wiki/wiki-panel'
 
 export function SecondBrainManager() {
@@ -41,7 +41,7 @@ export function SecondBrainManager() {
           <WikiPanel />
         </Tabs.Content>
         <Tabs.Content value="notebooklm">
-          <NotebookLMDashboard />
+          <NotebookLMPanel />
         </Tabs.Content>
       </Tabs.Root>
     </div>

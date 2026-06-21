@@ -897,10 +897,31 @@
       "about": "About",
       "manage": "Manage"
     },
+    "notebooklmSubTabs": {
+      "operate": "Operate",
+      "about": "About"
+    },
     "wiki": {
       "about": {
         "tagline": "A self-compiling knowledge base with provenance and confidence",
         "intro": "Turns scattered notes and sources into a machine-queryable knowledge layer — every claim carries evidence, confidence, and provenance, not a pile of pasted notes.",
+        "officialBadge": "Official",
+        "officialTitle": "Memory wiki",
+        "officialIntro1": "memory-wiki is a bundled plugin that turns durable memory into a compiled knowledge vault.",
+        "officialIntro2": "It does not replace the active memory plugin. The active memory plugin still owns recall, promotion, indexing, and dreaming. memory-wiki sits beside it and compiles durable knowledge into a navigable wiki with deterministic pages, structured claims, provenance, dashboards, and machine-readable digests.",
+        "officialIntro3": "Use it when you want memory to behave more like a maintained knowledge layer and less like a pile of Markdown files.",
+        "officialAddsTitle": "What it adds",
+        "officialAdds": [
+          "A dedicated wiki vault with deterministic page layout",
+          "Structured claim and evidence metadata, not just prose",
+          "Page-level provenance, confidence, contradictions, and open questions",
+          "Compiled digests for agent/runtime consumers",
+          "Wiki-native search/get/apply/lint tools",
+          "Open Knowledge Format imports into compiled wiki concepts",
+          "Optional bridge mode that imports public artifacts from the active memory plugin",
+          "Optional Obsidian-friendly render mode and CLI integration"
+        ],
+        "officialLinkLabel": "Official docs",
         "whatTitle": "What it is, and how it differs from Obsidian / NotebookLM",
         "whatBody": "Obsidian is your hand-written personal vault; NotebookLM is drop-in Q&A over documents. Wiki (OpenClaw memory-wiki) is a belief layer: after you ingest sources it compiles them into entities / concepts / syntheses and tracks each claim's evidence, confidence, and contradictions. It's the structured knowledge an agent queries and cites live in conversation.",
         "flowTitle": "The full flow",
@@ -929,7 +950,7 @@
         "compiledBody": "Ingest compiles into entities / concepts / syntheses and indexes; agents read the digest instead of scraping Markdown.",
         "provenanceTitle": "Provenance & contradiction tracking",
         "provenanceBody": "Built-in dashboards surface low-confidence claims, contradictions, open questions, and provenance coverage — knowledge quality is visible.",
-        "sharedTitle": "Shares one knowledge base with Customer Service",
+        "sharedTitle": "Choosing your knowledge base: Customer Service or Agent use — pick one",
         "sharedBody": "This wiki vault (~/.openclaw/wiki/main) is also the customer-service agent's RAG knowledge base. OpenClaw allows only one wiki purpose per machine, so you pick one below: an agent's personal/enterprise knowledge, or the customer-service business knowledge base. Only one purpose is active at a time.",
         "purposeTitle": "Purpose (pick one)"
       },
@@ -1135,6 +1156,41 @@
       }
     },
     "notebooklm": {
+      "about": {
+        "tagline": "Programmatic access to Google NotebookLM via CLI or AI agent",
+        "intro": "notebooklm-mcp-cli is a Python package providing both the nlm command-line tool (CLI) and a Model Context Protocol (MCP) server, letting you operate NotebookLM programmatically — manage notebooks, add sources, generate audio/video/slides, query content, and share — either by running terminal commands or by connecting AI assistants like Claude, Cursor, or Gemini to accomplish tasks in natural language.",
+        "capabilitiesTitle": "Key capabilities",
+        "capabilities": [
+          "List, create, and manage NotebookLM notebooks",
+          "Add sources via URL, text, Google Drive, or file upload",
+          "Query notebooks with AI — results persist back to the web UI",
+          "Generate Studio artifacts: podcasts, videos, slide decks, infographics, flashcards",
+          "Download and revise artifacts",
+          "Web and Drive research integration",
+          "Sharing and collaboration",
+          "Batch operations, cross-notebook queries, and multi-step pipelines",
+          "Tag-based notebook organization and smart selection"
+        ],
+        "howTitle": "How it works",
+        "howBody": "It accesses NotebookLM's undocumented internal APIs through browser-session cookies from your Google login. It can run as a standalone CLI for scripting and automation, or as an MCP server wired into AI coding assistants — e.g. just say \"Create a notebook about quantum computing and generate a podcast.\" A single package covers both CLI and MCP, with no separate installs.",
+        "authorTitle": "About the author",
+        "authorBody": "Built by jacob-bd. The author is transparent about the project's origins: \"Full transparency: this project was built by a non-developer using AI coding assistants.\" The ethos invites experienced developers to contribute improvements — framing it as a mentoring opportunity in open source rather than just criticism.",
+        "repoLink": "GitHub repo",
+        "versionTitle": "Version & updates",
+        "versionInstalled": "Installed version",
+        "versionUpToDate": "Up to date",
+        "versionUpdateAvailable": "Update available",
+        "versionUnknown": "Version unavailable",
+        "notInstalledShort": "Not installed",
+        "upgradingStatus": "Upgrading...",
+        "autoUpgradeNote": "When a new version is detected it upgrades automatically; every upgrade is recorded in the System Log.",
+        "recheckBtn": "Re-check",
+        "historyTitle": "Upgrade history",
+        "historyEmpty": "No upgrades yet",
+        "historyTriggerAuto": "auto",
+        "viewInSystemLog": "View",
+        "viewAllInSystemLog": "View all in System Log"
+      },
       "notInstalled": "NotebookLM CLI is not installed. Please install it from the Setup page first.",
       "goSetup": "Go to Setup",
       "authenticated": "Authenticated",
@@ -1144,6 +1200,7 @@
       "login": "Log In",
       "loggingIn": "Logging in...",
       "upgrading": "Upgrading...",
+      "updateBadge": "Update available (upgrade from the About tab)",
       "browserRequired": "Browser must be installed and running from the /browser page first",
       "notebooks": "Notebooks",
       "noNotebooks": "No notebooks yet",

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import {
   Network, FileSearch, GitBranch, ShieldQuestion, Users,
   Upload, RefreshCw, Combine, Search, ChevronRight, Info,
+  BookMarked, Check, ExternalLink,
 } from 'lucide-react'
 import { WikiPurposeSwitch } from '@/components/wiki/wiki-purpose-switch'
 
@@ -39,6 +40,42 @@ export function WikiAboutPanel() {
         </div>
       </div>
 
+      {/* Official description */}
+      <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-5">
+        <div className="flex items-center gap-2.5 mb-3">
+          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-400/20 flex items-center justify-center">
+            <BookMarked className="w-4 h-4 text-violet-300" />
+          </div>
+          <h3 className="text-sm font-semibold text-white">{t('officialTitle')}</h3>
+          <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-white/[0.06] text-white/50 border border-white/[0.08]">
+            {t('officialBadge')}
+          </span>
+        </div>
+        <div className="space-y-2.5 text-sm text-white/50 leading-relaxed">
+          <p>{t('officialIntro1')}</p>
+          <p>{t('officialIntro2')}</p>
+          <p>{t('officialIntro3')}</p>
+        </div>
+        <h4 className="text-xs font-medium text-white/80 mt-4 mb-2">{t('officialAddsTitle')}</h4>
+        <ul className="space-y-1.5">
+          {(t.raw('officialAdds') as string[]).map((item, i) => (
+            <li key={i} className="flex items-start gap-2 text-xs text-white/50 leading-relaxed">
+              <Check className="w-3.5 h-3.5 text-violet-300/80 shrink-0 mt-0.5" />
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+        <a
+          href="https://docs.openclaw.ai/plugins/memory-wiki"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 inline-flex items-center gap-1.5 text-xs text-violet-300 hover:text-violet-200 transition-colors"
+        >
+          {t('officialLinkLabel')}
+          <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
+
       {/* What this is */}
       <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-5">
         <h3 className="text-sm font-medium text-white mb-2">{t('whatTitle')}</h3>
@@ -62,7 +99,7 @@ export function WikiAboutPanel() {
                   </span>
                 </div>
                 <h4 className="text-sm font-medium text-white leading-tight">{s.label}</h4>
-                <p className="text-[10px] font-mono text-white/30 mb-1.5">{s.sub}</p>
+                <p className="text-[11px] font-mono text-violet-300/70 mb-1.5">{s.sub}</p>
                 <p className="text-xs text-white/45 leading-relaxed">{s.desc}</p>
               </div>
               {i < flowSteps.length - 1 && (

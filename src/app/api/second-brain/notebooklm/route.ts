@@ -3,8 +3,21 @@ import { execNlm, execNlmJson } from '@/lib/second-brain/notebooklm/cli'
 import { getServerEnv } from '@/lib/server-env'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
+import { startJob } from '@/lib/jobs/runner'
+import { readAllJobs } from '@/lib/jobs/store'
+import { findCdpPyPath, applyCdpPatch } from '@/lib/second-brain/notebooklm/cdp-patch'
 
 const execFileAsync = promisify(execFile)
+
+/** True if an nlm upgrade job is currently running. */
+async function nlmUpgradeRunning(): Promise<boolean> {
+  try {
+    const jobs = await readAllJobs()
+    return jobs.some(j => j.kind === 'upgrade-nlm' && (j.status === 'running' || j.status === 'restarting'))
+  } catch {
+    return false
+  }
+}
 
 /** GET — auth status + notebook list */
 export async function GET() {
@@ -44,7 +57,9 @@ export async function GET() {
       try { notebooks = await execNlmJson(['notebook', 'list']) } catch { /* ignore */ }
     }
 
-    return NextResponse.json({ installed: true, authenticated, output: authOutput, notebooks, version, updateAvailable })
+    const upgradeInProgress = await nlmUpgradeRunning()
+
+    return NextResponse.json({ installed: true, authenticated, output: authOutput, notebooks, version, updateAvailable, upgradeInProgress })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
@@ -105,16 +120,41 @@ export async function POST(req: Request) {
     }
 
     if (action === 'upgrade') {
-      try {
-        const uvBin = (await execFileAsync('which', ['uv'], { timeout: 5000, env: getServerEnv() })).stdout.trim()
-        const { stdout } = await execFileAsync(uvBin, ['tool', 'upgrade', 'notebooklm-mcp-cli'], {
-          timeout: 120000,
-          env: getServerEnv(),
-        })
-        return NextResponse.json({ ok: true, output: stdout.trim() })
-      } catch (err: any) {
-        return NextResponse.json({ ok: false, output: ((err.stdout || '') + (err.stderr || '')).trim() })
+      // Don't stack concurrent upgrades — return the running one's id instead.
+      if (await nlmUpgradeRunning()) {
+        const jobs = await readAllJobs()
+        const running = jobs.find(j => j.kind === 'upgrade-nlm' && (j.status === 'running' || j.status === 'restarting'))
+        return NextResponse.json({ ok: true, jobId: running?.id, alreadyRunning: true })
       }
+
+      // Run the upgrade as a tracked job so it shows up on the System Log page.
+      const triggeredBy = body.triggeredBy === 'auto' ? 'api' : (body.triggeredBy || 'settings-card')
+      const job = startJob({
+        kind: 'upgrade-nlm',
+        label: 'NotebookLM CLI 升級（notebooklm-mcp-cli）',
+        triggeredBy,
+        phases: [
+          {
+            name: 'uv tool upgrade notebooklm-mcp-cli',
+            shell: 'uv tool upgrade notebooklm-mcp-cli',
+          },
+          {
+            name: '重新套用 cdp.py patch',
+            inline: async (log) => {
+              const cdpPath = findCdpPyPath()
+              if (!cdpPath) {
+                log('stderr', 'Cannot find cdp.py — skipping patch')
+                return 0
+              }
+              const result = applyCdpPatch(cdpPath)
+              log(result.ok ? 'stdout' : 'stderr', result.message)
+              return result.ok ? 0 : 1
+            },
+            allowFailure: true,
+          },
+        ],
+      })
+      return NextResponse.json({ ok: true, jobId: job.id })
     }
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 })

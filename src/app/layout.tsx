@@ -21,9 +21,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const locale = await getLocale()
   const messages = await getMessages()
 
+  // suppressHydrationWarning: some mobile browsers / extensions inject attributes
+  // (e.g. __gcrremoteframetoken) onto <html>/<body> before React hydrates, which
+  // would otherwise trip a hydration mismatch warning.
   return (
-    <html lang={locale} className="dark">
-      <body className="font-sans">
+    <html lang={locale} className="dark" suppressHydrationWarning>
+      <body className="font-sans" suppressHydrationWarning>
         <NextIntlClientProvider messages={messages}>
           {children}
         </NextIntlClientProvider>
