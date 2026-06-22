@@ -54,7 +54,7 @@ export function MorningReportAboutPanel() {
                   <Icon className="w-4 h-4 text-amber-300/90" />
                 </div>
                 <h4 className="text-sm font-medium text-white mb-1.5">{f.title}</h4>
-                <p className="text-xs text-white/45 leading-relaxed">{f.body}</p>
+                <p className="text-[13px] text-white/65 leading-relaxed">{f.body}</p>
               </div>
             )
           })}
@@ -76,7 +76,7 @@ export function MorningReportAboutPanel() {
                 <span className="w-5 h-5 rounded-md bg-amber-500/15 text-amber-300 text-[11px] font-mono flex items-center justify-center">{i + 1}</span>
                 <h4 className="text-sm font-medium text-white leading-tight">{s.label}</h4>
               </div>
-              <p className="text-xs text-white/45 leading-relaxed">{s.desc}</p>
+              <p className="text-[13px] text-white/65 leading-relaxed">{s.desc}</p>
             </div>
           ))}
         </div>
