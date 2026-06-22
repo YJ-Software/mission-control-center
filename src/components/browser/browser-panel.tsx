@@ -20,19 +20,21 @@ export function BrowserPanel() {
   )
 
   return (
-    <Tabs.Root defaultValue="about">
-      <Tabs.List className="flex gap-1 mb-4 border-b border-white/[0.08]">
-        {subTab('about', t('about'))}
-        {subTab('overview', t('overview'))}
-      </Tabs.List>
+    <div className="p-6">
+      <Tabs.Root defaultValue="about">
+        <Tabs.List className="flex gap-1 mb-4 border-b border-white/[0.08]">
+          {subTab('about', t('about'))}
+          {subTab('overview', t('overview'))}
+        </Tabs.List>
 
-      <Tabs.Content value="about">
-        <BrowserAboutPanel />
-      </Tabs.Content>
+        <Tabs.Content value="about">
+          <BrowserAboutPanel />
+        </Tabs.Content>
 
-      <Tabs.Content value="overview">
-        <BrowserDashboard />
-      </Tabs.Content>
-    </Tabs.Root>
+        <Tabs.Content value="overview">
+          <BrowserDashboard />
+        </Tabs.Content>
+      </Tabs.Root>
+    </div>
   )
 }
