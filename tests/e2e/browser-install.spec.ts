@@ -33,6 +33,9 @@ test.describe('Browser (headless Chrome + VNC) setup', () => {
     // Two full installs + an uninstall blow past the 10-min global timeout.
     test.setTimeout(45 * 60 * 1000)
     await page.goto(`${baseURL}/browser`)
+    // /browser defaults to the 關於 sub-tab; the installer + dashboard live on
+    // the 總覽 sub-tab. The rest of the lifecycle plays out within it.
+    await page.getByRole('tab', { name: '總覽' }).click()
 
     const installBtn = page.getByRole('button', { name: installBtnName })
     const uninstallBtn = page.getByRole('button', { name: uninstallBtnName })

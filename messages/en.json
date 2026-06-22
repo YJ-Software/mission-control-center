@@ -1314,6 +1314,41 @@
   "browser": {
     "title": "Browser",
     "subtitle": "Persistent Headless Chrome for Agent Automation",
+    "subTabs": {
+      "about": "About",
+      "overview": "Overview"
+    },
+    "about": {
+      "tagline": "Let agents drive a real, logged-in browser to operate login-walled, anti-bot sites",
+      "intro": "Runs a real Chrome on the server (headless + a VNC screen). You log in once via VNC and the session persists; agents then connect to that same browser through OpenCLI — acting as the already-logged-in you on the page, instead of via an easily-blocked official API or a headless scraper.",
+      "whyTitle": "Why this approach (the OpenCLI spirit)",
+      "why": [
+        "Many sites have no public API, or a limited/gated one — a real browser sidesteps that",
+        "A real browser fingerprint + real login session is far less likely to trip anti-bot defenses",
+        "Agents drive the page with natural navigate / click / type / extract / wait — no per-site scraper",
+        "Log in once, reuse for a long time (cookies live in the browser profile)",
+        "OpenCLI itself never calls an LLM — no extra API key needed"
+      ],
+      "howTitle": "How it works",
+      "how": [
+        { "label": "Install", "desc": "The server gets Chrome, a headless desktop (Xvfb / Openbox / x11vnc / websockify), and OpenCLI" },
+        { "label": "Log in", "desc": "Open the site on the Overview tab's VNC screen and log in once, like you normally would" },
+        { "label": "Connect", "desc": "The OpenCLI extension + daemon attach to that same Chrome over CDP (127.0.0.1:9222)" },
+        { "label": "Operate", "desc": "Agents run opencli commands, acting on your logged-in tab and extracting results" }
+      ],
+      "capabilitiesTitle": "What it can do",
+      "capabilities": [
+        "Operate login-required admin panels, SaaS, and social sites",
+        "Get past anti-bot / login walls (using a real session, not a headless fingerprint)",
+        "Navigate, click, fill forms, extract content, wait for elements",
+        "Built-in adapters for many sites (Bilibili / Twitter / Reddit / Xiaohongshu …), plus custom adapters",
+        "Desktop apps (e.g. Cursor / Notion) and public APIs (HackerNews / arXiv) can be CLI-fied too"
+      ],
+      "noteTitle": "Note",
+      "note": "Login sessions are stored on this machine — guard access to it; automated actions must still respect each site's terms of service and reasonable rate limits.",
+      "statusHint": "Install, version, and service status live on the Overview tab.",
+      "repoLink": "OpenCLI project (GitHub)"
+    },
     "install": {
       "pageTitle": "Install Chrome Browser",
       "pageSubtitle": "Set up a persistent Chrome browser with VNC remote desktop",

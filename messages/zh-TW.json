@@ -1314,6 +1314,41 @@
   "browser": {
     "title": "瀏覽器",
     "subtitle": "持久化 Headless Chrome，用於 Agent 自動化",
+    "subTabs": {
+      "about": "關於",
+      "overview": "總覽"
+    },
+    "about": {
+      "tagline": "讓 Agent 用「真實登入的瀏覽器」操作會擋機器人、需要登入的網站",
+      "intro": "在伺服器上跑一個真正的 Chrome（headless ＋ VNC 畫面）。你用 VNC 登入一次，session 就長期保存；Agent 之後透過 OpenCLI 連到同一個瀏覽器操作——等於用「已經登入的你」在頁面上動作，而不是用容易被擋的官方 API 或無頭爬蟲。",
+      "whyTitle": "為什麼這樣做（OpenCLI 的精神）",
+      "why": [
+        "很多網站沒有公開 API，或 API 受限、需審核——用真實瀏覽器就繞開這層限制",
+        "用真實瀏覽器指紋 ＋ 真實登入 session，較不會觸發網站的 anti-bot 阻擋",
+        "Agent 用自然的「導航／點擊／輸入／擷取／等待」操作頁面，不必為每個網站寫爬蟲",
+        "一次登入、長期重用（cookies 留在瀏覽器 profile）",
+        "OpenCLI 本身不呼叫 LLM，不需要額外的 API key"
+      ],
+      "howTitle": "運作方式",
+      "how": [
+        { "label": "安裝", "desc": "伺服器裝上 Chrome、無頭桌面（Xvfb／Openbox／x11vnc／websockify）與 OpenCLI" },
+        { "label": "登入", "desc": "用「總覽」的 VNC 畫面開網站，像平常一樣手動登入一次" },
+        { "label": "連線", "desc": "OpenCLI 擴充與 daemon 透過 CDP（127.0.0.1:9222）接上同一個 Chrome" },
+        { "label": "操作", "desc": "Agent 下 opencli 指令，在你已登入的分頁上操作並擷取結果" }
+      ],
+      "capabilitiesTitle": "能做什麼",
+      "capabilities": [
+        "操作需要登入的後台、SaaS 與社群網站",
+        "跨過 anti-bot／登入牆（靠真實 session，而非無頭指紋）",
+        "導航、點擊、填表、擷取內容、等待元素出現",
+        "內建多站 adapter（Bilibili／Twitter／Reddit／小紅書…），也可自建新站 adapter",
+        "桌面 App（如 Cursor／Notion）與公開 API（HackerNews／arXiv）也能 CLI 化"
+      ],
+      "noteTitle": "提醒",
+      "note": "登入 session 會保存在這台機器，請妥善保管其存取權；自動化操作仍請遵守各網站的服務條款與合理速率。",
+      "statusHint": "安裝、版本與服務狀態請見「總覽」分頁。",
+      "repoLink": "OpenCLI 專案（GitHub）"
+    },
     "install": {
       "pageTitle": "安裝 Chrome 瀏覽器",
       "pageSubtitle": "設定持久化 Chrome 瀏覽器與 VNC 遠端桌面",
