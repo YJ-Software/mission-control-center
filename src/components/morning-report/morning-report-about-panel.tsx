@@ -50,10 +50,12 @@ export function MorningReportAboutPanel() {
             const Icon = FEATURE_ICONS[i] ?? Info
             return (
               <div key={i} className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
-                <div className="w-9 h-9 rounded-lg bg-amber-500/[0.08] border border-amber-400/15 flex items-center justify-center mb-3">
-                  <Icon className="w-4 h-4 text-amber-300/90" />
+                <div className="flex items-center gap-2.5 mb-2">
+                  <div className="w-9 h-9 rounded-lg bg-amber-500/[0.08] border border-amber-400/15 flex items-center justify-center shrink-0">
+                    <Icon className="w-4 h-4 text-amber-300/90" />
+                  </div>
+                  <h4 className="text-sm font-medium text-white">{f.title}</h4>
                 </div>
-                <h4 className="text-sm font-medium text-white mb-1.5">{f.title}</h4>
                 <p className="text-[13px] text-white/65 leading-relaxed">{f.body}</p>
               </div>
             )

@@ -49,10 +49,12 @@ export function AboutPanel({ onNavigateAction }: AboutPanelProps) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {pillars.map((p) => (
             <div key={p.title} className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
-              <div className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mb-3">
-                <p.icon className="w-4 h-4 text-cyan-300/90" />
+              <div className="flex items-center gap-2.5 mb-2">
+                <div className="w-9 h-9 rounded-lg bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0">
+                  <p.icon className="w-4 h-4 text-cyan-300/90" />
+                </div>
+                <h4 className="text-sm font-medium text-white">{p.title}</h4>
               </div>
-              <h4 className="text-sm font-medium text-white mb-1.5">{p.title}</h4>
               <p className="text-xs text-white/45 leading-relaxed">{p.body}</p>
             </div>
           ))}
