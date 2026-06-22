@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.6.8-v0.3.61",
-    "mccVersion": "0.3.61",
-    "openclawVersion": "2026.6.8",
-    "releaseDate": "2026-06-19T20:16:47.688Z",
-    "notes": "- feat(wiki): single \"wiki purpose\" switch (Agent / Customer Service) as one source of truth; both the Second Brain and Customer Service pages stay in sync\n- feat(wiki): new About pages for Wiki and Obsidian, with a full ingest → compile → synthesis (綜合整理) → query flow diagram\n- feat(wiki): surface advanced wiki commands — doctor / get / apply / bridge import / okf import\n- feat(customer-service): \"Synthesize now\" button on the knowledge tab\n- fix(wiki): install the external @openclaw/memory-lancedb plugin during setup (semantic memory was silently broken on OpenClaw 2026.6.x)\n- i18n: translate \"synthesis\" as 綜合整理 (zh-TW / zh-CN)",
+    "version": "2026.6.9-v0.3.62",
+    "mccVersion": "0.3.62",
+    "openclawVersion": "2026.6.9",
+    "releaseDate": "2026-06-22T02:07:37.498Z",
+    "notes": "- feat(notebooklm): 新增「關於」子分頁（工具說明 + 版本狀態 + 升級紀錄）；自動升級改走任務系統，可於系統紀錄頁追蹤\n- feat(wiki): 關於頁新增官方 Memory wiki 說明與文件連結；Synthesis 術語統一為「合成摘要」、英文名詞中譯加註原文；用途區塊改名（二選一）\n- fix(layout): 修正行動裝置外部注入屬性造成的 hydration 警告\n- test(e2e): 修正 NotebookLM / Obsidian 子分頁預設變更後的 spec（throwaway 重灌 16/16 綠燈，paired openclaw 2026.6.9）",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.8-v0.3.61/mission-control-v0.3.61-linux-x64.tar.gz",
-        "sha256": "370eba0fb3487d6c887f0e21f26545397c2e3abde049a415f277c5d03c667183",
-        "size": 26885184
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.9-v0.3.62/mission-control-v0.3.62-linux-x64.tar.gz",
+        "sha256": "9a37fcfdff3212f53bbbf3ea692f495bd52a7896b7dc33ec2791a4ca2d344670",
+        "size": 26933808
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.6.8-v0.3.61",
+      "mccVersion": "0.3.61",
+      "openclawVersion": "2026.6.8",
+      "releaseDate": "2026-06-19T20:16:47.688Z"
+    },
     {
       "version": "2026.6.8-v0.3.60",
       "mccVersion": "0.3.60",
@@ -69,10 +75,6 @@
       "mccVersion": "0.3.51",
       "openclawVersion": null,
       "releaseDate": "2026-06-04T05:18:59.486Z"
-    },
-    {
-      "version": "0.3.50",
-      "releaseDate": "2026-06-04T05:12:48.528Z"
     }
   ]
 }
