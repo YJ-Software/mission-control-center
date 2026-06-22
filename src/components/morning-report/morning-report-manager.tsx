@@ -1,8 +1,9 @@
 'use client'
 
 import * as Tabs from '@radix-ui/react-tabs'
-import { Newspaper, Settings2, Rocket, Mic, Wrench } from 'lucide-react'
+import { Info, Newspaper, Settings2, Rocket, Mic, Wrench } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { MorningReportAboutPanel } from './morning-report-about-panel'
 import { ReportBrowser } from './report-browser'
 import { TopicManager } from './topic-manager'
 import { ExecutionControl } from './execution-control'
@@ -13,6 +14,7 @@ export function MorningReportManager() {
   const t = useTranslations('morningReport')
 
   const tabs = [
+    { value: 'about', icon: Info, label: t('tabs.about') },
     { value: 'browse', icon: Newspaper, label: t('tabs.browse') },
     { value: 'topics', icon: Settings2, label: t('tabs.topics') },
     { value: 'execute', icon: Rocket, label: t('tabs.execute') },
@@ -21,7 +23,7 @@ export function MorningReportManager() {
   ]
   return (
     <div className="p-6">
-      <Tabs.Root defaultValue="browse">
+      <Tabs.Root defaultValue="about">
         <Tabs.List className="flex gap-1 mb-6 bg-white/[0.04] rounded-lg p-1 border border-white/[0.08] overflow-x-auto">
           {tabs.map(tab => (
             <Tabs.Trigger
@@ -37,6 +39,7 @@ export function MorningReportManager() {
           ))}
         </Tabs.List>
 
+        <Tabs.Content value="about"><MorningReportAboutPanel /></Tabs.Content>
         <Tabs.Content value="browse"><ReportBrowser /></Tabs.Content>
         <Tabs.Content value="topics"><TopicManager /></Tabs.Content>
         <Tabs.Content value="execute"><ExecutionControl /></Tabs.Content>

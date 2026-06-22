@@ -562,11 +562,36 @@
     "reportDate": "报告日期",
     "noReport": "暂无晨报",
     "tabs": {
+      "about": "关于",
       "browse": "报告浏览",
       "topics": "主题管理",
       "execute": "执行控制",
       "podcast": "Podcast",
       "settings": "设置"
+    },
+    "about": {
+      "tagline": "每天稳定产出的晨报系统——把它做成可靠的日常，而不是每天像在开奖",
+      "painTitle": "为什么需要一套晨报系统？",
+      "painBody": "「晨报？Agent 都流行多久了，这不就是基本功能吗，我讲几句话 Agent 就搞定了？」\n让 OpenClaw 产生晨报确实很简单，一句话就能请 Agent 帮你排上。但当主题变多、要呈现的信息量暴增，问题就来了：搜索大量数据卡住、踩到 context 上限、Agent 与程序 timeout、撞上 LLM rate limit，新闻还得去重（你不想看昨天已经看过的重复新闻）——这件事忽然就没那么稳定。\n这时一套「分段、明确」的 prompt 系统就有其必要：我们要的是每天稳定的产出，而不是每天像在开奖的不稳定感。",
+      "featuresTitle": "晨报系统能帮你什么",
+      "features": [
+        { "title": "与 Cron 协作整合", "body": "晨报本质上是 cron ＋ prompt ＋ agent ＋ search 的协作成果。可视化的 Cron 页面让你管理每个主题要用哪个 LLM、细部调整 Prompt，让晨报快速上线、好维护。" },
+        { "title": "成本控管", "body": "便宜的模型用在简单的 task，敏感、复杂的议题交给欧美主流模型——每个主题各自配置，如何调配由你决定。" },
+        { "title": "主题管理", "body": "需要的主题随需增加、产出时间自行调整，一切都在你的掌握之中。" },
+        { "title": "Podcast", "body": "晨报没时间看？用听的。以免费的 Edge-TTS 把晨报合成为 Podcast 音频，还可请 Agent 先润稿。" },
+        { "title": "网址推送", "body": "用 Cloudflare Quick Tunnels ＋ token 验证，不必自己设定域名，系统会自动把方便又安全的晨报网址推送到你的通讯软件。" },
+        { "title": "新闻去重", "body": "在产生 prompt 的阶段就对来源 URL 去重，避免昨天看过的新闻今天又出现，让每天的晨报都是新的。" },
+        { "title": "报告产出与导出", "body": "多主题分段搜索后合并成单份报告，转为 HTML、套用你的格式模板，并可同步导出到 Obsidian vault 长期保存。" }
+      ],
+      "pipelineTitle": "运作管线",
+      "pipeline": [
+        { "label": "产生 Prompt", "desc": "依各主题模板产生明确的搜索 prompt，并对来源 URL 去重" },
+        { "label": "分主题执行", "desc": "每个主题各自用指定的 LLM 搜索、整理（分段避开 context 与 rate limit）" },
+        { "label": "合并产出", "desc": "汇整成单份报告，转 HTML、套格式模板、清理旧档、导出 Obsidian" },
+        { "label": "Podcast", "desc": "以 Edge-TTS 合成音频（可选 Agent 润稿）" },
+        { "label": "推送", "desc": "经 Cloudflare Tunnel ＋ token 把网址推送到通讯软件" }
+      ],
+      "note": "排程由 Cron 驱动（mr- 前缀的工作），可在「排程管理」页查看与微调；主题、执行、Podcast 与设置都在上方分页管理。"
     },
     "browser": {
       "reportRecords": "晨报记录",

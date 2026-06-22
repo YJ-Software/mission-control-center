@@ -562,11 +562,36 @@
     "reportDate": "Report Date",
     "noReport": "No report available",
     "tabs": {
+      "about": "About",
       "browse": "Browse Reports",
       "topics": "Topic Manager",
       "execute": "Execution Control",
       "podcast": "Podcast",
       "settings": "Settings"
+    },
+    "about": {
+      "tagline": "A morning-report system that ships reliably every day — a dependable routine, not a daily lottery",
+      "painTitle": "Why a morning-report system?",
+      "painBody": "\"A morning report? Agents have been around forever — isn't this a basic feature I can set up with a sentence?\"\nGetting OpenClaw to produce a morning report is indeed easy — one sentence and an agent schedules it. But as topics multiply and the volume of information explodes, the problems show up: searches stall on large data, you hit the context limit, agents and processes time out, you hit LLM rate limits, and news still needs de-duping (you don't want yesterday's stories again). Suddenly it isn't so stable.\nThat's where a segmented, explicit prompt system earns its keep: what you want is a stable daily output, not the every-day-feels-like-a-coin-flip uncertainty.",
+      "featuresTitle": "What the system gives you",
+      "features": [
+        { "title": "Cron integration", "body": "A morning report is fundamentally cron + prompt + agent + search working together. The visual Cron page lets you manage which LLM each topic uses and fine-tune its prompt, so reports go live fast and stay maintainable." },
+        { "title": "Cost control", "body": "Cheap models for simple tasks, mainstream Western models for sensitive, complex topics — each topic is configured on its own, and how you balance it is up to you." },
+        { "title": "Topic management", "body": "Add topics as you need them and adjust their delivery times yourself — it's all under your control." },
+        { "title": "Podcast", "body": "No time to read the report? Listen instead. Free Edge-TTS synthesizes the report into a podcast audio file, with optional agent polishing first." },
+        { "title": "URL push", "body": "Cloudflare Quick Tunnels + token auth — no domain to set up; the system automatically pushes a convenient, secure report URL to your messenger." },
+        { "title": "News de-dup", "body": "Source URLs are de-duped at the prompt-generation stage, so yesterday's stories don't reappear today and every report is fresh." },
+        { "title": "Report output & export", "body": "Multiple topics are searched in segments, merged into a single report, converted to HTML with your format template, and can be exported to your Obsidian vault for the long term." }
+      ],
+      "pipelineTitle": "The pipeline",
+      "pipeline": [
+        { "label": "Generate prompts", "desc": "Build an explicit search prompt per topic template, de-duping source URLs" },
+        { "label": "Run per topic", "desc": "Each topic searches & distills with its assigned LLM (segmented to dodge context & rate limits)" },
+        { "label": "Merge & finalize", "desc": "Assemble one report, convert to HTML, apply the template, clean old files, export to Obsidian" },
+        { "label": "Podcast", "desc": "Synthesize audio with Edge-TTS (optional agent polish)" },
+        { "label": "Push", "desc": "Send the URL to your messenger via a Cloudflare tunnel + token" }
+      ],
+      "note": "Scheduling is driven by Cron (jobs prefixed mr-) — review and tweak them on the Cron page; topics, execution, podcast, and settings are all managed in the tabs above."
     },
     "browser": {
       "reportRecords": "Report Records",
