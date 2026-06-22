@@ -35,6 +35,9 @@ test('second-brain NotebookLM tab reflects installed status', async ({
 
   await page.goto(`${baseURL}/second-brain`)
   await page.getByRole('tab', { name: 'NotebookLM' }).click()
+  // NotebookLM defaults to the 關於 (about) sub-tab; the auth-status card lives
+  // on the 操作 (operate) sub-tab.
+  await page.getByRole('tab', { name: '操作' }).click()
 
   // Installed → the auth-status card shows (尚未登入, since there is no Google
   // login on a fresh box), and the "尚未安裝 / go to setup" prompt is gone.
