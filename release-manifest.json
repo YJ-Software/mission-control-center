@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.6.9-v0.3.62",
-    "mccVersion": "0.3.62",
-    "openclawVersion": "2026.6.9",
-    "releaseDate": "2026-06-22T02:07:37.498Z",
-    "notes": "- feat(notebooklm): 新增「關於」子分頁（工具說明 + 版本狀態 + 升級紀錄）；自動升級改走任務系統，可於系統紀錄頁追蹤\n- feat(wiki): 關於頁新增官方 Memory wiki 說明與文件連結；Synthesis 術語統一為「合成摘要」、英文名詞中譯加註原文；用途區塊改名（二選一）\n- fix(layout): 修正行動裝置外部注入屬性造成的 hydration 警告\n- test(e2e): 修正 NotebookLM / Obsidian 子分頁預設變更後的 spec（throwaway 重灌 16/16 綠燈，paired openclaw 2026.6.9）",
+    "version": "2026.6.10-v0.3.63",
+    "mccVersion": "0.3.63",
+    "openclawVersion": "2026.6.10",
+    "releaseDate": "2026-06-25T20:29:48.368Z",
+    "notes": "- feat(about): NotebookLM、/browser、晨報（morning-report）新增「關於」子分頁，說明各功能精神與運作流程\n- feat(notebooklm): About 留下升級紀錄，升級過程記錄到系統紀錄頁\n- test(e2e): 新增 wiki 用途切換（Agent ↔ 客服 二選一）e2e\n- fix(about): 卡片標題改置於圖示旁；晨報小字加大加亮\n- fix(browser): /browser 面板補上 p-6 內距，與其他頁一致\n- chore: 配對 openclaw 2026.6.10（throwaway 完整 E2E 17/17 綠）",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.9-v0.3.62/mission-control-v0.3.62-linux-x64.tar.gz",
-        "sha256": "9a37fcfdff3212f53bbbf3ea692f495bd52a7896b7dc33ec2791a4ca2d344670",
-        "size": 26933808
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.10-v0.3.63/mission-control-v0.3.63-linux-x64.tar.gz",
+        "sha256": "1520d5c25102a030b61431bd44be58ea3a63b4c48ab70298faadaef9de72c244",
+        "size": 34716419
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.6.9-v0.3.62",
+      "mccVersion": "0.3.62",
+      "openclawVersion": "2026.6.9",
+      "releaseDate": "2026-06-22T02:07:37.498Z"
+    },
     {
       "version": "2026.6.8-v0.3.61",
       "mccVersion": "0.3.61",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.52",
       "openclawVersion": "2026.6.1",
       "releaseDate": "2026-06-04T13:03:33.931Z"
-    },
-    {
-      "version": "0.3.51",
-      "mccVersion": "0.3.51",
-      "openclawVersion": null,
-      "releaseDate": "2026-06-04T05:18:59.486Z"
     }
   ]
 }
