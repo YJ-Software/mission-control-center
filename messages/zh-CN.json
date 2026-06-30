@@ -118,6 +118,7 @@
     "systemHealth": "System Health",
     "servicesStatus": "Services Status",
     "tailscaleStatus": "Tailscale Status",
+    "opencliUpgradeTooltip": "升级 OpenCLI 到最新版（会在系统日志记录并重启 daemon）",
     "cronJobs": "Cron Jobs",
     "cronJobsTotal": "JOBS",
     "noCronJobs": "NO CRON JOBS",
@@ -550,7 +551,19 @@
     "viewLog": "查看 log",
     "searchPlaceholder": "搜索…",
     "statusAll": "所有状态",
-    "kindAll": "所有种类"
+    "kindAll": "所有种类",
+    "tabJobs": "工作清单",
+    "tabLinux": "系统日志",
+    "tabOpenclaw": "OpenClaw",
+    "tabFail2ban": "fail2ban",
+    "filters": "筛选",
+    "clear": "清除",
+    "level": "级别",
+    "service": "服务",
+    "autoRefresh": "自动刷新",
+    "refresh": "刷新",
+    "lines": "条",
+    "limitedAccess": "仅显示当前用户的日志；如需完整系统日志，请将仪表板用户加入 systemd-journal 组后重启服务。"
   },
   "morningReport": {
     "title": "晨报管理",

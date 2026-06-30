@@ -1,5 +1,6 @@
 export type JobKind =
   | 'upgrade-openclaw'
+  | 'upgrade-opencli'
   | 'upgrade-mcc'
   | 'upgrade-mcc-tarball'
   | 'upgrade-nlm'

@@ -18,7 +18,7 @@ function imOpts() {
   return { inputMethod: allInputMethodInstalled() }
 }
 
-function hasOpencliDaemonUnit(): boolean {
+export function hasOpencliDaemonUnit(): boolean {
   return fs.existsSync(path.join(os.homedir(), '.config', 'systemd', 'user', 'opencli-daemon.service'))
 }
 

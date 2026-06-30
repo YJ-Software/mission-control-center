@@ -118,6 +118,7 @@
     "systemHealth": "System Health",
     "servicesStatus": "Services Status",
     "tailscaleStatus": "Tailscale Status",
+    "opencliUpgradeTooltip": "Upgrade OpenCLI to the latest version (logged to System Log; restarts the daemon)",
     "cronJobs": "Cron Jobs",
     "cronJobsTotal": "JOBS",
     "noCronJobs": "NO CRON JOBS",
@@ -550,7 +551,19 @@
     "viewLog": "View log",
     "searchPlaceholder": "search…",
     "statusAll": "all status",
-    "kindAll": "all kinds"
+    "kindAll": "all kinds",
+    "tabJobs": "Jobs",
+    "tabLinux": "System",
+    "tabOpenclaw": "OpenClaw",
+    "tabFail2ban": "fail2ban",
+    "filters": "Filters",
+    "clear": "Clear",
+    "level": "Level",
+    "service": "Service",
+    "autoRefresh": "Auto-refresh",
+    "refresh": "Refresh",
+    "lines": "lines",
+    "limitedAccess": "Only this user's journal is shown; add the dashboard user to the systemd-journal group and restart the service for full system logs."
   },
   "morningReport": {
     "title": "Morning Report",

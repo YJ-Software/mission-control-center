@@ -1,9 +1,11 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { Server, Globe } from 'lucide-react'
-import type { ServiceInfo, TailscaleInfo } from '@/lib/services-status'
+import { Server, Globe, ArrowUpCircle, Loader2 } from 'lucide-react'
+import type { ServiceInfo, TailscaleInfo, OpencliVersionInfo } from '@/lib/services-status'
 
 function ServiceDot({ active }: { active: boolean | null }) {
   if (active === null) return <span className="w-2.5 h-2.5 rounded-full bg-white/20 shrink-0" />
@@ -19,8 +21,11 @@ function StatusText({ active }: { active: boolean | null }) {
 
 export function ServicesPanel() {
   const t = useTranslations('dashboard')
+  const router = useRouter()
+  const queryClient = useQueryClient()
+  const [upgrading, setUpgrading] = useState(false)
 
-  const { data } = useQuery<{ services: ServiceInfo[]; tailscale: TailscaleInfo }>({
+  const { data } = useQuery<{ services: ServiceInfo[]; tailscale: TailscaleInfo; opencliVersion?: OpencliVersionInfo }>({
     queryKey: ['services-status'],
     queryFn: () => fetch('/api/services').then(r => r.json()),
     refetchInterval: 30000,
@@ -28,6 +33,24 @@ export function ServicesPanel() {
 
   const services = data?.services ?? []
   const ts = data?.tailscale
+  const opencli = data?.opencliVersion
+
+  // Upgrade opencli via the shared job runner, then follow it in /system-log.
+  const upgradeOpencli = useMutation({
+    mutationFn: async () => {
+      setUpgrading(true)
+      const res = await fetch('/api/browser/opencli', {
+        method: 'POST',
+        headers: { 'x-triggered-by': 'quick-action' },
+      })
+      return res.json() as Promise<{ ok: boolean; jobId?: string }>
+    },
+    onSuccess: (d) => {
+      queryClient.invalidateQueries({ queryKey: ['services-status'] })
+      if (d?.jobId) router.push(`/system-log?job=${d.jobId}`)
+    },
+    onSettled: () => setUpgrading(false),
+  })
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -49,10 +72,23 @@ export function ServicesPanel() {
                 className={`flex items-center gap-3 py-3 ${i < services.length - 1 ? 'border-b border-white/[0.05]' : ''}`}
               >
                 <ServiceDot active={svc.active} />
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 flex items-center">
                   <span className="text-[13px] font-semibold text-white/80">{svc.name}</span>
                   {svc.version && (
                     <span className="ml-2 font-mono text-[11px] text-white/30">v{svc.version}</span>
+                  )}
+                  {svc.name === 'opencli' && opencli?.updateAvailable && opencli.latest && (
+                    <button
+                      onClick={() => upgradeOpencli.mutate()}
+                      disabled={upgrading}
+                      title={t('opencliUpgradeTooltip')}
+                      className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium
+                        bg-cyan-500/15 text-cyan-300/90 hover:bg-cyan-500/25 border border-cyan-500/20
+                        transition-colors disabled:opacity-40 cursor-pointer"
+                    >
+                      {upgrading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowUpCircle className="w-3 h-3" />}
+                      → v{opencli.latest}
+                    </button>
                   )}
                 </div>
                 <StatusText active={svc.active} />

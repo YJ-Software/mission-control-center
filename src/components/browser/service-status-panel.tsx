@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { Play, Square, RotateCcw, Loader2, ArrowUpCircle, Puzzle, Copy, Check, ExternalLink } from 'lucide-react'
@@ -145,6 +146,7 @@ function ExtensionSetupBanner({ info, t }: { info: OpencliVersionInfo; t: (key: 
 export function ServiceStatusPanel() {
   const t = useTranslations('browser.services')
   const queryClient = useQueryClient()
+  const router = useRouter()
 
   const { data: statuses = [], isLoading } = useQuery<ServiceStatus[]>({
     queryKey: ['browser-services'],
@@ -161,12 +163,17 @@ export function ServiceStatusPanel() {
 
   const updateMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch('/api/browser/opencli', { method: 'POST' })
-      return res.json()
+      const res = await fetch('/api/browser/opencli', {
+        method: 'POST',
+        headers: { 'x-triggered-by': 'settings-card' },
+      })
+      return res.json() as Promise<{ ok: boolean; jobId?: string }>
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['opencli-version'] })
       queryClient.invalidateQueries({ queryKey: ['browser-services'] })
+      // The upgrade now runs as a background job — follow it in /system-log.
+      if (data?.jobId) router.push(`/system-log?job=${data.jobId}`)
     },
   })
 

@@ -7,6 +7,9 @@ import { homedir } from 'os'
 import { getServerEnv } from '@/lib/server-env'
 import { getBrowserConfig, getChromeBinaryPath } from '@/lib/browser/config'
 import { getOpencliExtensionSymlink } from '@/lib/browser/installer'
+import { hasOpencliDaemonUnit } from '@/lib/browser/service-manager'
+import { startJob, type PhaseSpec } from '@/lib/jobs/runner'
+import type { TriggerSource } from '@/lib/jobs/types'
 
 const execFileAsync = promisify(execFile)
 
@@ -94,25 +97,57 @@ export async function GET() {
   }
 }
 
-/** POST — update opencli */
-export async function POST() {
-  try {
-    const { stdout, stderr } = await execFileAsync(
-      'npm', ['install', '-g', '@jackwener/opencli@latest'],
-      { timeout: 120000, env: getServerEnv() },
-    )
+const VALID_SOURCES: TriggerSource[] = ['header-button', 'settings-card', 'quick-action', 'cron', 'api']
 
-    const version = await getInstalledVersion()
+/**
+ * POST — update opencli.
+ *
+ * Runs through the job runner (instead of a synchronous npm install) so the
+ * upgrade is recorded in /system-log and streams its output live. After the
+ * global npm install we ALWAYS restart the opencli-daemon unit (if present):
+ * a fresh `npm install -g` rewrites daemon.js on disk, but the already-running
+ * daemon keeps the old code in memory and stays bound to its port — leaving
+ * the systemd unit unable to pick up the new build (and, if it ever tries to
+ * restart, crash-looping on EADDRINUSE). Baking the restart into the upgrade
+ * procedure keeps the running daemon in lock-step with the installed version.
+ */
+export async function POST(request: Request) {
+  const headerSource = request.headers.get('x-triggered-by') || ''
+  const triggeredBy: TriggerSource = VALID_SOURCES.includes(headerSource as TriggerSource)
+    ? (headerSource as TriggerSource)
+    : 'api'
 
-    return NextResponse.json({
-      ok: true,
-      version,
-      output: (stdout + '\n' + stderr).trim(),
+  const phases: PhaseSpec[] = [
+    {
+      name: 'npm install -g @jackwener/opencli@latest',
+      shell: 'npm install -g @jackwener/opencli@latest 2>&1',
+    },
+  ]
+
+  // Restart the daemon so the running process matches the just-installed build.
+  if (hasOpencliDaemonUnit()) {
+    phases.push({
+      name: 'restart opencli-daemon',
+      shell: 'systemctl --user restart opencli-daemon.service 2>&1',
     })
-  } catch (err: any) {
-    return NextResponse.json({
-      ok: false,
-      output: (err.stdout || '') + (err.stderr || '') || err.message,
-    }, { status: 500 })
   }
+
+  // Report the resulting version as the final phase (visible in the log).
+  phases.push({
+    name: 'verify version',
+    inline: async (log) => {
+      const version = await getInstalledVersion()
+      log('stdout', version ? `opencli now at v${version}` : 'could not read opencli version')
+      return 0
+    },
+  })
+
+  const meta = startJob({
+    kind: 'upgrade-opencli',
+    label: 'Upgrade OpenCLI',
+    triggeredBy,
+    phases,
+  })
+
+  return NextResponse.json({ ok: true, jobId: meta.id })
 }

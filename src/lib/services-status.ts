@@ -68,6 +68,13 @@ const SERVICE_DETECTORS: ServiceDetector[] = [
     processes: ['imav.run'],
     onlyIfInstalled: 'imunify-antivirus',
   },
+  {
+    name: 'opencli',
+    systemd: ['opencli-daemon'],
+    processes: ['@jackwener/opencli'],
+    onlyIfInstalled: 'opencli',
+    versionCmd: { cmd: 'opencli', args: ['--version'], regex: /(\d+\.\d+\.\d+)/ },
+  },
 ]
 
 function isBinaryInstalled(bin: string): boolean {
@@ -131,6 +138,45 @@ export async function getOpenClawVersionInfo(): Promise<OpenClawVersionInfo> {
       if (typeof data.version === 'string') latest = data.version
     }
   } catch { /* ignore */ }
+
+  return {
+    installed,
+    latest,
+    updateAvailable: !!(installed && latest && installed !== latest),
+  }
+}
+
+export interface OpencliVersionInfo {
+  installed: string
+  latest: string
+  updateAvailable: boolean
+}
+
+/**
+ * Check OpenCLI (browser-automation bridge, npm `@jackwener/opencli`) installed
+ * version vs latest on npm. Mirrors getOpenClawVersionInfo() — resolves the
+ * registry directly rather than relying on `npm` being on the unit's PATH.
+ * Returns installed='' when opencli isn't installed (caller hides the row).
+ */
+export async function getOpencliVersionInfo(): Promise<OpencliVersionInfo> {
+  const raw = runQuiet('opencli', ['--version'])
+  const match = raw.match(/(\d+\.\d+\.\d+)/)
+  const installed = match ? match[1] : ''
+
+  let latest = ''
+  if (installed) {
+    try {
+      // Scoped package — the slash must be URL-encoded for the registry path.
+      const res = await fetch('https://registry.npmjs.org/@jackwener%2Fopencli/latest', {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(5000),
+      })
+      if (res.ok) {
+        const data = (await res.json()) as { version?: string }
+        if (typeof data.version === 'string') latest = data.version
+      }
+    } catch { /* ignore */ }
+  }
 
   return {
     installed,
