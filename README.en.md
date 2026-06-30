@@ -73,6 +73,7 @@ The script fetches `release-manifest.json`, downloads the matching tarball, veri
 - **Pipeline** — generate-prompts → per-topic execution → finalize (merge + HTML conversion) → podcast
 - **Podcast generation** — edge-tts speech synthesis + ffmpeg audio merging, supports section splitting and agent post-editing
 - **Cron sync** — topics auto-sync to OpenClaw cron jobs (`mr-*` prefix)
+- **X/Twitter source workflow**: social topics can use [TweetClaw](https://github.com/Xquik-dev/tweetclaw) (`openclaw plugins install @xquik/tweetclaw`) to search tweets, search replies, monitor public accounts, and cite X/Twitter sources before report finalization
 - **Public publishing** — optional public tunnel for serving morning reports and podcasts
 - **Obsidian export** — auto-export to a configured Obsidian vault on completion
 
@@ -577,7 +578,7 @@ Mission Control stands on the shoulders of many open-source projects. The list b
 
 **Headless desktop / browser**
 - [noVNC](https://novnc.com/) — in-browser VNC client (upstream files vendored under `src/lib/novnc/`)
-- [Xvfb](https://en.wikipedia.org/wiki/Xvfb) + [Openbox](http://openbox.org/) + [x11vnc](http://www.karlrunge.com/x11vnc/) + [websockify](https://github.com/novnc/websockify) — headless display stack
+- [Xvfb](https://en.wikipedia.org/wiki/Xvfb) + [Openbox](http://openbox.org/) + [x11vnc](https://github.com/LibVNC/x11vnc) + [websockify](https://github.com/novnc/websockify) - headless display stack
 - [Chromium](https://www.chromium.org/) headless — browser automation
 - [@jackwener/opencli](https://github.com/jackwener/opencli) — OpenCLI Chrome extension + daemon; the dashboard drives Chrome automation / capture flows through it
 
