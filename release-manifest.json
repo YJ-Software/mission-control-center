@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.6.10-v0.3.63",
-    "mccVersion": "0.3.63",
+    "version": "2026.6.10-v0.3.64",
+    "mccVersion": "0.3.64",
     "openclawVersion": "2026.6.10",
-    "releaseDate": "2026-06-25T20:29:48.368Z",
-    "notes": "- feat(about): NotebookLM、/browser、晨報（morning-report）新增「關於」子分頁，說明各功能精神與運作流程\n- feat(notebooklm): About 留下升級紀錄，升級過程記錄到系統紀錄頁\n- test(e2e): 新增 wiki 用途切換（Agent ↔ 客服 二選一）e2e\n- fix(about): 卡片標題改置於圖示旁；晨報小字加大加亮\n- fix(browser): /browser 面板補上 p-6 內距，與其他頁一致\n- chore: 配對 openclaw 2026.6.10（throwaway 完整 E2E 17/17 綠）",
+    "releaseDate": "2026-06-30T11:42:17.398Z",
+    "notes": "- feat(browser): opencli 升級改走 job runner（記錄到 /system-log），並在升級程序中重啟 opencli-daemon，避免舊 daemon 占住 port crash-loop\n- feat(dashboard): 服務狀態新增 opencli（運作中/已停止 + 版本），有新版時可一鍵升級\n- feat(system-log): 新增三個日誌分頁 — Linux（journald 系統日誌）、OpenClaw（gateway，依子系統標籤分類）、fail2ban（封禁/解封，依 jail 分類），皆含搜尋、等級/服務篩選、可展開列、自動刷新",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.10-v0.3.63/mission-control-v0.3.63-linux-x64.tar.gz",
-        "sha256": "1520d5c25102a030b61431bd44be58ea3a63b4c48ab70298faadaef9de72c244",
-        "size": 34716419
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.10-v0.3.64/mission-control-v0.3.64-linux-x64.tar.gz",
+        "sha256": "033aea084a9af5e4cc270c69a7b987baedd9a3536a5f73ed532eedd75e35c746",
+        "size": 27058698
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.6.10-v0.3.63",
+      "mccVersion": "0.3.63",
+      "openclawVersion": "2026.6.10",
+      "releaseDate": "2026-06-25T20:29:48.368Z"
+    },
     {
       "version": "2026.6.9-v0.3.62",
       "mccVersion": "0.3.62",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.53",
       "openclawVersion": "2026.6.1",
       "releaseDate": "2026-06-04T17:16:04.615Z"
-    },
-    {
-      "version": "2026.6.1-v0.3.52",
-      "mccVersion": "0.3.52",
-      "openclawVersion": "2026.6.1",
-      "releaseDate": "2026-06-04T13:03:33.931Z"
     }
   ]
 }
