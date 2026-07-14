@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { resolve } from 'node:path'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { updateEnvFile } from '../../../scripts/e2e/twnoc/lib/env-writer.mjs'
+import { ackLeftoverDeploys } from '../../../scripts/e2e/twnoc/lib/whmcs-deploy-list.mjs'
 
 const DEPLOY_TIMEOUT = 10 * 60 * 1000
 
@@ -25,6 +26,12 @@ test('whmcs deploy → capture AUTH_PASSWORD', async ({ page }) => {
   // Navigate to deployer
   await page.getByRole('button', { name: /檢視詳情/ }).first().click()
   await page.getByRole('link', { name: /OpenClaw 部署/ }).click()
+
+  // A deploy left 執行中 by an earlier run (ours or a previous release) makes
+  // WHMCS refuse 新增部署, so the form below never renders. Clear leftovers in
+  // this browser context first.
+  await ackLeftoverDeploys(page)
+
   await page.getByRole('button', { name: /新增部署/ }).click()
 
   // Phase 1 reinstall set a new root password (E2E_REBUILD_PASSWORD). Tell the

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { makeClient, dmBotAndAwaitReply } from '../../../scripts/e2e/twnoc/lib/gramjs-client.mjs'
+import { ackLeftoverDeploys } from '../../../scripts/e2e/twnoc/lib/whmcs-deploy-list.mjs'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -34,23 +35,9 @@ test('telegram pair via gramjs', async ({ page }) => {
   await page.getByRole('button', { name: /檢視詳情/ }).first().click()
   await page.getByRole('link', { name: /OpenClaw 部署/ }).click()
 
-  // WHMCS refuses '新增部署' while any row is still 執行中, even if the deploy
-  // is server-side complete. The row only flips after someone visits the
-  // corresponding deploying.php page (that visit acks the deploy). Phase 2's
-  // deploy spec already did that visit in its own Playwright context, but the
-  // ack doesn't propagate cross-session — so do it again here, in this
-  // browser, for every leftover 執行中 row before we trigger a new deploy.
-  const deployListUrl = page.url()
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const inProgressHrefs = await page.locator('tr[data-href*="deploying.php"]').evaluateAll(
-      (rows) => rows.map(r => (r as HTMLElement).getAttribute('data-href')).filter((h): h is string => !!h),
-    )
-    if (inProgressHrefs.length === 0) break
-    for (const href of inProgressHrefs) {
-      await page.goto(new URL(href, deployListUrl).href)
-    }
-    await page.goto(deployListUrl)
-  }
+  // Phase 2's deploy spec already acked its own deploy, but the ack doesn't
+  // propagate across Playwright contexts — clear leftovers again here.
+  await ackLeftoverDeploys(page)
 
   await page.getByRole('button', { name: /新增部署/ }).click()
   if (rebuildPwd) {
