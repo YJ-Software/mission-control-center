@@ -10,11 +10,19 @@ import { test, expect } from './fixtures/login'
  *     npx playwright test setup-imunifyav
  */
 
-const INSTALL_TIMEOUT = 5 * 60 * 1000
+// 12 min, not 5. The installer pulls Defence360 packages from CloudLinux's repo
+// and, on the 2-core throwaway, that regularly outruns a 5-min budget — the
+// 2026-07-17 run failed here while `imunify-antivirus` (8.8.5) in fact installed
+// fine and its service came up active, just late. This spec installs twice
+// (install → purge → install), so it pays that cost on both halves.
+const INSTALL_TIMEOUT = 12 * 60 * 1000
 const PURGE_TIMEOUT = 3 * 60 * 1000
 
 test.describe('ImunifyAV setup flow', () => {
   test('install → purge → install (idempotent)', async ({ loggedInPage: page, baseURL }) => {
+    // Two installs plus two purges blow past the 10-min global timeout.
+    test.setTimeout(35 * 60 * 1000)
+
     await page.goto(`${baseURL}/setup`)
     await page.getByRole('tab', { name: /防毒軟體|ImunifyAV/i }).click()
 
