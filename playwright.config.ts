@@ -28,6 +28,12 @@ export default defineConfig({
     {
       name: 'twnoc-deploy',
       testMatch: /tests\/e2e\/twnoc\/.*\.spec\.ts/,
+      // A real WHMCS deploy outlives the global 10-min budget: OpenClaw 2026.7.1's
+      // startup-migration lease strands the gateway for its full 5-min TTL before
+      // the playbook's self-healing wait recovers it, and MCC installs only after
+      // that. Raised here rather than globally so the MCC specs keep a tight
+      // budget and still surface hangs.
+      timeout: 25 * 60 * 1000,
       use: { browserName: 'chromium' },
     },
     {

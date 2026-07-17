@@ -49,7 +49,9 @@ test('telegram pair via gramjs', async ({ page }) => {
   // Wait for deploy success on deploying.php — its label-success appears the
   // moment Ansible finishes. Telegram form is rendered alongside.
   await expect(page.locator('.label-success').filter({ hasText: '成功' })).toBeVisible({
-    timeout: 10 * 60_000,
+    // Same 20-min budget as phase 2 — this spec triggers its own deploy, so it
+    // pays the same startup-migration-lease recovery cost.
+    timeout: 20 * 60_000,
   })
 
   // Step 1: token → 設定

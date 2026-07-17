@@ -4,7 +4,12 @@ import { writeFileSync, mkdirSync } from 'node:fs'
 import { updateEnvFile } from '../../../scripts/e2e/twnoc/lib/env-writer.mjs'
 import { ackLeftoverDeploys } from '../../../scripts/e2e/twnoc/lib/whmcs-deploy-list.mjs'
 
-const DEPLOY_TIMEOUT = 10 * 60 * 1000
+// 20 min, not 10. OpenClaw 2026.7.1 added a 5-minute startup-migration lease that
+// the deployer's start→restart sequence strands, so the gateway sits failed until
+// the lease expires and the playbook's self-healing wait restarts it. Measured
+// 2026-07-16: gateway first start 14:40:04, recovered 14:45:44 — 5m40s of the
+// deploy budget spent before MCC even begins installing.
+const DEPLOY_TIMEOUT = 20 * 60 * 1000
 
 test('whmcs deploy → capture AUTH_PASSWORD', async ({ page }) => {
   const user = process.env.WHMCS_USER
