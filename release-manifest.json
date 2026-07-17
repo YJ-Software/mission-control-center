@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.6.10-v0.3.64",
-    "mccVersion": "0.3.64",
-    "openclawVersion": "2026.6.10",
-    "releaseDate": "2026-06-30T11:42:17.398Z",
-    "notes": "- feat(browser): opencli 升級改走 job runner（記錄到 /system-log），並在升級程序中重啟 opencli-daemon，避免舊 daemon 占住 port crash-loop\n- feat(dashboard): 服務狀態新增 opencli（運作中/已停止 + 版本），有新版時可一鍵升級\n- feat(system-log): 新增三個日誌分頁 — Linux（journald 系統日誌）、OpenClaw（gateway，依子系統標籤分類）、fail2ban（封禁/解封，依 jail 分類），皆含搜尋、等級/服務篩選、可展開列、自動刷新",
+    "version": "2026.7.1-v0.3.65",
+    "mccVersion": "0.3.65",
+    "openclawVersion": "2026.7.1",
+    "releaseDate": "2026-07-17T12:35:48.871Z",
+    "notes": "- chore(pairing): 驗證並配對 openclaw 2026.7.1 — 於全新重灌的機器上完成部署 + 完整 E2E（17/17 通過）\n- 本版 MCC 程式碼與 0.3.64 完全相同，無功能新增或行為變更；升級後畫面與操作皆不會有任何差異\n- 本版的意義在於「配對宣稱」：確認 MCC 0.3.65 可在 openclaw 2026.7.1 上正常運作，供仍在 2026.6.x 的環境作為升級 openclaw 的依據\n- fix(e2e): 修正 throwaway E2E 的三處測試逾時與殘留狀態問題（僅影響測試流程，不影響出貨內容）",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.6.10-v0.3.64/mission-control-v0.3.64-linux-x64.tar.gz",
-        "sha256": "033aea084a9af5e4cc270c69a7b987baedd9a3536a5f73ed532eedd75e35c746",
-        "size": 27058698
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-v0.3.65/mission-control-v0.3.65-linux-x64.tar.gz",
+        "sha256": "e0b360e7eb6a640f859a422c3243c78aa35cf4be923a43a965aa9ebb82a48b63",
+        "size": 27097200
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.6.10-v0.3.64",
+      "mccVersion": "0.3.64",
+      "openclawVersion": "2026.6.10",
+      "releaseDate": "2026-06-30T11:42:17.398Z"
+    },
     {
       "version": "2026.6.10-v0.3.63",
       "mccVersion": "0.3.63",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.54",
       "openclawVersion": "2026.6.1",
       "releaseDate": "2026-06-08T08:38:57.351Z"
-    },
-    {
-      "version": "2026.6.1-v0.3.53",
-      "mccVersion": "0.3.53",
-      "openclawVersion": "2026.6.1",
-      "releaseDate": "2026-06-04T17:16:04.615Z"
     }
   ]
 }
