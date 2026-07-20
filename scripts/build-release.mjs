@@ -28,11 +28,19 @@ import { tmpdir } from 'node:os'
 // same artifact runs on multiple Node majors without per-host recompile.
 // Each entry maps a Node major to its NMV; better-sqlite3's prebuilt asset
 // naming is `node-v<NMV>-linux-x64`. Update when bumping/dropping support.
+//
+// The set tracks what OpenClaw itself will run on — its engines field is
+// `>=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0`, so an MCC box can only ever be
+// on Node 22, 24, 25.9+, or 26+. Node 23 was dropped: OpenClaw excludes it
+// outright (non-LTS, EOL) and better-sqlite3 stopped publishing an NMV 131
+// prebuild after 12.9.0. Node 26 (NMV 147) is bundled because `>=25.9.0` has no
+// upper bound — a host on Node 26 would otherwise find no matching binary and
+// the dashboard would fail to boot.
 const NATIVE_NMV_TARGETS = [
   { node: 22, nmv: 127 },
-  { node: 23, nmv: 131 },
   { node: 24, nmv: 137 },
   { node: 25, nmv: 141 },
+  { node: 26, nmv: 147 },
 ]
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
