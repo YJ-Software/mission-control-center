@@ -5,6 +5,7 @@ import { homedir } from 'os'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { getServerEnv } from '@/lib/server-env'
+import { allowPlugins } from '@/lib/plugins/allowlist'
 
 const execFileAsync = promisify(execFile)
 const OPENCLAW_CONFIG = join(homedir(), '.openclaw', 'openclaw.json')
@@ -56,13 +57,12 @@ export async function POST(req: Request) {
 
     // Ensure plugins structure
     if (!config.plugins) config.plugins = {}
-    if (!config.plugins.allow) config.plugins.allow = []
     if (!config.plugins.entries) config.plugins.entries = {}
 
-    // Add tavily to allow list if not present
-    if (!config.plugins.allow.includes('tavily')) {
-      config.plugins.allow.push('tavily')
-    }
+    // Permit tavily WITHOUT activating an inert allowlist — pushing onto an
+    // empty `allow` would silently block Telegram and every other unlisted
+    // plugin (see lib/plugins/allowlist.ts). tavily runs off its entry below.
+    allowPlugins(config, ['tavily'])
 
     // Set tavily plugin entry
     config.plugins.entries.tavily = {

@@ -32,6 +32,7 @@ import { db } from '@/lib/db'
 import { settings } from '@/lib/schema'
 import { eq } from 'drizzle-orm'
 import { getServerEnv } from '@/lib/server-env'
+import { allowPlugins } from '@/lib/plugins/allowlist'
 
 const execFileAsync = promisify(execFile)
 
@@ -85,16 +86,21 @@ function writeOpenclawJson(obj: Record<string, any>): void {
  */
 export function applyPurposeToConfig(cfg: Record<string, any>, purpose: WikiPurpose): Record<string, any> {
   cfg.plugins ??= {}
-  cfg.plugins.allow ??= []
   cfg.plugins.entries ??= {}
   cfg.plugins.slots ??= {}
 
-  // Both plugins are always allowed; only their roles differ by purpose.
-  const allow: string[] = cfg.plugins.allow
-  for (const id of ['memory-lancedb', 'memory-wiki']) {
-    if (!allow.includes(id)) allow.push(id)
+  // Permit both memory plugins — but only extend an ALREADY-active allowlist.
+  // Materialising one from an empty list would silently block Telegram and
+  // every other unlisted plugin (see allowlist.ts). The plugins are enabled via
+  // their entries regardless of the allowlist.
+  allowPlugins(cfg, ['memory-lancedb', 'memory-wiki'])
+  // If an allowlist is active, memory-lancedb-pro / memory-core must not sit in
+  // it (they fight the slot). No-op on an inert (empty/absent) allowlist.
+  if (Array.isArray(cfg.plugins.allow) && cfg.plugins.allow.length > 0) {
+    cfg.plugins.allow = cfg.plugins.allow.filter(
+      (id: string) => id !== 'memory-lancedb-pro' && id !== 'memory-core',
+    )
   }
-  cfg.plugins.allow = allow.filter((id) => id !== 'memory-lancedb-pro' && id !== 'memory-core')
 
   // --- memory-lancedb: embedding base is identical; only auto-* differs. ---
   const prevLance = cfg.plugins.entries['memory-lancedb'] ?? {}
