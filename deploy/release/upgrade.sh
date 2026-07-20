@@ -27,6 +27,38 @@ HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
 die() { echo "✗ $*" >&2; exit 1; }
 log() { echo "• $*"; }
 
+# `systemctl --user` needs a user D-Bus session. A `sudo -u <owner>` invocation
+# — how the OCD deployer and the release E2E drive this script — inherits
+# neither XDG_RUNTIME_DIR nor DBUS_SESSION_BUS_ADDRESS, so every systemctl call
+# below fails with "Failed to connect to bus: No medium found". Under `set -e`
+# that aborts the run AFTER the symlink swap, stranding `current` on a version
+# the service never started. Derive the session up front and fail before we
+# mutate anything.
+ensure_user_bus() {
+  local uid; uid="$(id -u)"
+  [[ -n "${XDG_RUNTIME_DIR:-}" ]] || export XDG_RUNTIME_DIR="/run/user/$uid"
+  [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]] || \
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+  systemctl --user show-environment >/dev/null 2>&1 || die \
+"cannot reach the systemd user bus for uid $uid (XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR).
+   Run as the service owner in a real user session, or enable lingering:
+     sudo loginctl enable-linger <owner>"
+}
+
+# The version the service is ACTUALLY serving, per /api/health. This — not the
+# `current` symlink — is the source of truth for "is an upgrade needed?".
+running_version() {
+  local body v
+  body="$(curl -sf "$HEALTH_URL" 2>/dev/null || true)"
+  v="$(printf '%s' "$body" | sed -En 's/.*"mccVersion": *"([^"]+)".*/\1/p' | head -1)"
+  # Legacy semver-only builds predate mccVersion; there `version` IS the bare
+  # semver. Paired builds expose both, so mccVersion always wins above.
+  if [[ -z "$v" ]]; then
+    v="$(printf '%s' "$body" | sed -En 's/.*"version": *"([^"]+)".*/\1/p' | head -1)"
+  fi
+  printf '%s' "$v"
+}
+
 [[ -n "$TARBALL" ]] || die "usage: bash upgrade.sh <path/to/mission-control-vX.Y.Z-linux-x64.tar.gz>"
 [[ -f "$TARBALL" ]] || die "tarball not found: $TARBALL"
 [[ -d "$PREFIX/current" || -L "$PREFIX/current" ]] || die "no existing install at $PREFIX — run install.sh first"
@@ -47,19 +79,40 @@ if [[ -z "$VERSION" ]]; then
 fi
 [[ -n "$VERSION" ]] || die "could not determine version from $TARBALL"
 
-# Resolve current version (dirname of the symlink target).
+# Resolve the version `current` POINTS AT (dirname of the symlink target). Note
+# this is only what should be running — see RUNNING_VERSION below.
 CURRENT_LINK="$(readlink -f "$PREFIX/current" || true)"
 CURRENT_VERSION=""
 if [[ -n "$CURRENT_LINK" ]]; then
   CURRENT_VERSION="$(basename "$CURRENT_LINK" | sed -E 's/^v//')"
 fi
 
-if [[ "$VERSION" == "$CURRENT_VERSION" ]]; then
+PORT="$(grep -E '^PORT=' "$STATE/.env.local" 2>/dev/null | head -1 | cut -d= -f2)"
+PORT="${PORT:-3737}"
+HEALTH_URL="http://127.0.0.1:$PORT/api/health"
+
+# Skip only when the service is REALLY serving this version. Keying the no-op
+# off the symlink alone made a half-finished upgrade unrecoverable: a run that
+# swapped `current` and then died (see ensure_user_bus) leaves the link on vNEW
+# while the old process keeps serving, and every re-run would report "nothing to
+# do" while the stale code stayed live. An unreachable health endpoint yields an
+# empty RUNNING_VERSION, which correctly falls through to the upgrade.
+RUNNING_VERSION="$(running_version)"
+
+if [[ "$VERSION" == "$CURRENT_VERSION" && "$VERSION" == "$RUNNING_VERSION" ]]; then
   log "v$VERSION is already the running version — nothing to do"
   exit 0
 fi
 
-log "upgrading v${CURRENT_VERSION:-?} → v$VERSION"
+if [[ "$VERSION" == "$CURRENT_VERSION" ]]; then
+  log "current → v$VERSION but the service is serving ${RUNNING_VERSION:-nothing}"
+  log "completing the interrupted upgrade to v$VERSION"
+else
+  log "upgrading v${CURRENT_VERSION:-?} → v$VERSION"
+fi
+
+# Fail before touching the symlink if we can't drive systemd.
+ensure_user_bus
 
 NEW_DIR="$PREFIX/versions/v$VERSION"
 if [[ -d "$NEW_DIR" ]]; then
@@ -111,12 +164,9 @@ if [[ -f "$TMPL" ]]; then
   fi
 fi
 
-# Restart and wait for health.
+# Restart and wait for health. (PORT/HEALTH_URL were resolved before the
+# no-op check so the running-version probe could use them.)
 systemctl --user restart "$SERVICE"
-
-PORT="$(grep -E '^PORT=' "$STATE/.env.local" | head -1 | cut -d= -f2)"
-PORT="${PORT:-3737}"
-HEALTH_URL="http://127.0.0.1:$PORT/api/health"
 
 log "waiting up to ${HEALTH_TIMEOUT}s for v$VERSION on $HEALTH_URL …"
 HEALTHY=""
