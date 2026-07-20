@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.7.1-v0.3.65",
-    "mccVersion": "0.3.65",
-    "openclawVersion": "2026.7.1",
-    "releaseDate": "2026-07-17T12:35:48.871Z",
-    "notes": "- chore(pairing): 驗證並配對 openclaw 2026.7.1 — 於全新重灌的機器上完成部署 + 完整 E2E（17/17 通過）\n- 本版 MCC 程式碼與 0.3.64 完全相同，無功能新增或行為變更；升級後畫面與操作皆不會有任何差異\n- 本版的意義在於「配對宣稱」：確認 MCC 0.3.65 可在 openclaw 2026.7.1 上正常運作，供仍在 2026.6.x 的環境作為升級 openclaw 的依據\n- fix(e2e): 修正 throwaway E2E 的三處測試逾時與殘留狀態問題（僅影響測試流程，不影響出貨內容）",
+    "version": "2026.7.1-2-v0.3.66",
+    "mccVersion": "0.3.66",
+    "openclawVersion": "2026.7.1-2",
+    "releaseDate": "2026-07-20T09:28:14.731Z",
+    "notes": "## 配對 OpenClaw 2026.7.1-2\n\n本版將配對版本從 `2026.7.1` 更新為 `2026.7.1-2`，並已在全新重灌的 throwaway 上完成完整 E2E 驗證（17/17 MCC specs + Telegram 配對通過）。\n\n隨 OpenClaw 2026.7.1-1 / 7.1-2 一併取得的上游修正：\n- Memory Core 啟動修復 — 不再讓 Gateway 陷入 fatal restart loop\n- Legacy migration 殘留改為非致命，不再擋住原本健康的升級\n- Managed plugin 更新：修復卡住的 npm lock metadata\n- npm plugin 更新 metadata 相容性\n\n## 修正\n\n- **plugins.allow 不再被誤啟用**：搜尋設定與第二大腦/wiki 設定過去會對空的 `plugins.allow` 做 `??= []` 後 push，把原本「全部放行」的空名單啟用成限制名單，導致不在名單內的 plugin（含 Telegram）被擋。OpenClaw 只會為 `clickclack` 自動補進名單，因此被擋的 Telegram 會一直開不起來，出現 `Cannot enable Telegram: blocked by allowlist`。\n\n  新增 `lib/plugins/allowlist.ts` 的 `allowPlugins()`：名單已啟用時只做附加、絕不移除既有項目；名單為空時保持不動。兩處設定流程改用它，MCC 不會再產生排除 Telegram 的 allowlist，也不會擠掉部署器已放行的項目。\n\n  註：部署基線 seed Telegram 仍屬部署器職責，本修正只處理 MCC 這半邊。",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-v0.3.65/mission-control-v0.3.65-linux-x64.tar.gz",
-        "sha256": "e0b360e7eb6a640f859a422c3243c78aa35cf4be923a43a965aa9ebb82a48b63",
-        "size": 27097200
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-2-v0.3.66/mission-control-v0.3.66-linux-x64.tar.gz",
+        "sha256": "0b65c777f2deaa1783a3d7681d01233acf13f92891dfe77bbb1bcbb0efa8fc0a",
+        "size": 27108305
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.7.1-v0.3.65",
+      "mccVersion": "0.3.65",
+      "openclawVersion": "2026.7.1",
+      "releaseDate": "2026-07-17T12:35:48.871Z"
+    },
     {
       "version": "2026.6.10-v0.3.64",
       "mccVersion": "0.3.64",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.56",
       "openclawVersion": "2026.6.5",
       "releaseDate": "2026-06-11T09:38:26.916Z"
-    },
-    {
-      "version": "2026.6.1-v0.3.54",
-      "mccVersion": "0.3.54",
-      "openclawVersion": "2026.6.1",
-      "releaseDate": "2026-06-08T08:38:57.351Z"
     }
   ]
 }
