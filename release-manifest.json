@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.7.1-2-v0.3.68",
-    "mccVersion": "0.3.68",
+    "version": "2026.7.1-2-v0.3.69",
+    "mccVersion": "0.3.69",
     "openclawVersion": "2026.7.1-2",
-    "releaseDate": "2026-07-22T07:32:32.879Z",
-    "notes": "- fix(deploy): resolve openclaw from node's own bin dir (dirname of process.execPath), so the dashboard's update/model/pairing calls use the same install as the managed gateway instead of a stale global (e.g. an old linuxbrew openclaw). Prevents the update button from running an older binary against newer config.",
+    "releaseDate": "2026-07-22T07:50:27.434Z",
+    "notes": "- feat(deploy): pre-flight Node ABI check in install.sh + upgrade.sh — fail fast (before the symlink swap, leaving the running install untouched) when the box's Node ABI has no bundled better-sqlite3 prebuild, instead of a 120s health-timeout rollback (upgrade) or a silently broken box (install).",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-2-v0.3.68/mission-control-v0.3.68-linux-x64.tar.gz",
-        "sha256": "6d1bea79114ec5fe2434ffb6816e229247e9b427814ba58c1a4a47ded4cde8fc",
-        "size": 154604215
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-2-v0.3.69/mission-control-v0.3.69-linux-x64.tar.gz",
+        "sha256": "d256116a836d70b14e1b82c14c21808a73137cdc209cf0592e2fa9f4a97b8ba1",
+        "size": 154599964
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.7.1-2-v0.3.68",
+      "mccVersion": "0.3.68",
+      "openclawVersion": "2026.7.1-2",
+      "releaseDate": "2026-07-22T07:32:32.879Z"
+    },
     {
       "version": "2026.7.1-2-v0.3.67",
       "mccVersion": "0.3.67",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.59",
       "openclawVersion": "2026.6.8",
       "releaseDate": "2026-06-18T03:19:31.756Z"
-    },
-    {
-      "version": "2026.6.5-v0.3.58",
-      "mccVersion": "0.3.58",
-      "openclawVersion": "2026.6.5",
-      "releaseDate": "2026-06-12T08:22:24.235Z"
     }
   ]
 }
