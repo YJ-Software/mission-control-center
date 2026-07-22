@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
+import path from 'node:path'
 import * as pty from 'node-pty'
 import type { JobSpec } from '../jobs/runner'
 import type { LogStream, TriggerSource } from '../jobs/types'
@@ -12,6 +13,11 @@ function augmentedPath(): string {
   if (cachedPath !== null) return cachedPath
   const home = os.homedir()
   const candidates = [
+    // Dir of the node running THIS process. For nvm/Volta installs the managed
+    // `openclaw` lives beside `node` here, so this must come FIRST — otherwise a
+    // stale global (e.g. an old linuxbrew openclaw) wins and can mismatch the
+    // gateway's install, which is what let the update button trigger a downgrade.
+    path.dirname(process.execPath),
     `${home}/.npm-global/bin`,
     `${home}/.linuxbrew/bin`,
     '/home/linuxbrew/.linuxbrew/bin',

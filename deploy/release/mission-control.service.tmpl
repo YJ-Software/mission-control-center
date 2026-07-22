@@ -21,9 +21,12 @@ StandardError=append:__STATE__/logs/mission-control.log
 Environment=NODE_ENV=production
 # The dashboard shells out to `openclaw` (device pairing auto-approve) and
 # expects `node`/system tools on PATH. systemd's default PATH for user
-# units is minimal, so prepend common openclaw install locations (npm
-# global + both per-user and shared brew) so `spawn openclaw` resolves.
-Environment=PATH=%h/.npm-global/bin:%h/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# units is minimal, so prepend common openclaw install locations. __NODE_DIR__
+# (the dir of the node running this unit — filled by install.sh/upgrade.sh)
+# comes FIRST so an nvm/Volta-managed `openclaw` beside that node wins over a
+# stale global (e.g. an old linuxbrew openclaw), which otherwise let the update
+# button run an older binary against newer config and trigger a downgrade.
+Environment=PATH=__NODE_DIR__:%h/.npm-global/bin:%h/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # PORT, HOST, AUTH_PASSWORD, AUTH_SECRET, OPENCLAW_TOKEN come from the state
 # .env.local — keeping them there means one source of truth for config.
 EnvironmentFile=__STATE__/.env.local

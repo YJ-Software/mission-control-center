@@ -114,6 +114,9 @@ function detectOpenclawVersion() {
     // ignore — fall through to local detect
   }
   const candidates = [
+    // openclaw beside the node running this build (nvm/Volta) — first so we
+    // detect the same install the target host runs, not a stale global.
+    join(dirname(process.execPath), 'openclaw'),
     join(os.homedir(), '.npm-global', 'bin', 'openclaw'),
     join(os.homedir(), '.linuxbrew', 'bin', 'openclaw'),
     '/home/linuxbrew/.linuxbrew/bin/openclaw',

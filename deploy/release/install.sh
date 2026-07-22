@@ -130,6 +130,7 @@ chmod 640 "$LOG_FILE"
 mkdir -p "$SYSTEMD_DIR"
 TMPL_DIR="$(cd "$(dirname "$0")" && pwd)"
 sed -e "s|__NODE_BIN__|$NODE_BIN|g" \
+    -e "s|__NODE_DIR__|$(dirname "$NODE_BIN")|g" \
     -e "s|__STATE__|$STATE|g" \
     -e "s|__PREFIX__|$PREFIX|g" \
   "$TMPL_DIR/mission-control.service.tmpl" \

@@ -150,6 +150,7 @@ if [[ -f "$TMPL" ]]; then
   if [[ -n "$NODE_BIN" ]]; then
     NEW_UNIT="$(mktemp)"
     sed -e "s|__NODE_BIN__|$NODE_BIN|g" \
+        -e "s|__NODE_DIR__|$(dirname "$NODE_BIN")|g" \
         -e "s|__STATE__|$STATE|g" \
         -e "s|__PREFIX__|$PREFIX|g" \
       "$TMPL" > "$NEW_UNIT"
