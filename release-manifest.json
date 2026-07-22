@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.7.1-2-v0.3.67",
-    "mccVersion": "0.3.67",
+    "version": "2026.7.1-2-v0.3.68",
+    "mccVersion": "0.3.68",
     "openclawVersion": "2026.7.1-2",
-    "releaseDate": "2026-07-20T10:28:44.980Z",
-    "notes": "## 修正\n\n- **升級中斷後可以續做，不再誤判為「已是最新」**：`install/upgrade.sh` 過去用 `current` symlink 判斷是否需要升級。若某次升級切換了 symlink 之後才失敗（例如 `systemctl --user` 在無 user D-Bus session 的情境下失敗），會留下「symlink 指向新版、服務仍執行舊版」的狀態；此時重跑升級會回報「已是最新，無事可做」並直接結束，舊程式持續服務且無法靠重跑修復。\n\n  現改為以 `/api/health` 實際回報的執行版本作為判斷依據：只有服務真的在跑目標版本才會跳過，不符時會續做未完成的升級。health 無法連線時視為未知，一律執行升級而非跳過。\n\n  另新增 user D-Bus session 的前置檢查，於**變更 symlink 之前**執行 —— 無法驅動 systemd 時明確報錯中止，不再留下半完成狀態。\n\n  說明：Dashboard 介面的升級按鈕走的是另一條路徑（Node 實作），該路徑本來就以執行中行程的版本為準，不受此問題影響。此修正針對部署器與命令列使用的 `upgrade.sh`，並自本版起隨 tarball 一同下放。\n\n## 相容性\n\n- **新增 Node 26 支援**：release tarball 現在打包 Node 22 / 24 / 25 / 26 四種原生模組 ABI。OpenClaw 的 engines 為 `>=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0`，其中 `>=25.9.0` 沒有上限，因此 Node 26 是合法環境；先前未打包其 ABI，該環境會因找不到對應二進位而無法啟動。\n- 移除 Node 23 ABI：OpenClaw 本身即排除 Node 23（非 LTS 且已 EOL），上游 better-sqlite3 亦自 12.9.0 之後不再發布該版本的 prebuild。\n- better-sqlite3 12.9.0 → 12.11.1。\n\n配對版本維持 OpenClaw 2026.7.1-2（沿用 0.3.66 已驗證之配對，本版未變更 OpenClaw 相依）。",
+    "releaseDate": "2026-07-22T07:32:32.879Z",
+    "notes": "- fix(deploy): resolve openclaw from node's own bin dir (dirname of process.execPath), so the dashboard's update/model/pairing calls use the same install as the managed gateway instead of a stale global (e.g. an old linuxbrew openclaw). Prevents the update button from running an older binary against newer config.",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-2-v0.3.67/mission-control-v0.3.67-linux-x64.tar.gz",
-        "sha256": "65be6b0791e4b920594944a104973d469f77cc4071c2ecb76d5d627baf338045",
-        "size": 27144769
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-2-v0.3.68/mission-control-v0.3.68-linux-x64.tar.gz",
+        "sha256": "6d1bea79114ec5fe2434ffb6816e229247e9b427814ba58c1a4a47ded4cde8fc",
+        "size": 154604215
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.7.1-2-v0.3.67",
+      "mccVersion": "0.3.67",
+      "openclawVersion": "2026.7.1-2",
+      "releaseDate": "2026-07-20T10:28:44.980Z"
+    },
     {
       "version": "2026.7.1-2-v0.3.66",
       "mccVersion": "0.3.66",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.58",
       "openclawVersion": "2026.6.5",
       "releaseDate": "2026-06-12T08:22:24.235Z"
-    },
-    {
-      "version": "2026.6.5-v0.3.57",
-      "mccVersion": "0.3.57",
-      "openclawVersion": "2026.6.5",
-      "releaseDate": "2026-06-11T11:17:34.980Z"
     }
   ]
 }
