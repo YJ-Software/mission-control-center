@@ -77,6 +77,24 @@ log "extracting tarball → $VERSION_DIR"
 mkdir -p "$VERSION_DIR"
 tar xzf "$TARBALL" -C "$VERSION_DIR"
 
+# The `node >= 20` gate above is necessary but not sufficient: the release only
+# bundles better-sqlite3 native prebuilds for a fixed set of Node ABIs (NMV,
+# `process.versions.modules`). A Node major that is >= 20 but whose ABI isn't
+# bundled (e.g. Node 23 = NMV 131) would extract fine, then fail to load
+# better-sqlite3 at boot — and install.sh has no rollback, so the box is just
+# broken. Check against what's ACTUALLY bundled in the extracted tree.
+NODE_NMV="$(node -p 'process.versions.modules' 2>/dev/null || true)"
+BINDING_DIR="$VERSION_DIR/node_modules/better-sqlite3/lib/binding"
+if [[ -n "$NODE_NMV" && -d "$BINDING_DIR" ]]; then
+  if [[ ! -d "$BINDING_DIR/node-v$NODE_NMV-linux-x64" ]]; then
+    HAVE_ABIS="$(ls -1 "$BINDING_DIR" 2>/dev/null | sed -En 's/^node-v([0-9]+)-linux-x64$/\1/p' | paste -sd, -)"
+    rm -rf "$VERSION_DIR"
+    die "Node $(node --version) (ABI $NODE_NMV) has no bundled better-sqlite3 \
+prebuild in this release (bundled ABIs: ${HAVE_ABIS:-none}).
+   Switch to a supported Node major, or use a release built for this ABI."
+  fi
+fi
+
 # --- 2. State bootstrap (.env.local with a fresh password) ---
 ENV_FILE="$STATE/.env.local"
 if [[ ! -f "$ENV_FILE" ]]; then

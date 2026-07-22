@@ -123,6 +123,25 @@ else
   tar xzf "$TARBALL" -C "$NEW_DIR"
 fi
 
+# Pre-flight: the release bundles better-sqlite3 native prebuilds for a fixed
+# set of Node ABIs (NMV, `process.versions.modules`). If this box runs a Node
+# whose ABI isn't bundled, the dashboard can't load better-sqlite3 and would
+# fail to boot — otherwise caught only after the 120s health timeout + rollback,
+# or (on a fresh install) not at all. Check against what's ACTUALLY bundled in
+# the extracted tree (not a hardcoded list) BEFORE the symlink swap, so a
+# mismatch fails fast and leaves the running install untouched.
+NODE_NMV="$(node -p 'process.versions.modules' 2>/dev/null || true)"
+BINDING_DIR="$NEW_DIR/node_modules/better-sqlite3/lib/binding"
+if [[ -n "$NODE_NMV" && -d "$BINDING_DIR" ]]; then
+  if [[ ! -d "$BINDING_DIR/node-v$NODE_NMV-linux-x64" ]]; then
+    HAVE_ABIS="$(ls -1 "$BINDING_DIR" 2>/dev/null | sed -En 's/^node-v([0-9]+)-linux-x64$/\1/p' | paste -sd, -)"
+    die "Node $(node --version) (ABI $NODE_NMV) has no bundled better-sqlite3 \
+prebuild in this release (bundled ABIs: ${HAVE_ABIS:-none}).
+   Switch to a supported Node major, or use a release built for this ABI.
+   The running install was left untouched."
+  fi
+fi
+
 # State-dir symlinks (matches install.sh).
 ln -sf "$STATE/.env.local" "$NEW_DIR/.env.local"
 rm -rf "$NEW_DIR/data" 2>/dev/null || true
