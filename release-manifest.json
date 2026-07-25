@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.7.1-2-v0.3.69",
-    "mccVersion": "0.3.69",
+    "version": "2026.7.1-2-v0.3.70",
+    "mccVersion": "0.3.70",
     "openclawVersion": "2026.7.1-2",
-    "releaseDate": "2026-07-22T07:50:27.434Z",
-    "notes": "- feat(deploy): pre-flight Node ABI check in install.sh + upgrade.sh — fail fast (before the symlink swap, leaving the running install untouched) when the box's Node ABI has no bundled better-sqlite3 prebuild, instead of a 120s health-timeout rollback (upgrade) or a silently broken box (install).",
+    "releaseDate": "2026-07-25T10:41:44.073Z",
+    "notes": "## 修正\n\n- **「OpenClaw 可更新」提示不再對已是最新版的機器誤報**：偵測已安裝版本時，用來擷取版號的樣式是 `/OpenClaw\\s+([\\d.]+)/`，而 `[\\d.]` 這個字元類不含連字號。`openclaw --version` 輸出 `OpenClaw 2026.7.1-2 (…)` 時，比對在連字號處中止，擷取到的是被截斷的 `2026.7.1`。\n\n  由於是否有更新是以 `installed !== latest` 字串比對判定，截斷後的版號永遠不等於 npm 上的 `2026.7.1-2`，導致標頭的「OpenClaw 可更新」提示在**已經是最新版**的機器上持續顯示，按下更新也只是重新安裝同一版本。\n\n  build suffix 是 OpenClaw 發行版的常態（`-2` 即目前穩定版），因此所有已升級到帶 suffix 版本的環境都會受影響。現改為保留完整版號（含 `-2`、`-beta.3` 等後綴）。\n\n  同源問題一併修正：`/api/upgrade/openclaw-check` 先前回報的已安裝版本同樣被截斷；OpenCLI 偵測器也帶有相同的潛在問題（prerelease 標籤會觸發）。",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-2-v0.3.69/mission-control-v0.3.69-linux-x64.tar.gz",
-        "sha256": "d256116a836d70b14e1b82c14c21808a73137cdc209cf0592e2fa9f4a97b8ba1",
-        "size": 154599964
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-2-v0.3.70/mission-control-v0.3.70-linux-x64.tar.gz",
+        "sha256": "8f2cfb6c67bd2b20396eeedd13d14ca45d9b17b3a4eecaa3bd43044984209426",
+        "size": 27165805
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.7.1-2-v0.3.69",
+      "mccVersion": "0.3.69",
+      "openclawVersion": "2026.7.1-2",
+      "releaseDate": "2026-07-22T07:50:27.434Z"
+    },
     {
       "version": "2026.7.1-2-v0.3.68",
       "mccVersion": "0.3.68",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.60",
       "openclawVersion": "2026.6.8",
       "releaseDate": "2026-06-18T09:15:07.676Z"
-    },
-    {
-      "version": "2026.6.8-v0.3.59",
-      "mccVersion": "0.3.59",
-      "openclawVersion": "2026.6.8",
-      "releaseDate": "2026-06-18T03:19:31.756Z"
     }
   ]
 }
