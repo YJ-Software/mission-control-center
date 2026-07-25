@@ -12,6 +12,17 @@ function runQuiet(cmd: string, args: string[]): string {
   }
 }
 
+/**
+ * OpenClaw releases carry a build suffix (`2026.7.1-2`, `2026.7.1-beta.3`), so
+ * the version can't be matched with `[\d.]+` — that stops at the hyphen and
+ * yields `2026.7.1`. The truncated string never equals the npm `latest`, which
+ * made `updateAvailable` stick on true for anyone already on the newest build.
+ */
+const OPENCLAW_VERSION_RE = /OpenClaw\s+v?(\d[\w.-]*)/
+
+/** Same suffix problem for a bare semver line (`1.2.3-beta.1`). */
+const BARE_VERSION_RE = /\b(\d+\.\d+\.\d+[\w.-]*)/
+
 export interface ServiceInfo {
   name: string
   active: boolean | null
@@ -55,7 +66,7 @@ const SERVICE_DETECTORS: ServiceDetector[] = [
     name: 'openclaw',
     systemd: ['openclaw', 'openclaw-gateway', 'openclaw-webhooks'],
     processes: ['openclaw-gateway', 'openclaw-webhooks'],
-    versionCmd: { cmd: 'openclaw', args: ['--version'], regex: /OpenClaw\s+([\d.]+)/ },
+    versionCmd: { cmd: 'openclaw', args: ['--version'], regex: OPENCLAW_VERSION_RE },
   },
   {
     name: 'tailscaled',
@@ -73,7 +84,7 @@ const SERVICE_DETECTORS: ServiceDetector[] = [
     systemd: ['opencli-daemon'],
     processes: ['@jackwener/opencli'],
     onlyIfInstalled: 'opencli',
-    versionCmd: { cmd: 'opencli', args: ['--version'], regex: /(\d+\.\d+\.\d+)/ },
+    versionCmd: { cmd: 'opencli', args: ['--version'], regex: BARE_VERSION_RE },
   },
 ]
 
@@ -124,7 +135,7 @@ export interface OpenClawVersionInfo {
 export async function getOpenClawVersionInfo(): Promise<OpenClawVersionInfo> {
   const bin = findOpenclawBin()
   const raw = runQuiet(bin, ['--version'])
-  const match = raw.match(/OpenClaw\s+([\d.]+)/) || raw.match(/\b(\d+\.\d+(?:\.\d+)?)\b/)
+  const match = raw.match(OPENCLAW_VERSION_RE) || raw.match(BARE_VERSION_RE)
   const installed = match ? match[1] : ''
 
   let latest = ''
@@ -160,7 +171,7 @@ export interface OpencliVersionInfo {
  */
 export async function getOpencliVersionInfo(): Promise<OpencliVersionInfo> {
   const raw = runQuiet('opencli', ['--version'])
-  const match = raw.match(/(\d+\.\d+\.\d+)/)
+  const match = raw.match(BARE_VERSION_RE)
   const installed = match ? match[1] : ''
 
   let latest = ''

@@ -22,9 +22,11 @@ async function readCurrentVersion(): Promise<string | null> {
     const { stdout } = await execFileP(bin, ['--version'], { timeout: 5000 })
     // Output examples:
     //   "OpenClaw 2026.5.5 (b1abf9d) — One CLI to rule them all..."
+    //   "OpenClaw 2026.7.1-2 (0790d9f) — ..."
     //   "2026.5.5"
-    // Pull the first dotted numeric run.
-    const match = stdout.match(/\b(\d+\.\d+(?:\.\d+)?)\b/)
+    // The build suffix (`-2`) is part of the version — a `[\d.]`-style match
+    // drops it and misreports which build is installed.
+    const match = stdout.match(/OpenClaw\s+v?(\d[\w.-]*)/) || stdout.match(/\b(\d+\.\d+(?:\.\d+)?[\w.-]*)/)
     return match?.[1] ?? null
   } catch {
     return null
