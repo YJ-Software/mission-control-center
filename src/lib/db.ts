@@ -186,6 +186,21 @@ export function initDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_notif_created ON notifications(created_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_dedup ON notifications(dedup_key) WHERE dedup_key IS NOT NULL AND read_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS morning_report_template_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scope TEXT NOT NULL,
+      ref_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      origin TEXT NOT NULL DEFAULT 'save',
+      note TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+    -- Every read is "newest N for this ref", and the dedupe check reads just
+    -- the newest row, so this ordering serves both.
+    CREATE INDEX IF NOT EXISTS idx_tpl_ver_ref
+      ON morning_report_template_versions(scope, ref_id, created_at DESC, id DESC);
   `)
 
   // Create backup tables

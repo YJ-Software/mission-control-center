@@ -4,18 +4,23 @@ import { eq } from 'drizzle-orm'
 import {
   DEFAULT_FINALIZE_MESSAGE,
   DEFAULT_PODCAST_MESSAGE,
+  DEFAULT_PODCAST_HARVEST_MESSAGE,
   DEFAULT_FINALIZE_HTML,
   DEFAULT_PODCAST_SCRIPT,
   DEFAULT_PODCAST_POLISH,
 } from './default-templates'
 
-const DEFAULTS: Record<string, string> = {
+const DEFAULTS = {
   finalizeMessageTemplate: DEFAULT_FINALIZE_MESSAGE,
   podcastMessageTemplate: DEFAULT_PODCAST_MESSAGE,
+  // Was missing here while sync-cron already called getTemplate() for it, so
+  // the bundled fallback resolved to undefined and the subsequent .replace()
+  // would throw on any install whose config row was empty.
+  podcastHarvestMessageTemplate: DEFAULT_PODCAST_HARVEST_MESSAGE,
   finalizeHtmlTemplate: DEFAULT_FINALIZE_HTML,
   podcastScriptTemplate: DEFAULT_PODCAST_SCRIPT,
   podcastPolishTemplate: DEFAULT_PODCAST_POLISH,
-}
+} satisfies Record<string, string>
 
 /**
  * Get a template value from DB config, falling back to bundled default.
@@ -35,6 +40,17 @@ export function getDefaultTemplate(key: keyof typeof DEFAULTS): string {
 }
 
 export type TemplateKey = keyof typeof DEFAULTS
+
+/**
+ * Does this morning_report_config key hold an editable template?
+ *
+ * Derived from DEFAULTS so the set stays single-sourced — adding a template
+ * there automatically gives it edit history. Most config keys are scalars
+ * (cron expressions, model ids) and are deliberately not versioned.
+ */
+export function isVersionedTemplateKey(key: string): key is TemplateKey {
+  return Object.prototype.hasOwnProperty.call(DEFAULTS, key)
+}
 
 /**
  * Parse podcast script template into intro/transition/outro sections.

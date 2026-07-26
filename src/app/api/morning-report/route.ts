@@ -20,6 +20,14 @@ import { syncCronJobs } from '@/lib/morning-report/sync-cron'
 import { cronList, cronRuns } from '@/lib/morning-report/cron-cli'
 import { startTunnel, stopTunnel, getTunnelStatus, startTunnelStream } from '@/lib/morning-report/tunnel'
 import { createJob, getJob, updateJob, findLatestForDate } from '@/lib/morning-report/podcast-jobs'
+import { isVersionedTemplateKey } from '@/lib/morning-report/template-helpers'
+import {
+  recordTemplateVersion,
+  callerOrigin,
+  listTemplateVersions,
+  getTemplateVersion,
+  type TemplateScope,
+} from '@/lib/morning-report/template-versions'
 
 initDb()
 
@@ -273,6 +281,37 @@ export async function GET(req: NextRequest) {
     }
 
     // --- format template ---
+    // --- template edit history ---
+    // ?type=template-versions&scope=topic&refId=stocks   → newest-first list
+    // ?type=template-version&id=42                       → one full revision
+    if (type === 'template-versions') {
+      const scope = searchParams.get('scope') as TemplateScope | null
+      const refId = searchParams.get('refId')
+      if (!scope || !refId) {
+        return NextResponse.json({ error: 'scope and refId required' }, { status: 400 })
+      }
+      // This drives a dropdown, so the list carries metadata only — a
+      // revision's full text is fetched when one is actually picked.
+      const versions = listTemplateVersions(scope, refId).map((v) => ({
+        id: v.id,
+        origin: v.origin,
+        note: v.note,
+        createdAt: v.createdAt,
+        size: v.content.length,
+      }))
+      return NextResponse.json({ versions })
+    }
+
+    if (type === 'template-version') {
+      const id = Number(searchParams.get('id'))
+      if (!Number.isInteger(id)) {
+        return NextResponse.json({ error: 'numeric id required' }, { status: 400 })
+      }
+      const version = getTemplateVersion(id)
+      if (!version) return NextResponse.json({ error: 'not found' }, { status: 404 })
+      return NextResponse.json(version)
+    }
+
     if (type === 'format-template') {
       const row = db
         .select()
@@ -335,12 +374,23 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const type = searchParams.get('type')
+  // ?origin=restore marks a save that reinstates an older revision, so the
+  // history list can tell it apart from an ordinary edit. Passed in the query
+  // rather than the body because ?type=config writes every body key verbatim.
+  const origin = callerOrigin(searchParams.get('origin'))
 
   try {
     // --- config ---
     if (type === 'config') {
       const body = (await req.json()) as Record<string, string>
       for (const [key, value] of Object.entries(body)) {
+        // Most config keys are scalars (cron times, model ids). Only the
+        // editable templates carry history.
+        if (isVersionedTemplateKey(key)) {
+          const prev = db.select().from(morningReportConfig)
+            .where(eq(morningReportConfig.key, key)).get()?.value
+          recordTemplateVersion({ scope: 'config', refId: key, content: value, previous: prev, origin })
+        }
         db.insert(morningReportConfig)
           .values({ key, value })
           .onConflictDoUpdate({ target: morningReportConfig.key, set: { value } })
@@ -354,6 +404,9 @@ export async function PUT(req: NextRequest) {
     // --- format template ---
     if (type === 'format-template') {
       const { content } = (await req.json()) as { content: string }
+      const prevFormat = db.select().from(morningReportFormatTemplate)
+        .where(eq(morningReportFormatTemplate.id, 1)).get()?.content
+      recordTemplateVersion({ scope: 'format', refId: 'format', content, previous: prevFormat, origin })
       db.insert(morningReportFormatTemplate)
         .values({ id: 1, content, updatedAt: Math.floor(Date.now() / 1000) })
         .onConflictDoUpdate({
@@ -393,6 +446,18 @@ export async function PUT(req: NextRequest) {
       }
     }
     update.updatedAt = Math.floor(Date.now() / 1000)
+
+    if ('template' in update) {
+      const prevTopic = db.select().from(morningReportTopics)
+        .where(eq(morningReportTopics.id, id)).get()?.template
+      recordTemplateVersion({
+        scope: 'topic',
+        refId: id,
+        content: update.template ?? '',
+        previous: prevTopic ?? undefined,
+        origin,
+      })
+    }
 
     db.update(morningReportTopics)
       .set(update)
@@ -455,6 +520,12 @@ export async function POST(req: NextRequest) {
           updatedAt: Math.floor(Date.now() / 1000),
         })
         .run()
+
+      // Seed history so a brand-new topic's starting prompt is recoverable
+      // after the first edit, same as any pre-existing one.
+      if (template) {
+        recordTemplateVersion({ scope: 'topic', refId: id, content: template })
+      }
 
       return NextResponse.json({ ok: true, id })
     }

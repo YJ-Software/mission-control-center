@@ -166,6 +166,31 @@ export const notifications = sqliteTable('notifications', {
   readAt: integer('read_at'),
 })
 
+// Edit history for every operator-editable template: per-topic prompts, the
+// shared FORMAT block, and the message/HTML/script templates kept in
+// morning_report_config. One table for all of them — `scope` says which kind,
+// `refId` which one.
+//
+// The motivating case is "還原預設", which rewrites every topic's template in a
+// single click; without history that is unrecoverable.
+export const morningReportTemplateVersions = sqliteTable('morning_report_template_versions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  // 'topic' → refId is the topic id
+  // 'format' → refId is 'format' (the single shared FORMAT block)
+  // 'config' → refId is the morning_report_config key (finalizeMessageTemplate…)
+  scope: text('scope').notNull(),
+  refId: text('ref_id').notNull(),
+  content: text('content').notNull(),
+  // sha256 of content. Compared against the newest row for this ref so
+  // repeated saves of unchanged text don't pile up junk versions.
+  contentHash: text('content_hash').notNull(),
+  // How this version came about: 'baseline' is the pre-existing value captured
+  // the first time a ref is versioned, so the original survives a first edit.
+  origin: text('origin').notNull().default('save'), // 'baseline' | 'save' | 'reset-default' | 'restore'
+  note: text('note'),
+  createdAt: integer('created_at').notNull().default(sql`(unixepoch())`),
+})
+
 export {
   backupDestinations,
   backupSources,
