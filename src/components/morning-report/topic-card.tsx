@@ -392,16 +392,34 @@ export function TopicCard({ topic, isExpanded, onToggleExpand, onUpdate, onDelet
                   })}
                 </div>
 
-                <select
-                  value={editState.feedIds.length === 0 ? 'search' : editState.sourceMode}
-                  disabled={editState.feedIds.length === 0}
-                  onChange={e => setEditState(st => ({ ...st, sourceMode: e.target.value }))}
-                  className="w-full bg-white/[0.03] border border-white/[0.08] text-xs text-white/80 rounded-md px-3 py-2 outline-none focus:border-cyan-400/50 disabled:opacity-40"
-                >
-                  <option value="search" className="bg-[#0a0a1a] text-white/80">{t('topicCard.modeSearch')}</option>
-                  <option value="feed+search" className="bg-[#0a0a1a] text-white/80">{t('topicCard.modeFeedSearch')}</option>
-                  <option value="feed" className="bg-[#0a0a1a] text-white/80">{t('topicCard.modeFeed')}</option>
-                </select>
+                {/* Same control style as 傳送模式 above — three exclusive
+                    choices read better as buttons than a dropdown. */}
+                <div className="flex flex-wrap gap-2">
+                  {(['search', 'feed+search', 'feed'] as const).map(mode => {
+                    const noFeeds = editState.feedIds.length === 0
+                    // With nothing selected the topic can only search, so the
+                    // other two are not real options yet.
+                    const active = (noFeeds ? 'search' : editState.sourceMode) === mode
+                    const labelKey = mode === 'search'
+                      ? 'modeSearch'
+                      : mode === 'feed+search' ? 'modeFeedSearch' : 'modeFeed'
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        disabled={noFeeds && mode !== 'search'}
+                        onClick={() => setEditState(st => ({ ...st, sourceMode: mode }))}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-mono border transition-colors ${
+                          active
+                            ? 'bg-cyan-500/20 border-cyan-500/30 text-cyan-400'
+                            : 'bg-white/[0.03] border-white/[0.08] text-white/50 hover:text-white/70 hover:border-white/[0.15]'
+                        } disabled:opacity-30 disabled:pointer-events-none`}
+                      >
+                        {t(`topicCard.${labelKey}`)}
+                      </button>
+                    )
+                  })}
+                </div>
                 <p className="text-[10px] text-white/30 leading-relaxed">
                   {editState.feedIds.length === 0
                     ? t('topicCard.modeHintNoFeed')

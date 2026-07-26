@@ -750,7 +750,7 @@
       "templateReset": "已恢复默认模板"
     },
     "topicCard": {
-      "newsSources": "新闻来源",
+      "newsSources": "新闻来源(RSS)",
       "sourceDisabled": "此来源当前停用",
       "modeSearch": "自行搜索（不使用来源）",
       "modeFeedSearch": "来源优先，不足再搜索",

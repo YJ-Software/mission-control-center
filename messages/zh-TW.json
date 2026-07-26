@@ -750,7 +750,7 @@
       "templateReset": "已恢復預設範本"
     },
     "topicCard": {
-      "newsSources": "新聞來源",
+      "newsSources": "新聞來源(RSS)",
       "sourceDisabled": "此來源目前停用",
       "modeSearch": "自行搜尋（不使用來源）",
       "modeFeedSearch": "來源優先，不足再搜尋",

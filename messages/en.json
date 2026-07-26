@@ -750,7 +750,7 @@
       "templateReset": "Template reset to default"
     },
     "topicCard": {
-      "newsSources": "News sources",
+      "newsSources": "News sources (RSS)",
       "sourceDisabled": "This source is currently disabled",
       "modeSearch": "Search only (ignore sources)",
       "modeFeedSearch": "Sources first, search to fill gaps",
