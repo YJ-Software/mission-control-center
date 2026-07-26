@@ -8,13 +8,57 @@ import {
   statSync,
 } from 'fs'
 import { join } from 'path'
+import { execFileSync } from 'child_process'
 import { db } from '@/lib/db'
 import { morningReportConfig } from '@/lib/schema'
+import { createNotification } from '@/lib/notifications'
 import { getTmpDir, getDateVars } from './utils'
+import { findOpenclawBin } from './openclaw'
 import { mergeReports } from './merge-reports'
 import { convertToHtml } from './html-converter'
 
 export type ProgressCallback = (step: string, detail: string) => void
+
+/**
+ * Tell someone when a topic produced nothing.
+ *
+ * A topic whose agent never ran leaves a "⚠️ 此段落尚未生成" placeholder and no
+ * other trace — the report still publishes and the podcast still records, so
+ * the only signal is a human reading the page. Both channels here are
+ * best-effort and deliberately independent of the finalize cron job's announce
+ * template, which installs are free to customise (and have).
+ */
+export function alertMissingTopics(
+  missing: { id: string; name: string }[],
+  dateHyphen: string,
+): void {
+  if (missing.length === 0) return
+
+  const title = `晨報有 ${missing.length} 個主題未產出`
+  const body = `${dateHyphen}：${missing.map((t) => t.name).join('、')}`
+
+  try {
+    createNotification({
+      type: 'system',
+      severity: 'warning',
+      title,
+      body,
+      // One bell entry per day — re-running finalize must not stack toasts.
+      dedupKey: `morning-report-missing-${dateHyphen}`,
+    })
+  } catch (err) {
+    console.warn('[morning-report] missing-topic notification failed:', (err as Error).message)
+  }
+
+  try {
+    execFileSync(findOpenclawBin(), ['announce', '--message', `⚠️ ${title}\n\n${body}`], {
+      timeout: 30_000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+  } catch (err) {
+    console.warn('[morning-report] missing-topic announce failed:', (err as Error).message)
+  }
+}
 
 function getConfigMap(): Record<string, string> {
   const rows = db.select().from(morningReportConfig).all()
@@ -88,6 +132,14 @@ export async function finalize(date?: Date, onProgress?: ProgressCallback) {
     copyFileSync(mergeResult.outputPath, join(obsidianDir, `${dateHyphen}.md`))
   }
 
+  // Step 5.5: Surface any topic that produced nothing. Runs after the report
+  // is published so a failure here can never withhold a report that is ready.
+  if (mergeResult.missingTopics.length > 0) {
+    const names = mergeResult.missingTopics.map((t) => t.name).join('、')
+    onProgress?.('warning', `${mergeResult.missingTopics.length} 個主題未產出：${names}`)
+    alertMissingTopics(mergeResult.missingTopics, dateHyphen)
+  }
+
   // Step 6: Clean old files
   onProgress?.('cleanup', '清理舊檔案...')
   cleanOldFiles(tmpDir, 7)
@@ -99,5 +151,6 @@ export async function finalize(date?: Date, onProgress?: ProgressCallback) {
     markdownPath: mergeResult.outputPath,
     htmlPath,
     date: dateHyphen,
+    missingTopics: mergeResult.missingTopics,
   }
 }

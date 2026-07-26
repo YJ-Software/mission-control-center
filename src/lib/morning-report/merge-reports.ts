@@ -26,6 +26,10 @@ export async function mergeReports(date?: Date) {
   // Build TOC and content sections
   const tocLines: string[] = []
   const sections: string[] = []
+  // Topics whose agent never wrote an output file. Reported to the caller so
+  // the gap can be surfaced instead of only showing up as a placeholder that
+  // someone has to notice by reading the report.
+  const missingTopics: { id: string; name: string }[] = []
 
   for (const topic of topics) {
     const emoji = topic.emoji ?? '📰'
@@ -43,6 +47,7 @@ export async function mergeReports(date?: Date) {
       content = readFileSync(filePath, 'utf-8')
     } else {
       content = `> ⚠️ 此段落尚未生成`
+      missingTopics.push({ id: topic.id, name: topic.name })
     }
 
     sections.push(`## ${heading} {#${anchor}}\n\n${content}`)
@@ -61,5 +66,6 @@ export async function mergeReports(date?: Date) {
     outputPath,
     topicCount: topics.length,
     date: dateHyphen,
+    missingTopics,
   }
 }

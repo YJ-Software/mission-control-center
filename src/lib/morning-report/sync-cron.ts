@@ -1,7 +1,12 @@
 import { db } from '@/lib/db'
 import { morningReportTopics, morningReportConfig } from '@/lib/schema'
 import { asc, eq } from 'drizzle-orm'
-import { getOpenClawDefaultModel, getGeneratedDir } from './utils'
+import {
+  getOpenClawDefaultModel,
+  getOpenClawAllowedModels,
+  resolveAllowedModel,
+  getGeneratedDir,
+} from './utils'
 import { join } from 'path'
 import { cronList, cronAdd, cronRemove, type CronJobInfo } from './cron-cli'
 import { getTemplate } from './template-helpers'
@@ -26,7 +31,9 @@ export async function syncCronJobs() {
   const finalizeEnabled = getConfigValue('finalizeEnabled') !== 'false' // default true
   const podcastEnabled = getConfigValue('podcastEnabled') !== 'false' // default true
 
-  const globalModel = getConfigValue('cronModel') || getOpenClawDefaultModel() || 'zai/glm-5'
+  const defaultModel = getOpenClawDefaultModel()
+  const globalModel = getConfigValue('cronModel') || defaultModel || 'zai/glm-5'
+  const allowedModels = getOpenClawAllowedModels()
   const tgChatId = getConfigValue('tgChatId')
   const baseUrl = getConfigValue('missionControlUrl') || 'http://localhost:3737'
   const generatedDir = getGeneratedDir()
@@ -66,7 +73,14 @@ export async function syncCronJobs() {
     jobModel?: string,
     delivery?: { announce?: boolean; noDeliver?: boolean; channel?: string; to?: string },
   ) {
-    const effectiveModel = jobModel || globalModel
+    const requestedModel = jobModel || globalModel
+    const effectiveModel = resolveAllowedModel(requestedModel, allowedModels, defaultModel)
+    if (effectiveModel !== requestedModel) {
+      console.warn(
+        `[morning-report] "${name}": model "${requestedModel}" is not in the OpenClaw ` +
+        `allowlist — using "${effectiveModel}" instead, or the job would fail unrun.`,
+      )
+    }
     await cronAdd({
       name,
       description,
