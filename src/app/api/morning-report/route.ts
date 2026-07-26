@@ -477,12 +477,19 @@ export async function PUT(req: NextRequest) {
       'outputFilename',
       'model',
       'deliveryMode',
+      'feedIds',
+      'sourceMode',
     ]
     for (const key of allowedFields) {
       if (key in fields) {
         // SQLite needs integer for boolean fields
         if (key === 'enabled') {
           update[key] = fields[key] ? 1 : 0
+        } else if (key === 'feedIds') {
+          // The client sends an array; the column holds JSON text.
+          update[key] = JSON.stringify(
+            Array.isArray(fields[key]) ? fields[key].filter((x: unknown) => typeof x === 'string') : [],
+          )
         } else {
           update[key] = fields[key]
         }

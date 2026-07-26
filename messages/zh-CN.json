@@ -750,6 +750,17 @@
       "templateReset": "已恢复默认模板"
     },
     "topicCard": {
+      "newsSources": "新闻来源",
+      "sourceDisabled": "此来源当前停用",
+      "modeSearch": "自行搜索（不使用来源）",
+      "modeFeedSearch": "来源优先，不足再搜索",
+      "modeFeed": "只用来源，不自行搜索",
+      "modeHintNoFeed": "未勾选任何来源时，维持原本的自行搜索行为。",
+      "modeHint": {
+        "search": "即使已勾选来源也不使用，agent 完全自行搜索。",
+        "feedSearch": "把来源的新闻放进 prompt 让 agent 优先评估，不足时再自行搜索补充。",
+        "feed": "只提供来源的新闻，并要求 agent 不要自行搜索、但必须实际打开每个链接阅读全文。"
+      },
       "name": "名称",
       "emoji": "Emoji",
       "cronSchedule": "执行排程",

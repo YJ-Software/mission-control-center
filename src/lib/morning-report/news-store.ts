@@ -111,6 +111,43 @@ export function wasCitedRecently(rawUrl: string, days: number): boolean {
   return !!row
 }
 
+export interface CandidateRow {
+  url: string
+  host: string
+  title: string
+  snippet: string
+  publishedAt: number | null
+}
+
+/**
+ * Unused candidates from a topic's linked feeds, newest first.
+ *
+ * Excludes anything already cited: the point of offering candidates is to give
+ * the agent material it hasn't run before, so a repeat must never be presented
+ * as a suggestion in the first place.
+ */
+export function getCandidatesForFeeds(
+  feedIds: string[],
+  opts: { limit: number; withinDays: number },
+): CandidateRow[] {
+  if (feedIds.length === 0) return []
+  const since = Math.floor(Date.now() / 1000) - opts.withinDays * 86400
+  try {
+    return db.all<CandidateRow>(sql`
+      SELECT url, host, title, snippet, published_at AS publishedAt
+        FROM news_articles
+       WHERE used_in_report IS NULL
+         AND feed_id IN (${sql.join(feedIds.map((id) => sql`${id}`), sql`, `)})
+         AND COALESCE(published_at, fetched_at) >= ${since}
+       ORDER BY COALESCE(published_at, fetched_at) DESC
+       LIMIT ${opts.limit}
+    `)
+  } catch (err) {
+    console.warn('[news-store] could not read candidates:', (err as Error).message)
+    return []
+  }
+}
+
 /** Drop rows past their retention window. Cited links are kept far longer —
  *  they are the ledger; unused candidates are just stale inventory. */
 export function pruneNewsArticles(): void {

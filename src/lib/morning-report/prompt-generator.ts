@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { morningReportTopics, morningReportFormatTemplate, morningReportConfig } from '@/lib/schema'
 import { eq, asc } from 'drizzle-orm'
 import { getGeneratedDir, getTmpDir, getDateVars, substituteVars } from './utils'
-import { getRecentlyCitedUrls } from './news-store'
+import { getRecentlyCitedUrls, getCandidatesForFeeds, type CandidateRow } from './news-store'
 
 interface PromptResult {
   topicId: string
@@ -40,6 +40,63 @@ function buildCitedUrlsBlock(urls: string[], days: number): string {
     '```\n' +
     urls.join('\n') +
     '\n```\n'
+  )
+}
+
+/** Most candidates a topic's prompt will carry. */
+const MAX_CANDIDATES = 30
+/** How far back a candidate stays worth offering. */
+const CANDIDATE_WINDOW_DAYS = 3
+
+export type SourceMode = 'search' | 'feed' | 'feed+search'
+
+function parseFeedIds(raw: string | null): string[] {
+  try {
+    const parsed = JSON.parse(raw || '[]')
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Render the linked sources into the prompt.
+ *
+ * The wording differs by mode and is generated rather than authored, so it
+ * can't drift out of step with what the topic is actually configured to do.
+ *
+ * The `feed` case says two things deliberately, because they are easy to
+ * conflate: don't go looking for *other* stories, but do open each of these
+ * and read them. RSS carries a title and a sentence — an agent told only "use
+ * these sources" will happily paraphrase the summary and call it a report.
+ */
+export function buildSourceBlock(mode: SourceMode, candidates: CandidateRow[]): string {
+  if (mode === 'search' || candidates.length === 0) return ''
+
+  const list = candidates
+    .map((c) => {
+      const when = c.publishedAt
+        ? new Date(c.publishedAt * 1000).toISOString().slice(0, 10)
+        : ''
+      const meta = [c.host, when].filter(Boolean).join('，')
+      return `- ${c.title || c.url}\n  ${c.url}\n  （${meta}）`
+    })
+    .join('\n')
+
+  const instruction = mode === 'feed'
+    ? '**本主題只能使用以下來源撰寫，不要自行搜尋其他新聞。**\n' +
+      '但你**必須實際開啟以下每一個連結、閱讀全文**再撰寫——以下的摘要只是索引，' +
+      '直接改寫摘要不算完成。\n' +
+      '若這些素材不足以支撐完整報告，請就現有素材撰寫，並在段落結尾註明素材不足。'
+    : '請**優先**評估以下來源，並實際開啟連結閱讀全文。\n' +
+      '若數量不足或品質不佳，再自行搜尋補充。'
+
+  return (
+    '\n\n---\n\n' +
+    '## 📥 指定新聞來源\n\n' +
+    `以下為系統預先蒐集、且確認未在近期晨報出現過的文章（共 ${candidates.length} 則）。\n\n` +
+    instruction + '\n\n' +
+    list + '\n'
   )
 }
 
@@ -144,11 +201,30 @@ export function generatePrompts(date?: Date): GeneratePromptsOutput {
     }
 
     // Substitute vars in topic template
-    const topicContent = substituteVars(topic.template || '', topicVars)
+    let topicContent = substituteVars(topic.template || '', topicVars)
 
-    // Combine: FORMAT + prev URLs block + separator + topic content
+    const mode = (topic.sourceMode || 'search') as SourceMode
+    const feedIds = parseFeedIds(topic.feedIds)
+    const candidates = mode === 'search' || feedIds.length === 0
+      ? []
+      : getCandidatesForFeeds(feedIds, {
+          limit: MAX_CANDIDATES,
+          withinDays: CANDIDATE_WINDOW_DAYS,
+        })
+    const sourceBlock = buildSourceBlock(mode, candidates)
+
+    // A template can place the sources itself with {{FEED_ARTICLES}}; without
+    // the marker the block is appended, so templates written before any of
+    // this existed keep working untouched.
+    let appendSourceBlock = sourceBlock
+    if (topicContent.includes('{{FEED_ARTICLES}}')) {
+      topicContent = topicContent.replaceAll('{{FEED_ARTICLES}}', sourceBlock.trimStart())
+      appendSourceBlock = ''
+    }
+
+    // Combine: FORMAT + prev URLs block + sources + separator + topic content
     const fullPrompt =
-      formatContent + prevUrlsBlock + '\n\n---\n\n' + topicContent
+      formatContent + prevUrlsBlock + appendSourceBlock + '\n\n---\n\n' + topicContent
 
     const promptFilename = `cron-${String(topicIndex).padStart(2, '0')}-${topic.id}.md`
     const promptPath = join(generatedDir, promptFilename)

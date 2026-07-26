@@ -750,6 +750,17 @@
       "templateReset": "已恢復預設範本"
     },
     "topicCard": {
+      "newsSources": "新聞來源",
+      "sourceDisabled": "此來源目前停用",
+      "modeSearch": "自行搜尋（不使用來源）",
+      "modeFeedSearch": "來源優先，不足再搜尋",
+      "modeFeed": "只用來源，不自行搜尋",
+      "modeHintNoFeed": "未勾選任何來源時，維持原本的自行搜尋行為。",
+      "modeHint": {
+        "search": "即使已勾選來源也不使用，agent 完全自行搜尋。",
+        "feedSearch": "把來源的新聞放進 prompt 讓 agent 優先評估，不足時再自行搜尋補充。",
+        "feed": "只提供來源的新聞，並要求 agent 不要自行搜尋、但必須實際開啟每個連結閱讀全文。"
+      },
       "name": "名稱",
       "emoji": "Emoji",
       "cronSchedule": "執行排程",

@@ -20,6 +20,10 @@ export interface Topic {
   outputFilename: string
   model: string
   deliveryMode: string
+  /** news_feeds ids this topic draws candidates from. */
+  feedIds?: string[]
+  /** 'search' | 'feed+search' | 'feed' */
+  sourceMode?: string
 }
 
 interface TopicCardProps {
@@ -31,9 +35,10 @@ interface TopicCardProps {
   dragHandleProps?: Record<string, any>
   availableModels?: { id: string; name: string }[]
   globalModel?: string
+  availableFeeds?: { id: string; label: string; enabled: number }[]
 }
 
-export function TopicCard({ topic, isExpanded, onToggleExpand, onUpdate, onDelete, dragHandleProps, availableModels = [], globalModel = '' }: TopicCardProps) {
+export function TopicCard({ topic, isExpanded, onToggleExpand, onUpdate, onDelete, dragHandleProps, availableModels = [], globalModel = '', availableFeeds = [] }: TopicCardProps) {
   const t = useTranslations('morningReport')
   const tc = useTranslations('common')
   const [editState, setEditState] = useState({
@@ -44,6 +49,8 @@ export function TopicCard({ topic, isExpanded, onToggleExpand, onUpdate, onDelet
     template: topic.template,
     model: topic.model || '',
     deliveryMode: topic.deliveryMode || 'none',
+    feedIds: topic.feedIds ?? [],
+    sourceMode: topic.sourceMode || 'search',
   })
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -60,8 +67,10 @@ export function TopicCard({ topic, isExpanded, onToggleExpand, onUpdate, onDelet
       template: topic.template,
       model: topic.model || '',
       deliveryMode: topic.deliveryMode || 'none',
+      feedIds: topic.feedIds ?? [],
+      sourceMode: topic.sourceMode || 'search',
     })
-  }, [topic.name, topic.emoji, topic.timeoutSeconds, topic.outputFilename, topic.template, topic.model, topic.deliveryMode])
+  }, [topic.name, topic.emoji, topic.timeoutSeconds, topic.outputFilename, topic.template, topic.model, topic.deliveryMode, topic.sourceMode, topic.feedIds])
 
   const resetEdit = () => {
     setEditState({
@@ -72,6 +81,8 @@ export function TopicCard({ topic, isExpanded, onToggleExpand, onUpdate, onDelet
       template: topic.template,
       model: topic.model || '',
       deliveryMode: topic.deliveryMode || 'none',
+      feedIds: topic.feedIds ?? [],
+      sourceMode: topic.sourceMode || 'search',
     })
   }
 
@@ -82,7 +93,9 @@ export function TopicCard({ topic, isExpanded, onToggleExpand, onUpdate, onDelet
     editState.outputFilename !== topic.outputFilename ||
     editState.template !== topic.template ||
     editState.model !== (topic.model || '') ||
-    editState.deliveryMode !== (topic.deliveryMode || 'none')
+    editState.deliveryMode !== (topic.deliveryMode || 'none') ||
+    editState.sourceMode !== (topic.sourceMode || 'search') ||
+    JSON.stringify([...editState.feedIds].sort()) !== JSON.stringify([...(topic.feedIds ?? [])].sort())
 
   const handleSave = useCallback(async () => {
     setSaving(true)
@@ -345,6 +358,58 @@ export function TopicCard({ topic, isExpanded, onToggleExpand, onUpdate, onDelet
             <label className="text-[10px] text-white/40 font-mono uppercase tracking-wider">
               {t('topicCard.promptTemplate')}
             </label>
+            {/* News sources. Hidden when none are registered — a picker with
+                nothing to pick is just clutter. */}
+            {availableFeeds.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-[10px] text-white/40 font-mono uppercase tracking-wider">
+                  {t('topicCard.newsSources')}
+                </label>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {availableFeeds.map(feed => {
+                    const on = editState.feedIds.includes(feed.id)
+                    return (
+                      <button
+                        key={feed.id}
+                        type="button"
+                        onClick={() => setEditState(st => ({
+                          ...st,
+                          feedIds: on
+                            ? st.feedIds.filter(x => x !== feed.id)
+                            : [...st.feedIds, feed.id],
+                        }))}
+                        className={`px-2 py-1 rounded text-[11px] border transition-colors ${
+                          on
+                            ? 'bg-cyan-400/15 text-cyan-300 border-cyan-400/30'
+                            : 'bg-white/[0.03] text-white/45 border-white/[0.08] hover:text-white/70'
+                        } ${feed.enabled === 1 ? '' : 'opacity-50'}`}
+                        title={feed.enabled === 1 ? undefined : t('topicCard.sourceDisabled')}
+                      >
+                        {on ? '✓ ' : ''}{feed.label}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <select
+                  value={editState.feedIds.length === 0 ? 'search' : editState.sourceMode}
+                  disabled={editState.feedIds.length === 0}
+                  onChange={e => setEditState(st => ({ ...st, sourceMode: e.target.value }))}
+                  className="w-full bg-white/[0.03] border border-white/[0.08] text-xs text-white/80 rounded-md px-3 py-2 outline-none focus:border-cyan-400/50 disabled:opacity-40"
+                >
+                  <option value="search" className="bg-[#0a0a1a] text-white/80">{t('topicCard.modeSearch')}</option>
+                  <option value="feed+search" className="bg-[#0a0a1a] text-white/80">{t('topicCard.modeFeedSearch')}</option>
+                  <option value="feed" className="bg-[#0a0a1a] text-white/80">{t('topicCard.modeFeed')}</option>
+                </select>
+                <p className="text-[10px] text-white/30 leading-relaxed">
+                  {editState.feedIds.length === 0
+                    ? t('topicCard.modeHintNoFeed')
+                    : t(`topicCard.modeHint.${editState.sourceMode === 'feed' ? 'feed' : editState.sourceMode === 'feed+search' ? 'feedSearch' : 'search'}`)}
+                </p>
+              </div>
+            )}
+
             <TemplateEditor
               value={editState.template}
               onChange={template => setEditState(s => ({ ...s, template }))}

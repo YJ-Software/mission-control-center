@@ -72,6 +72,11 @@ export const morningReportTopics = sqliteTable('morning_report_topics', {
   outputFilename: text('output_filename').default(''),
   model: text('model').default(''),
   deliveryMode: text('delivery_mode').default('none'),
+  /** JSON array of news_feeds ids this topic draws candidates from. */
+  feedIds: text('feed_ids').notNull().default('[]'),
+  /** 'search' (agent searches, the original behaviour) | 'feed+search' |
+   *  'feed' (only the linked sources). */
+  sourceMode: text('source_mode').notNull().default('search'),
   createdAt: integer('created_at').notNull().default(sql`(unixepoch())`),
   updatedAt: integer('updated_at').default(sql`(unixepoch())`),
 })

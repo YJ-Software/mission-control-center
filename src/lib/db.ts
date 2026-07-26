@@ -99,6 +99,12 @@ export function initDb() {
     `ALTER TABLE morning_report_topics ADD COLUMN updated_at INTEGER DEFAULT 0`,
     `ALTER TABLE morning_report_topics ADD COLUMN model TEXT DEFAULT ''`,
     `ALTER TABLE morning_report_topics ADD COLUMN delivery_mode TEXT DEFAULT 'none'`,
+    // JSON array of news_feeds ids, matching how backup_jobs.source_ids models
+    // the same many-to-many rather than introducing a join table.
+    `ALTER TABLE morning_report_topics ADD COLUMN feed_ids TEXT NOT NULL DEFAULT '[]'`,
+    // 'search' keeps the existing behaviour, so upgrading changes nothing
+    // until a topic is deliberately switched over.
+    `ALTER TABLE morning_report_topics ADD COLUMN source_mode TEXT NOT NULL DEFAULT 'search'`,
   ]
   for (const stmt of alterStatements) {
     try { sqlite.exec(stmt) } catch (err: any) {

@@ -750,6 +750,17 @@
       "templateReset": "Template reset to default"
     },
     "topicCard": {
+      "newsSources": "News sources",
+      "sourceDisabled": "This source is currently disabled",
+      "modeSearch": "Search only (ignore sources)",
+      "modeFeedSearch": "Sources first, search to fill gaps",
+      "modeFeed": "Sources only, no searching",
+      "modeHintNoFeed": "With no source selected the topic keeps its original search-only behaviour.",
+      "modeHint": {
+        "search": "Sources are ignored even when selected; the agent searches for everything.",
+        "feedSearch": "Source articles go into the prompt to be considered first, with searching allowed to fill gaps.",
+        "feed": "Only source articles are offered, and the agent is told not to search — but to open every link and read the full text."
+      },
       "name": "Name",
       "emoji": "Emoji",
       "cronSchedule": "Cron Schedule",

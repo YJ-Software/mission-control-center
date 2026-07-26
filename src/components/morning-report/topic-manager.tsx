@@ -160,11 +160,12 @@ function TunnelToolbarControl({ enabled }: { enabled: boolean }) {
 
 // Sortable wrapper for TopicCard
 function SortableTopicCard({
-  topic, isExpanded, onToggleExpand, onUpdate, onDelete, availableModels, globalModel,
+  topic, isExpanded, onToggleExpand, onUpdate, onDelete, availableModels, globalModel, availableFeeds,
 }: {
   topic: Topic; isExpanded: boolean; onToggleExpand: () => void
   onUpdate: (data: Partial<Topic>) => Promise<void> | void; onDelete: () => void
   availableModels?: { id: string; name: string }[]; globalModel?: string
+  availableFeeds?: { id: string; label: string; enabled: number }[]
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: topic.id })
   const style = {
@@ -184,6 +185,7 @@ function SortableTopicCard({
         dragHandleProps={{ ...attributes, ...listeners }}
         availableModels={availableModels}
         globalModel={globalModel}
+        availableFeeds={availableFeeds}
       />
     </div>
   )
@@ -247,6 +249,14 @@ export function TopicManager() {
       setInterval(Number(config.interval) || 5)
     }
   }, [config, topics])
+
+  // Registered news sources, for the per-topic source picker.
+  const { data: feedsData } = useQuery<{ feeds: { id: string; label: string; enabled: number }[] }>({
+    queryKey: ['news-feeds'],
+    queryFn: () => fetch('/api/morning-report?type=feeds').then(r => r.json()),
+    staleTime: 30_000,
+  })
+  const newsFeeds = feedsData?.feeds ?? []
 
   // Fetch format template
   const { data: formatTemplate } = useQuery<{ content: string }>({
@@ -955,6 +965,7 @@ export function TopicManager() {
                         onDelete={() => deleteMutation.mutate(topic.id)}
                         availableModels={availableModels}
                         globalModel={defaultModel}
+                        availableFeeds={newsFeeds}
                       />
                     )
                   })
