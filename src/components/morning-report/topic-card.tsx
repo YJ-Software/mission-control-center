@@ -349,6 +349,7 @@ export function TopicCard({ topic, isExpanded, onToggleExpand, onUpdate, onDelet
               value={editState.template}
               onChange={template => setEditState(s => ({ ...s, template }))}
               rows={10}
+              history={{ scope: 'topic', refId: topic.id }}
             />
           </div>
 

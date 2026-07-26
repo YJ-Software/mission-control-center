@@ -566,6 +566,19 @@
     "limitedAccess": "Only this user's journal is shown; add the dashboard user to the systemd-journal group and restart the service for full system logs."
   },
   "morningReport": {
+    "versions": {
+      "pick": "History ({count} versions)",
+      "load": "Load",
+      "compare": "Compare",
+      "hideDiff": "Hide",
+      "diffLegend": "green = in the editor now, red = only in the older version",
+      "origin": {
+        "baseline": "original",
+        "save": "saved",
+        "resetDefault": "reset to default",
+        "restore": "restored"
+      }
+    },
     "title": "Morning Report",
     "subtitle": "Daily AI Briefing",
     "topics": "Topics",

@@ -42,14 +42,23 @@ export function getDefaultTemplate(key: keyof typeof DEFAULTS): string {
 export type TemplateKey = keyof typeof DEFAULTS
 
 /**
+ * Editable templates stored in morning_report_config that ship no bundled
+ * default — their fallback is written inline at the call site. They still need
+ * history: an override with no recorded origin is exactly the kind of thing
+ * that sits in a database for months with nobody able to say what it replaced.
+ */
+const UNBUNDLED_TEMPLATE_KEYS = ['generatePromptsMessageTemplate']
+
+/**
  * Does this morning_report_config key hold an editable template?
  *
- * Derived from DEFAULTS so the set stays single-sourced — adding a template
- * there automatically gives it edit history. Most config keys are scalars
- * (cron expressions, model ids) and are deliberately not versioned.
+ * Driven off DEFAULTS so adding a bundled template automatically gives it edit
+ * history. Most config keys are scalars (cron expressions, model ids) and are
+ * deliberately not versioned.
  */
-export function isVersionedTemplateKey(key: string): key is TemplateKey {
+export function isVersionedTemplateKey(key: string): boolean {
   return Object.prototype.hasOwnProperty.call(DEFAULTS, key)
+    || UNBUNDLED_TEMPLATE_KEYS.includes(key)
 }
 
 /**

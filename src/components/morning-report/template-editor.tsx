@@ -4,6 +4,7 @@ import { useRef, useCallback } from 'react'
 import { useTranslations } from 'next-intl'
 import { Textarea } from '@/components/ui/textarea'
 import { Code2 } from 'lucide-react'
+import { TemplateVersionPicker, type TemplateHistoryRef } from './template-version-picker'
 
 const DEFAULT_VARIABLES = [
   'TODAY',
@@ -25,6 +26,9 @@ interface TemplateEditorProps {
   placeholder?: string
   rows?: number
   variableFormat?: 'dollar' | 'mustache'
+  /** Show the revision picker for this template. Omit where the content has no
+   *  server-side history. */
+  history?: TemplateHistoryRef
 }
 
 export function TemplateEditor({
@@ -34,6 +38,7 @@ export function TemplateEditor({
   placeholder,
   rows = 12,
   variableFormat = 'dollar',
+  history,
 }: TemplateEditorProps) {
   const t = useTranslations('morningReport')
   const resolvedPlaceholder = placeholder ?? t('templateEditor.placeholder')
@@ -63,6 +68,15 @@ export function TemplateEditor({
 
   return (
     <div className="space-y-2">
+      {history && (
+        <TemplateVersionPicker
+          scope={history.scope}
+          refId={history.refId}
+          current={value}
+          onLoad={onChange}
+        />
+      )}
+
       {/* Variable hints */}
       <div className="flex items-center gap-1.5 flex-wrap">
         <Code2 className="w-3 h-3 text-white/25 shrink-0" />

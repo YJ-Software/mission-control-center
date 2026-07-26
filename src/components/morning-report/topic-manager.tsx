@@ -757,6 +757,7 @@ export function TopicManager() {
             <TemplateEditor
               value={displayFormatContent}
               onChange={setFormatContent}
+              history={{ scope: 'format', refId: 'format' }}
               rows={14}
               placeholder={t('topicManager.loadingFormatTemplate')}
             />
@@ -904,6 +905,7 @@ export function TopicManager() {
                       <TemplateEditor
                         value={gpMessageTemplate || `使用 exec 工具執行以下指令來生成晨報 prompts：\ncurl -s -X POST '\${BASE_URL}/api/morning-report?action=generate-prompts'\n回報產生了幾個 prompt 檔案。`}
                         onChange={v => configMutation.mutate({ generatePromptsMessageTemplate: v })}
+                        history={{ scope: 'config', refId: 'generatePromptsMessageTemplate' }}
                         rows={4}
                         variables={['BASE_URL', 'TODAY', 'DATE_HYPHEN']}
                       />
@@ -1128,6 +1130,7 @@ export function TopicManager() {
                               <TemplateEditor
                                 value={getTemplateValue('finalizeMessageTemplate')}
                                 onChange={v => setEditingTemplates(prev => ({ ...prev, finalizeMessageTemplate: v }))}
+                                history={{ scope: 'config', refId: 'finalizeMessageTemplate' }}
                                 rows={5}
                                 variables={['BASE_URL', 'DATE_HYPHEN', 'TODAY']}
                               />
@@ -1159,6 +1162,7 @@ export function TopicManager() {
                               <TemplateEditor
                                 value={getTemplateValue('finalizeHtmlTemplate')}
                                 onChange={v => setEditingTemplates(prev => ({ ...prev, finalizeHtmlTemplate: v }))}
+                                history={{ scope: 'config', refId: 'finalizeHtmlTemplate' }}
                                 rows={10}
                                 variables={['DATE_HYPHEN', 'DATE_ENGLISH', 'TOC', 'CONTENT', 'GENERATED_AT']}
                                 variableFormat="mustache"
@@ -1215,6 +1219,7 @@ export function TopicManager() {
                               <TemplateEditor
                                 value={getTemplateValue('podcastPolishTemplate')}
                                 onChange={v => setEditingTemplates(prev => ({ ...prev, podcastPolishTemplate: v }))}
+                                history={{ scope: 'config', refId: 'podcastPolishTemplate' }}
                                 rows={10}
                                 variables={['INPUT_FILE', 'OUTPUT_FILE']}
                               />
@@ -1246,6 +1251,7 @@ export function TopicManager() {
                               <TemplateEditor
                                 value={getTemplateValue('podcastMessageTemplate')}
                                 onChange={v => setEditingTemplates(prev => ({ ...prev, podcastMessageTemplate: v }))}
+                                history={{ scope: 'config', refId: 'podcastMessageTemplate' }}
                                 rows={5}
                                 variables={['BASE_URL', 'DATE_HYPHEN', 'TODAY']}
                               />
@@ -1277,6 +1283,7 @@ export function TopicManager() {
                               <TemplateEditor
                                 value={getTemplateValue('podcastScriptTemplate')}
                                 onChange={v => setEditingTemplates(prev => ({ ...prev, podcastScriptTemplate: v }))}
+                                history={{ scope: 'config', refId: 'podcastScriptTemplate' }}
                                 rows={10}
                                 variables={['DATE_HYPHEN', 'SEGMENT_COUNT', 'SEGMENT_TITLE']}
                               />
@@ -1317,6 +1324,7 @@ export function TopicManager() {
                               <TemplateEditor
                                 value={getTemplateValue('podcastHarvestMessageTemplate')}
                                 onChange={v => setEditingTemplates(prev => ({ ...prev, podcastHarvestMessageTemplate: v }))}
+                                history={{ scope: 'config', refId: 'podcastHarvestMessageTemplate' }}
                                 rows={10}
                                 variables={['BASE_URL', 'DATE_HYPHEN', 'TODAY']}
                               />

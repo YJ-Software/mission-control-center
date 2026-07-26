@@ -566,6 +566,19 @@
     "limitedAccess": "仅显示当前用户的日志；如需完整系统日志，请将仪表板用户加入 systemd-journal 组后重启服务。"
   },
   "morningReport": {
+    "versions": {
+      "pick": "版本历史（{count} 版）",
+      "load": "载入",
+      "compare": "比较",
+      "hideDiff": "收起",
+      "diffLegend": "绿＝当前编辑框新增，红＝旧版本才有",
+      "origin": {
+        "baseline": "原始",
+        "save": "保存",
+        "resetDefault": "还原默认",
+        "restore": "还原版本"
+      }
+    },
     "title": "晨报管理",
     "subtitle": "每日 AI 晨报",
     "topics": "主题管理",
