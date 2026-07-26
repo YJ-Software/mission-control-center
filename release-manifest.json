@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.7.1-2-v0.3.70",
-    "mccVersion": "0.3.70",
+    "version": "2026.7.1-2-v0.3.71",
+    "mccVersion": "0.3.71",
     "openclawVersion": "2026.7.1-2",
-    "releaseDate": "2026-07-25T10:41:44.073Z",
-    "notes": "## 修正\n\n- **「OpenClaw 可更新」提示不再對已是最新版的機器誤報**：偵測已安裝版本時，用來擷取版號的樣式是 `/OpenClaw\\s+([\\d.]+)/`，而 `[\\d.]` 這個字元類不含連字號。`openclaw --version` 輸出 `OpenClaw 2026.7.1-2 (…)` 時，比對在連字號處中止，擷取到的是被截斷的 `2026.7.1`。\n\n  由於是否有更新是以 `installed !== latest` 字串比對判定，截斷後的版號永遠不等於 npm 上的 `2026.7.1-2`，導致標頭的「OpenClaw 可更新」提示在**已經是最新版**的機器上持續顯示，按下更新也只是重新安裝同一版本。\n\n  build suffix 是 OpenClaw 發行版的常態（`-2` 即目前穩定版），因此所有已升級到帶 suffix 版本的環境都會受影響。現改為保留完整版號（含 `-2`、`-beta.3` 等後綴）。\n\n  同源問題一併修正：`/api/upgrade/openclaw-check` 先前回報的已安裝版本同樣被截斷；OpenCLI 偵測器也帶有相同的潛在問題（prerelease 標籤會觸發）。",
+    "releaseDate": "2026-07-26T06:52:01.234Z",
+    "notes": "## 修正\n\n- **晨報主題不再因為模型設定失效而靜默消失**：若某個主題（或全域 `cronModel`）指向的模型不在 OpenClaw 的 `agents.defaults.models` 允許清單內——例如該 provider 已從 `openclaw.json` 移除——OpenClaw 會直接拒絕整個 cron job。該次執行在排定的當秒失敗且完全沒有進行任何工作，該主題於報告中僅留下「⚠️ 此段落尚未生成」，而報告與 Podcast 仍照常產出，因此除非有人實際閱讀該頁面，否則不會察覺。\n\n  現在於同步 cron job 時即會比對允許清單，模型不被接受時改用 OpenClaw 的預設模型並記錄替換原因。未設定或空的允許清單仍視為「不限制」（若解讀為「全部禁止」，將導致從未設定允許清單的環境所有工作被改寫）；且僅在替代模型本身也通過驗證時才替換，避免將問題轉移到另一個同樣無法執行的模型。\n\n- **主題未產出時會主動通知**：`finalize` 會將未產出的主題推送至儀表板通知（以日期去重）並透過 OpenClaw 推播至操作者頻道。兩者皆為 best-effort，且在報告發布之後才執行，因此通知失敗不會影響已完成的報告。此機制不經由 finalize 排程工作的通知範本，故已自訂該範本的環境同樣能收到。",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-2-v0.3.70/mission-control-v0.3.70-linux-x64.tar.gz",
-        "sha256": "8f2cfb6c67bd2b20396eeedd13d14ca45d9b17b3a4eecaa3bd43044984209426",
-        "size": 27165805
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-2-v0.3.71/mission-control-v0.3.71-linux-x64.tar.gz",
+        "sha256": "65c331312dacfc592f32a82d7442cbf3034e0e65e532f620414023b3db15de9a",
+        "size": 27174256
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.7.1-2-v0.3.70",
+      "mccVersion": "0.3.70",
+      "openclawVersion": "2026.7.1-2",
+      "releaseDate": "2026-07-25T10:41:44.073Z"
+    },
     {
       "version": "2026.7.1-2-v0.3.69",
       "mccVersion": "0.3.69",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.61",
       "openclawVersion": "2026.6.8",
       "releaseDate": "2026-06-19T20:16:47.688Z"
-    },
-    {
-      "version": "2026.6.8-v0.3.60",
-      "mccVersion": "0.3.60",
-      "openclawVersion": "2026.6.8",
-      "releaseDate": "2026-06-18T09:15:07.676Z"
     }
   ]
 }
