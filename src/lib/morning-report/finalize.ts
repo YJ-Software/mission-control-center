@@ -14,6 +14,7 @@ import { morningReportConfig } from '@/lib/schema'
 import { createNotification } from '@/lib/notifications'
 import { getTmpDir, getDateVars } from './utils'
 import { findOpenclawBin } from './openclaw'
+import { recordCitedUrls, pruneNewsArticles } from './news-store'
 import { mergeReports } from './merge-reports'
 import { convertToHtml } from './html-converter'
 
@@ -132,6 +133,11 @@ export async function finalize(date?: Date, onProgress?: ProgressCallback) {
     copyFileSync(mergeResult.outputPath, join(obsidianDir, `${dateHyphen}.md`))
   }
 
+  // Step 5.4: Write every cited link back to the ledger. This is what makes
+  // dedup outlive tmp/ and stay correct no matter which source found the link.
+  onProgress?.('recording', '記錄引用來源...')
+  const cited = recordCitedUrls(mergeResult.outputPath, dateHyphen)
+
   // Step 5.5: Surface any topic that produced nothing. Runs after the report
   // is published so a failure here can never withhold a report that is ready.
   if (mergeResult.missingTopics.length > 0) {
@@ -143,6 +149,7 @@ export async function finalize(date?: Date, onProgress?: ProgressCallback) {
   // Step 6: Clean old files
   onProgress?.('cleanup', '清理舊檔案...')
   cleanOldFiles(tmpDir, 7)
+  pruneNewsArticles()
   if (publicDir && existsSync(publicDir)) {
     cleanOldFiles(publicDir, 30)
   }
@@ -152,5 +159,6 @@ export async function finalize(date?: Date, onProgress?: ProgressCallback) {
     htmlPath,
     date: dateHyphen,
     missingTopics: mergeResult.missingTopics,
+    citedUrls: cited.recorded,
   }
 }

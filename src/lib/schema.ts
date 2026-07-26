@@ -191,6 +191,37 @@ export const morningReportTemplateVersions = sqliteTable('morning_report_templat
   createdAt: integer('created_at').notNull().default(sql`(unixepoch())`),
 })
 
+// News link ledger. One table doing two jobs, told apart by used_in_report:
+//   NULL          → a candidate fetched from a source, not yet used
+//   '2026-07-26'  → cited by that day's report
+//
+// The citation half replaces the old dedup, which scanned yesterday's files in
+// tmp/ with a regex: it only looked back one day, died when tmp was cleaned at
+// seven, and compared raw strings so `?utm_source=rss` read as a new article.
+//
+// Columns beyond what today's dedup needs (feed_id, title, snippet, simhash)
+// are carried now so the RSS intake and near-duplicate passes land without a
+// migration.
+export const newsArticles = sqliteTable('news_articles', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  // sha256 of the normalised URL, UNIQUE. Exact dedup is then an index lookup
+  // and an INSERT … ON CONFLICT, with no comparison logic in the app at all.
+  urlHash: text('url_hash').notNull().unique(),
+  url: text('url').notNull(),
+  // As received — keeps a Google redirect around when unwrapping misfires.
+  rawUrl: text('raw_url'),
+  host: text('host').notNull(),
+  title: text('title').notNull().default(''),
+  snippet: text('snippet').default(''),
+  simhash: text('simhash'),
+  source: text('source').notNull().default('report'), // 'report' | 'google-alerts' | 'manual'
+  feedId: text('feed_id'),
+  publishedAt: integer('published_at'),
+  fetchedAt: integer('fetched_at').notNull().default(sql`(unixepoch())`),
+  /** yyyy-MM-dd of the report that cited it; NULL while it is only a candidate. */
+  usedInReport: text('used_in_report'),
+})
+
 export {
   backupDestinations,
   backupSources,

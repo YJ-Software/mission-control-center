@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'fs'
+import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { db } from '@/lib/db'
 import { morningReportTopics, morningReportFormatTemplate, morningReportConfig } from '@/lib/schema'
 import { eq, asc } from 'drizzle-orm'
 import { getGeneratedDir, getTmpDir, getDateVars, substituteVars } from './utils'
+import { getRecentlyCitedUrls } from './news-store'
 
 interface PromptResult {
   topicId: string
@@ -17,67 +18,29 @@ interface GeneratePromptsOutput {
   results: PromptResult[]
 }
 
-/**
- * Extract all URLs from previous day's report files for deduplication.
- * Scans the tmp/ directory for files matching `morning-report-*-{prevDate}.md`.
- */
-function extractPrevDayUrls(tmpDir: string, prevDate: string): string[] {
-  if (!existsSync(tmpDir)) return []
-
-  const urls = new Set<string>()
-  const urlRegex = /https?:\/\/[^\s)]+/g
-
-  try {
-    const files = readdirSync(tmpDir).filter(
-      (f) => f.startsWith('morning-report-') && f.includes(prevDate) && f.endsWith('.md')
-    )
-
-    for (const file of files) {
-      const content = readFileSync(join(tmpDir, file), 'utf-8')
-      const matches = content.match(urlRegex)
-      if (matches) {
-        for (const url of matches) {
-          urls.add(url)
-        }
-      }
-    }
-  } catch {
-    // If directory reading fails, just return empty
-  }
-
-  return Array.from(urls).sort()
-}
+/** Days of citation history shown to the agent when the operator hasn't said. */
+const DEFAULT_DEDUP_DAYS = 14
 
 /**
- * Build a dedup block to append to prompts, warning the model not to reuse
- * URLs from the previous day's reports.
+ * Build the do-not-repeat block from the citation ledger.
+ *
+ * This used to be assembled by regexing yesterday's files out of tmp/, which
+ * saw exactly one day back, went blank whenever tmp was cleaned at seven days,
+ * and matched raw strings — so the same article carrying `?utm_source=rss`
+ * read as new. The ledger has none of those limits.
  */
-function buildPrevUrlsBlock(urls: string[]): string {
+function buildCitedUrlsBlock(urls: string[], days: number): string {
   if (urls.length === 0) return ''
 
   return (
     '\n\n---\n\n' +
-    '## ⛔ 前日已使用的 URL（禁止重複引用）\n\n' +
-    '以下 URL 已在昨日晨報中使用，**嚴禁再次引用**。' +
+    `## ⛔ 近 ${days} 日已使用的 URL（禁止重複引用）\n\n` +
+    `以下 URL 已在近 ${days} 日的晨報中使用，**嚴禁再次引用**。` +
     '若搜尋到相同 URL，請跳過並尋找其他來源：\n\n' +
     '```\n' +
     urls.join('\n') +
     '\n```\n'
   )
-}
-
-/**
- * Compute previous day's date string in yyyyMMdd format.
- */
-function getPrevDate(today: string): string {
-  const y = parseInt(today.slice(0, 4), 10)
-  const m = parseInt(today.slice(4, 6), 10) - 1
-  const d = parseInt(today.slice(6, 8), 10)
-  const prev = new Date(y, m, d - 1)
-  const py = prev.getFullYear().toString()
-  const pm = (prev.getMonth() + 1).toString().padStart(2, '0')
-  const pd = prev.getDate().toString().padStart(2, '0')
-  return `${py}${pm}${pd}`
 }
 
 /**
@@ -89,7 +52,7 @@ function getPrevDate(today: string): string {
  * 3. Read config from DB (morningReportConfig)
  * 4. Read format template from DB (morningReportFormatTemplate, id=1)
  * 5. Read enabled topics from DB (morningReportTopics, enabled=1, ordered by sortOrder)
- * 6. Extract previous day URLs from existing reports for deduplication
+ * 6. Read recently cited URLs from the ledger for deduplication
  * 7. Substitute variables in format template
  * 8. For each topic: combine format + topic template with substituted vars,
  *    write to generated/cron-NN-topicId.md
@@ -131,10 +94,12 @@ export function generatePrompts(date?: Date): GeneratePromptsOutput {
 
   const topicTotal = topics.length
 
-  // 6. Extract previous day's URLs for dedup
-  const prevDate = getPrevDate(today)
-  const prevUrls = extractPrevDayUrls(tmpDir, prevDate)
-  const prevUrlsBlock = buildPrevUrlsBlock(prevUrls)
+  // 6. Pull recently cited URLs from the ledger for dedup
+  const dedupDays = Number(config.dedupDays) > 0
+    ? Number(config.dedupDays)
+    : DEFAULT_DEDUP_DAYS
+  const prevUrls = getRecentlyCitedUrls(dedupDays)
+  const prevUrlsBlock = buildCitedUrlsBlock(prevUrls, dedupDays)
 
   // 7. Build base variable map
   const baseVars: Record<string, string> = {

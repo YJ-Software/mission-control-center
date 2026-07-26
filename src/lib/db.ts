@@ -201,6 +201,27 @@ export function initDb() {
     -- the newest row, so this ordering serves both.
     CREATE INDEX IF NOT EXISTS idx_tpl_ver_ref
       ON morning_report_template_versions(scope, ref_id, created_at DESC, id DESC);
+
+    CREATE TABLE IF NOT EXISTS news_articles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url_hash TEXT NOT NULL UNIQUE,
+      url TEXT NOT NULL,
+      raw_url TEXT,
+      host TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      snippet TEXT DEFAULT '',
+      simhash TEXT,
+      source TEXT NOT NULL DEFAULT 'report',
+      feed_id TEXT,
+      published_at INTEGER,
+      fetched_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      used_in_report TEXT
+    );
+    -- "URLs cited in the last N days" is the hot read; the partial index keeps
+    -- it off the candidate rows, which will outnumber cited ones.
+    CREATE INDEX IF NOT EXISTS idx_news_used
+      ON news_articles(used_in_report) WHERE used_in_report IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_news_feed_fetched ON news_articles(feed_id, fetched_at DESC);
   `)
 
   // Create backup tables
