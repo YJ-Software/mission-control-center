@@ -627,7 +627,8 @@
       "never": "未抓取"
     },
     "versions": {
-      "pick": "版本历史（{count} 版）",
+      "pick": "版本历史（共 {count} 版）",
+      "current": "当前版本",
       "load": "载入",
       "compare": "比较",
       "hideDiff": "收起",

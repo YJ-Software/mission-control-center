@@ -118,7 +118,9 @@ export function TemplateVersionPicker({ scope, refId, current, onLoad }: Props) 
           </option>
           {versions.map((v, i) => (
             <option key={v.id} value={v.id} className="bg-[#0a0a1a] text-white/80">
-              {i === 0 ? `★ ${labelFor(v, t)}` : labelFor(v, t)}
+              {/* Name the newest entry rather than only marking it — a bare
+                  star leaves the reader to infer what it means. */}
+              {i === 0 ? `★ ${t('versions.current')} · ${labelFor(v, t)}` : labelFor(v, t)}
             </option>
           ))}
         </select>

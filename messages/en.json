@@ -628,6 +628,7 @@
     },
     "versions": {
       "pick": "History ({count} versions)",
+      "current": "current",
       "load": "Load",
       "compare": "Compare",
       "hideDiff": "Hide",
