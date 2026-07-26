@@ -568,6 +568,46 @@
   },
   "morningReport": {
     "sources": {
+      "guide": {
+        "title": "Getting an RSS address from Google Alerts",
+        "show": "Show guide",
+        "hide": "Hide guide",
+        "intro": "Google Alerts turns \"news matching a keyword\" into an RSS feed, for free. An equivalent continuous news stream normally means paying for a search API.",
+        "steps": [
+          {
+            "t": "Open google.com/alerts and sign in",
+            "d": "Use your Google account."
+          },
+          {
+            "t": "Enter a keyword",
+            "d": "Type the topic you want to follow, e.g. \"AI chips\"."
+          },
+          {
+            "t": "Click \"Show options\"",
+            "d": "Frequency, language, region, sources and the \"Deliver to\" setting are all hidden until you expand this. Choose \"as-it-happens\" so the RSS stays current."
+          },
+          {
+            "t": "Set \"Deliver to\" to RSS feed",
+            "d": "The step that matters. It defaults to your email address, and until it is RSS no address is produced at all."
+          },
+          {
+            "t": "Create the alert",
+            "d": "Press \"Create Alert\". It then appears under \"My alerts\"."
+          },
+          {
+            "t": "Copy the link behind the RSS icon",
+            "d": "An orange RSS icon appears at the right of that row. Right-click it and copy the link. It looks like https://www.google.com/alerts/feeds/12345.../67890..."
+          },
+          {
+            "t": "Paste → test → add",
+            "d": "Paste it into the field above, press Test to confirm it resolves to real articles, then Add. Testing stores nothing."
+          }
+        ],
+        "otherTitle": "Other RSS sources work too",
+        "otherBody": "Nothing here is specific to Google Alerts. Any RSS or Atom address works — a publication’s /feed or /rss.xml, a subreddit URL with .rss appended, hnrss.org/frontpage. The format is detected automatically.",
+        "securityTitle": "This address is a credential",
+        "securityBody": "A Google Alerts RSS address needs no login to read, and carries your account identifier in the path. Anyone holding it can read your alerts. Listings here show only a masked form and it never reaches a prompt file — but do not post it publicly or pass it on."
+      },
       "addTitle": "Add an RSS source",
       "addHint": "Paste a Google Alerts or any RSS/Atom address. Fetched articles join the candidate pool and are deduplicated against recently cited links. Note: a Google Alerts address needs no login to read — treat it as a credential.",
       "labelPlaceholder": "Label (e.g. AI industry)",

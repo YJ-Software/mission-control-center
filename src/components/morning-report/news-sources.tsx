@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { Rss, Plus, Trash2, RefreshCw, FlaskConical, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Rss, Plus, Trash2, RefreshCw, FlaskConical, Loader2, CheckCircle2, AlertTriangle, BookOpen, ChevronDown, ShieldAlert } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
@@ -41,6 +41,7 @@ export function NewsSources() {
   const [label, setLabel] = useState('')
   const [url, setUrl] = useState('')
   const [preview, setPreview] = useState<PreviewResult | null>(null)
+  const [guideOpen, setGuideOpen] = useState(false)
 
   const { data, isLoading } = useQuery<{ feeds: FeedRow[] }>({
     queryKey: ['news-feeds'],
@@ -95,6 +96,8 @@ export function NewsSources() {
       fetch(`${API}?action=fetch-feeds${id ? `&id=${id}` : ''}`, { method: 'POST' }).then(r => r.json()),
     onSuccess: invalidate,
   })
+
+  const steps = t.raw('sources.guide.steps') as { t: string; d: string }[]
 
   return (
     <div className="space-y-6">
@@ -245,6 +248,66 @@ export function NewsSources() {
             </div>
           </div>
         ))}
+      </div>
+      {/* Where a feed address comes from. Collapsed by default and placed
+          last: it is reference material, needed once per source and never
+          again, so it should not sit between the operator and the list. */}
+      <div className="rounded-xl border border-amber-400/15 bg-amber-500/[0.04] overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setGuideOpen(o => !o)}
+          className="w-full flex items-center gap-2.5 p-4 text-left hover:bg-white/[0.02] transition-colors"
+        >
+          <div className="w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-400/20 flex items-center justify-center shrink-0">
+            <BookOpen className="w-4 h-4 text-amber-300" />
+          </div>
+          <h3 className="text-sm font-medium text-white flex-1">{t('sources.guide.title')}</h3>
+          <span className="text-[11px] text-white/40">
+            {guideOpen ? t('sources.guide.hide') : t('sources.guide.show')}
+          </span>
+          <ChevronDown
+            className={`w-4 h-4 text-white/40 transition-transform ${guideOpen ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        {guideOpen && (
+          <div className="px-4 pb-4 space-y-4">
+            <p className="text-[13px] text-white/60 leading-relaxed">{t('sources.guide.intro')}</p>
+
+            <ol className="space-y-2.5">
+              {steps.map((s, i) => (
+                <li key={i} className="flex gap-3">
+                  <span className="w-5 h-5 rounded-md bg-amber-500/15 text-amber-300 text-[11px] font-mono flex items-center justify-center shrink-0 mt-0.5">
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium text-white/85">{s.t}</div>
+                    <p className="text-[13px] text-white/55 leading-relaxed break-words">{s.d}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+              <div className="text-[13px] font-medium text-white/80 mb-1">
+                {t('sources.guide.otherTitle')}
+              </div>
+              <p className="text-[13px] text-white/55 leading-relaxed">{t('sources.guide.otherBody')}</p>
+            </div>
+
+            <div className="flex items-start gap-2.5 rounded-lg border border-rose-400/20 bg-rose-500/[0.06] p-3">
+              <ShieldAlert className="w-4 h-4 text-rose-300/90 shrink-0 mt-0.5" />
+              <div>
+                <div className="text-[13px] font-medium text-rose-200/90 mb-1">
+                  {t('sources.guide.securityTitle')}
+                </div>
+                <p className="text-[13px] text-white/60 leading-relaxed">
+                  {t('sources.guide.securityBody')}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
