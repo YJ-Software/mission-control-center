@@ -222,6 +222,18 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_news_used
       ON news_articles(used_in_report) WHERE used_in_report IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_news_feed_fetched ON news_articles(feed_id, fetched_at DESC);
+
+    CREATE TABLE IF NOT EXISTS news_feeds (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      url TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_fetched_at INTEGER,
+      last_status TEXT,
+      last_error TEXT,
+      last_item_count INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
   `)
 
   // Create backup tables

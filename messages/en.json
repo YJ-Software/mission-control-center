@@ -141,6 +141,7 @@
     "title": "Agents",
     "subtitle": "Workspace, tools, identity.",
     "tabs": {
+      "sources": "Sources",
       "overview": "Overview",
       "files": "Files",
       "tools": "Tools",
@@ -566,6 +567,25 @@
     "limitedAccess": "Only this user's journal is shown; add the dashboard user to the systemd-journal group and restart the service for full system logs."
   },
   "morningReport": {
+    "sources": {
+      "addTitle": "Add an RSS source",
+      "addHint": "Paste a Google Alerts or any RSS/Atom address. Fetched articles join the candidate pool and are deduplicated against recently cited links. Note: a Google Alerts address needs no login to read — treat it as a credential.",
+      "labelPlaceholder": "Label (e.g. AI industry)",
+      "test": "Test",
+      "add": "Add",
+      "testOk": "Parsed {count} entries",
+      "listTitle": "Registered sources ({count})",
+      "fetchAll": "Fetch all",
+      "fetchOne": "Fetch this source",
+      "loading": "Loading…",
+      "empty": "No sources yet.",
+      "enable": "Enable",
+      "disable": "Disable",
+      "delete": "Delete",
+      "statusOk": "{count} items",
+      "statusError": "Fetch failed",
+      "never": "never"
+    },
     "versions": {
       "pick": "History ({count} versions)",
       "load": "Load",
@@ -588,6 +608,7 @@
     "reportDate": "Report Date",
     "noReport": "No report available",
     "tabs": {
+      "sources": "Sources",
       "about": "About",
       "browse": "Browse Reports",
       "topics": "Topic Manager",

@@ -141,6 +141,7 @@
     "title": "Agents",
     "subtitle": "工作区、工具、身份。",
     "tabs": {
+      "sources": "新闻来源",
       "overview": "Overview",
       "files": "Files",
       "tools": "Tools",
@@ -566,6 +567,25 @@
     "limitedAccess": "仅显示当前用户的日志；如需完整系统日志，请将仪表板用户加入 systemd-journal 组后重启服务。"
   },
   "morningReport": {
+    "sources": {
+      "addTitle": "新增 RSS 来源",
+      "addHint": "粘贴 Google 快讯或任何 RSS／Atom 网址。抓到的新闻会进候选池，并自动与近期已引用的链接去重。注意：Google 快讯网址无需登录即可读取，等同密钥，请勿外流。",
+      "labelPlaceholder": "名称（例如：AI 产业）",
+      "test": "测试",
+      "add": "新增",
+      "testOk": "解析成功，共 {count} 条",
+      "listTitle": "已注册来源（{count}）",
+      "fetchAll": "全部抓取",
+      "fetchOne": "抓取此来源",
+      "loading": "加载中…",
+      "empty": "尚未新增任何来源。",
+      "enable": "启用",
+      "disable": "停用",
+      "delete": "删除",
+      "statusOk": "{count} 条",
+      "statusError": "抓取失败",
+      "never": "未抓取"
+    },
     "versions": {
       "pick": "版本历史（{count} 版）",
       "load": "载入",
@@ -588,6 +608,7 @@
     "reportDate": "报告日期",
     "noReport": "暂无晨报",
     "tabs": {
+      "sources": "新闻来源",
       "about": "关于",
       "browse": "报告浏览",
       "topics": "主题管理",

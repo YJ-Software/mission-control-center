@@ -10,6 +10,7 @@ import {
 import { join } from 'path'
 import { cronList, cronAdd, cronRemove, type CronJobInfo } from './cron-cli'
 import { getTemplate } from './template-helpers'
+import { listFeeds } from './news-feeds'
 
 function getConfigValue(key: string): string {
   const row = db.select().from(morningReportConfig).where(eq(morningReportConfig.key, key)).get()
@@ -104,6 +105,23 @@ export async function syncCronJobs() {
   const baseDelivery = tgChatId
     ? { announce: true, channel: 'telegram', to: tgChatId }
     : { announce: true, channel: 'last' as const }
+
+  // Feed intake: only worth scheduling once a source exists. Runs on its own
+  // clock rather than hanging off the report, so the candidate pool keeps
+  // filling through the day and a morning fetch isn't the only chance to catch
+  // an article before it scrolls out of the feed.
+  if (listFeeds().some((f) => f.enabled === 1)) {
+    const feedHours = parseInt(getConfigValue('feedFetchHours') || '2', 10) || 2
+    await addJob(
+      '🌅 晨報 抓取新聞來源',
+      `5 */${feedHours} * * *`,
+      masterEnabled,
+      `使用 exec 工具執行以下指令來抓取已註冊的新聞來源：\ncurl -s -X POST '${baseUrl}/api/morning-report?action=fetch-feeds'\n回報各來源抓到幾則。`,
+      180,
+      getConfigValue('feedFetchModel') || undefined,
+      { announce: true, noDeliver: true },
+    )
+  }
 
   // Generate-prompts job: configurable minutes before first enabled topic
   if (topics.length > 0) {

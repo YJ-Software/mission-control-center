@@ -222,6 +222,24 @@ export const newsArticles = sqliteTable('news_articles', {
   usedInReport: text('used_in_report'),
 })
 
+// Registered news sources (Google Alerts and any other RSS/Atom feed).
+//
+// `url` is a capability URL: a Google Alerts feed address needs no
+// authentication, so anyone holding it can read the operator's alerts. Treat
+// it as a secret — the API masks it in listings, and it must never reach a
+// prompt file or the client bundle in full.
+export const newsFeeds = sqliteTable('news_feeds', {
+  id: text('id').primaryKey(),
+  label: text('label').notNull(),
+  url: text('url').notNull(),
+  enabled: integer('enabled').notNull().default(1),
+  lastFetchedAt: integer('last_fetched_at'),
+  lastStatus: text('last_status'),   // 'ok' | 'error'
+  lastError: text('last_error'),
+  lastItemCount: integer('last_item_count').default(0),
+  createdAt: integer('created_at').notNull().default(sql`(unixepoch())`),
+})
+
 export {
   backupDestinations,
   backupSources,

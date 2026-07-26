@@ -22,6 +22,17 @@ import { startTunnel, stopTunnel, getTunnelStatus, startTunnelStream } from '@/l
 import { createJob, getJob, updateJob, findLatestForDate } from '@/lib/morning-report/podcast-jobs'
 import { isVersionedTemplateKey } from '@/lib/morning-report/template-helpers'
 import {
+  listFeedsMasked,
+  getFeed,
+  createFeed,
+  updateFeed,
+  deleteFeed,
+  fetchFeed,
+  fetchAllFeeds,
+  previewFeed,
+  maskFeedUrl,
+} from '@/lib/morning-report/news-feeds'
+import {
   recordTemplateVersion,
   callerOrigin,
   listTemplateVersions,
@@ -281,6 +292,21 @@ export async function GET(req: NextRequest) {
     }
 
     // --- format template ---
+    // --- news feeds ---
+    if (type === 'feeds') {
+      return NextResponse.json({ feeds: listFeedsMasked() })
+    }
+
+    // Single feed for the edit form. The address is a credential, so it is
+    // only ever handed back one feed at a time and never in a listing.
+    if (type === 'feed') {
+      const id = searchParams.get('id')
+      if (!id) return NextResponse.json({ error: 'missing id' }, { status: 400 })
+      const feed = getFeed(id)
+      if (!feed) return NextResponse.json({ error: 'not found' }, { status: 404 })
+      return NextResponse.json({ ...feed, urlMasked: maskFeedUrl(feed.url) })
+    }
+
     // --- template edit history ---
     // ?type=template-versions&scope=topic&refId=stocks   → newest-first list
     // ?type=template-version&id=42                       → one full revision
@@ -417,6 +443,15 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
+    if (type === 'feed') {
+      const { id, ...fields } = (await req.json()) as {
+        id?: string; label?: string; url?: string; enabled?: boolean
+      }
+      if (!id) return NextResponse.json({ error: 'missing id' }, { status: 400 })
+      updateFeed(id, fields)
+      return NextResponse.json({ ok: true })
+    }
+
     // --- default: update topic ---
     const body = await req.json()
     const { id, ...fields } = body as Record<string, any>
@@ -528,6 +563,39 @@ export async function POST(req: NextRequest) {
       }
 
       return NextResponse.json({ ok: true, id })
+    }
+
+    // --- news feed actions ---
+    if (action === 'create-feed') {
+      const { label, url } = (await req.json()) as { label?: string; url?: string }
+      if (!url?.trim()) return NextResponse.json({ error: 'url required' }, { status: 400 })
+      const feed = createFeed({ label: label ?? '', url })
+      return NextResponse.json({ ok: true, id: feed.id })
+    }
+
+    // Reads an address without storing it, so the operator can confirm it
+    // resolves to real articles before committing to it.
+    if (action === 'preview-feed') {
+      const { url } = (await req.json()) as { url?: string }
+      if (!url?.trim()) return NextResponse.json({ error: 'url required' }, { status: 400 })
+      try {
+        return NextResponse.json(await previewFeed(url))
+      } catch (err) {
+        return NextResponse.json(
+          { error: err instanceof Error ? err.message : String(err) },
+          { status: 502 },
+        )
+      }
+    }
+
+    if (action === 'fetch-feeds') {
+      const id = searchParams.get('id')
+      if (id) {
+        const feed = getFeed(id)
+        if (!feed) return NextResponse.json({ error: 'not found' }, { status: 404 })
+        return NextResponse.json({ results: [await fetchFeed(feed)] })
+      }
+      return NextResponse.json({ results: await fetchAllFeeds() })
     }
 
     // --- generate prompts ---
@@ -858,6 +926,10 @@ export async function DELETE(req: NextRequest) {
   }
 
   try {
+    if (searchParams.get('type') === 'feed') {
+      deleteFeed(id)
+      return NextResponse.json({ ok: true })
+    }
     db.delete(morningReportTopics).where(eq(morningReportTopics.id, id)).run()
     return NextResponse.json({ ok: true })
   } catch (err: any) {

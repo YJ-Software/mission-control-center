@@ -1,7 +1,7 @@
 'use client'
 
 import * as Tabs from '@radix-ui/react-tabs'
-import { Info, Newspaper, Settings2, Rocket, Mic, Wrench } from 'lucide-react'
+import { Info, Newspaper, Settings2, Rocket, Mic, Wrench, Rss } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { MorningReportAboutPanel } from './morning-report-about-panel'
 import { ReportBrowser } from './report-browser'
@@ -9,6 +9,7 @@ import { TopicManager } from './topic-manager'
 import { ExecutionControl } from './execution-control'
 import { PodcastManager } from './podcast-manager'
 import { ReportSettings } from './report-settings'
+import { NewsSources } from './news-sources'
 
 export function MorningReportManager() {
   const t = useTranslations('morningReport')
@@ -17,6 +18,7 @@ export function MorningReportManager() {
     { value: 'about', icon: Info, label: t('tabs.about') },
     { value: 'browse', icon: Newspaper, label: t('tabs.browse') },
     { value: 'topics', icon: Settings2, label: t('tabs.topics') },
+    { value: 'sources', icon: Rss, label: t('tabs.sources') },
     { value: 'execute', icon: Rocket, label: t('tabs.execute') },
     { value: 'podcast', icon: Mic, label: t('tabs.podcast') },
     { value: 'settings', icon: Wrench, label: t('tabs.settings') },
@@ -42,6 +44,7 @@ export function MorningReportManager() {
         <Tabs.Content value="about"><MorningReportAboutPanel /></Tabs.Content>
         <Tabs.Content value="browse"><ReportBrowser /></Tabs.Content>
         <Tabs.Content value="topics"><TopicManager /></Tabs.Content>
+        <Tabs.Content value="sources"><NewsSources /></Tabs.Content>
         <Tabs.Content value="execute"><ExecutionControl /></Tabs.Content>
         <Tabs.Content value="podcast"><PodcastManager /></Tabs.Content>
         <Tabs.Content value="settings"><ReportSettings /></Tabs.Content>

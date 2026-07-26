@@ -70,6 +70,7 @@
     "date-fns": "^4.1.0",
     "diff": "^9.0.0",
     "drizzle-orm": "^0.39.3",
+    "fast-xml-parser": "^5.10.1",
     "framer-motion": "^12.36.0",
     "highlight.js": "^11.11.1",
     "lucide-react": "^0.473.0",
