@@ -42,7 +42,14 @@ function toText(value: unknown): string {
     ? String((value as Record<string, unknown>)['#text'] ?? '')
     : String(value)
   return raw
-    .replace(/<[^>]*>/g, ' ')       // Google wraps matched terms in <b>
+    // Block boundaries are real separators — without a space, "<p>a</p><p>b</p>"
+    // would read as one word.
+    .replace(/<\/?(?:p|div|br|li|tr|td|h[1-6]|blockquote|section)\b[^>]*>/gi, ' ')
+    // Inline markup is not. Google wraps every matched term in <b>, so turning
+    // those into spaces splits words apart — harmless in English, where the
+    // spaces already exist, but it litters CJK text: 「人工智慧（<b>AI</b>）」
+    // came out as 「人工智慧（ AI ）」 and went straight into the prompt.
+    .replace(/<[^>]*>/g, '')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')

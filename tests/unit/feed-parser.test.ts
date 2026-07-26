@@ -70,7 +70,35 @@ describe('parseFeed — Google Alerts (Atom)', () => {
   })
 
   it('reduces content to plain text', () => {
+    // The spaces here come from the source itself, not from tag removal.
     expect(parseFeed(GOOGLE_ALERTS)[0].snippet).toBe('2.8T 參數的 開源 模型 正式發表')
+  })
+
+  it('does not litter CJK text with spaces where the highlight tags were', () => {
+    // Found against a real alert feed: turning every tag into a space produced
+    // 「人工智慧（ AI ）」 and 「押寶 AI 前景」, which then went into the prompt.
+    const xml = `<feed xmlns="http://www.w3.org/2005/Atom">
+      <entry>
+        <title type="html">《基金》押寶&lt;b&gt;AI&lt;/b&gt;前景科技型ETF逢低吸金</title>
+        <link href="https://example.com/fund"/>
+        <content type="html">人工智慧（&lt;b&gt;AI&lt;/b&gt;）泡沫憂慮</content>
+      </entry>
+    </feed>`
+
+    const [item] = parseFeed(xml)
+    expect(item.title).toBe('《基金》押寶AI前景科技型ETF逢低吸金')
+    expect(item.snippet).toBe('人工智慧（AI）泡沫憂慮')
+  })
+
+  it('still separates block-level elements', () => {
+    // Removing every tag outright would run paragraphs together.
+    const xml = `<rss version="2.0"><channel><item>
+      <title>段落</title>
+      <link>https://example.com/p</link>
+      <description>&lt;p&gt;first&lt;/p&gt;&lt;p&gt;second&lt;/p&gt;</description>
+    </item></channel></rss>`
+
+    expect(parseFeed(xml)[0].snippet).toBe('first second')
   })
 
   it('reads the published date as unix seconds', () => {
