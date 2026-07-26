@@ -32,6 +32,7 @@ import {
   previewFeed,
   maskFeedUrl,
 } from '@/lib/morning-report/news-feeds'
+import { UnsafeUrlError } from '@/lib/morning-report/safe-fetch'
 import {
   recordTemplateVersion,
   callerOrigin,
@@ -448,7 +449,14 @@ export async function PUT(req: NextRequest) {
         id?: string; label?: string; url?: string; enabled?: boolean
       }
       if (!id) return NextResponse.json({ error: 'missing id' }, { status: 400 })
-      updateFeed(id, fields)
+      try {
+        await updateFeed(id, fields)
+      } catch (err) {
+        if (err instanceof UnsafeUrlError) {
+          return NextResponse.json({ error: err.message }, { status: 400 })
+        }
+        throw err
+      }
       return NextResponse.json({ ok: true })
     }
 
@@ -569,8 +577,16 @@ export async function POST(req: NextRequest) {
     if (action === 'create-feed') {
       const { label, url } = (await req.json()) as { label?: string; url?: string }
       if (!url?.trim()) return NextResponse.json({ error: 'url required' }, { status: 400 })
-      const feed = createFeed({ label: label ?? '', url })
-      return NextResponse.json({ ok: true, id: feed.id })
+      try {
+        const feed = await createFeed({ label: label ?? '', url })
+        return NextResponse.json({ ok: true, id: feed.id })
+      } catch (err) {
+        // A refused address is the operator's mistake, not a server fault.
+        if (err instanceof UnsafeUrlError) {
+          return NextResponse.json({ error: err.message }, { status: 400 })
+        }
+        throw err
+      }
     }
 
     // Reads an address without storing it, so the operator can confirm it
@@ -581,10 +597,13 @@ export async function POST(req: NextRequest) {
       try {
         return NextResponse.json(await previewFeed(url))
       } catch (err) {
-        return NextResponse.json(
-          { error: err instanceof Error ? err.message : String(err) },
-          { status: 502 },
-        )
+        if (err instanceof UnsafeUrlError) {
+          return NextResponse.json({ error: err.message }, { status: 400 })
+        }
+        // Don't relay an upstream body verbatim — it would report what
+        // internal hosts said back to whoever asked.
+        console.warn('[morning-report] feed preview failed:', err)
+        return NextResponse.json({ error: '無法讀取此來源' }, { status: 502 })
       }
     }
 

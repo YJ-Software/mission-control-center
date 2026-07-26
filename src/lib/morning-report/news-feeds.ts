@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { newsFeeds, newsArticles } from '@/lib/schema'
 import { eq, sql } from 'drizzle-orm'
 import { parseFeed } from './feed-parser'
+import { assertPublicUrl, safeFetchFeed } from './safe-fetch'
 
 /**
  * Registered news sources and the fetch that turns them into candidates.
@@ -60,7 +61,10 @@ export function getFeed(id: string): FeedRow | undefined {
   return db.select().from(newsFeeds).where(eq(newsFeeds.id, id)).get() as FeedRow | undefined
 }
 
-export function createFeed(input: { label: string; url: string; enabled?: boolean }): FeedRow {
+export async function createFeed(input: { label: string; url: string; enabled?: boolean }): Promise<FeedRow> {
+  // Validate before storing: a rejected address must never become a row that
+  // the scheduled fetch would dial every couple of hours.
+  await assertPublicUrl(input.url.trim())
   const id = randomUUID()
   db.insert(newsFeeds).values({
     id,
@@ -71,10 +75,11 @@ export function createFeed(input: { label: string; url: string; enabled?: boolea
   return getFeed(id)!
 }
 
-export function updateFeed(
+export async function updateFeed(
   id: string,
   fields: { label?: string; url?: string; enabled?: boolean },
-): void {
+): Promise<void> {
+  if (fields.url) await assertPublicUrl(fields.url.trim())
   const update: Record<string, unknown> = {}
   if (fields.label !== undefined) update.label = fields.label.trim()
   // An empty url means "leave it alone" — the edit form sends the masked value
@@ -108,10 +113,7 @@ export async function fetchFeed(feed: FeedRow): Promise<FetchResult> {
   let items: ReturnType<typeof parseFeed> = []
 
   try {
-    const res = await fetch(feed.url, {
-      headers: { Accept: 'application/atom+xml, application/rss+xml, application/xml, text/xml' },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    })
+    const res = await safeFetchFeed(feed.url, FETCH_TIMEOUT_MS)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     items = parseFeed(await res.text()).slice(0, MAX_ITEMS_PER_FETCH)
   } catch (err) {
@@ -178,10 +180,7 @@ export async function fetchAllFeeds(): Promise<FetchResult[]> {
  * Returns a few entries so the operator can see it resolved to real articles.
  */
 export async function previewFeed(url: string, limit = 5) {
-  const res = await fetch(url, {
-    headers: { Accept: 'application/atom+xml, application/rss+xml, application/xml, text/xml' },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  })
+  const res = await safeFetchFeed(url, FETCH_TIMEOUT_MS)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const items = parseFeed(await res.text())
   return {
