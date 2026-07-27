@@ -88,3 +88,18 @@ describe('buildSourceBlock', () => {
     expect(build('feed', [untitled])).toContain(`- ${untitled.url}`)
   })
 })
+
+describe('feedIds contract', () => {
+  it('spreading the raw column text is what produced the junk entries', () => {
+    // The topic API used to hand feed_ids back as the raw column text. The
+    // client spread it into its edit state, and [...'[]'] is ['[', ']'] —
+    // which is how ["[", "]", "<id>"] came to be stored on a live install.
+    // The API now parses before responding, and the client guards with
+    // Array.isArray so a stale cached response cannot resurrect it.
+    const fromApiBefore = '[]'
+    expect([...fromApiBefore, 'feed-id']).toEqual(['[', ']', 'feed-id'])
+
+    const fromApiAfter: string[] = []
+    expect([...fromApiAfter, 'feed-id']).toEqual(['feed-id'])
+  })
+})

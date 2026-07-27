@@ -49,7 +49,7 @@ export function TopicCard({ topic, isExpanded, onToggleExpand, onUpdate, onDelet
     template: topic.template,
     model: topic.model || '',
     deliveryMode: topic.deliveryMode || 'none',
-    feedIds: topic.feedIds ?? [],
+    feedIds: Array.isArray(topic.feedIds) ? topic.feedIds : [],
     sourceMode: topic.sourceMode || 'search',
   })
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -67,7 +67,7 @@ export function TopicCard({ topic, isExpanded, onToggleExpand, onUpdate, onDelet
       template: topic.template,
       model: topic.model || '',
       deliveryMode: topic.deliveryMode || 'none',
-      feedIds: topic.feedIds ?? [],
+      feedIds: Array.isArray(topic.feedIds) ? topic.feedIds : [],
       sourceMode: topic.sourceMode || 'search',
     })
   }, [topic.name, topic.emoji, topic.timeoutSeconds, topic.outputFilename, topic.template, topic.model, topic.deliveryMode, topic.sourceMode, topic.feedIds])
@@ -81,7 +81,7 @@ export function TopicCard({ topic, isExpanded, onToggleExpand, onUpdate, onDelet
       template: topic.template,
       model: topic.model || '',
       deliveryMode: topic.deliveryMode || 'none',
-      feedIds: topic.feedIds ?? [],
+      feedIds: Array.isArray(topic.feedIds) ? topic.feedIds : [],
       sourceMode: topic.sourceMode || 'search',
     })
   }
@@ -95,7 +95,7 @@ export function TopicCard({ topic, isExpanded, onToggleExpand, onUpdate, onDelet
     editState.model !== (topic.model || '') ||
     editState.deliveryMode !== (topic.deliveryMode || 'none') ||
     editState.sourceMode !== (topic.sourceMode || 'search') ||
-    JSON.stringify([...editState.feedIds].sort()) !== JSON.stringify([...(topic.feedIds ?? [])].sort())
+    JSON.stringify([...editState.feedIds].sort()) !== JSON.stringify([...(Array.isArray(topic.feedIds) ? topic.feedIds : [])].sort())
 
   const handleSave = useCallback(async () => {
     setSaving(true)

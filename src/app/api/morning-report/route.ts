@@ -43,6 +43,20 @@ import {
 
 initDb()
 
+/**
+ * Topics carry feed_ids as JSON text, but every consumer wants an array — and
+ * a client that receives the raw string and spreads it gets the string's
+ * characters, which is exactly how ["[", "]", "<id>"] ended up stored.
+ */
+function withParsedFeedIds<T extends { feedIds?: string | string[] | null }>(topic: T) {
+  let feedIds: string[] = []
+  try {
+    const parsed = JSON.parse(typeof topic.feedIds === 'string' ? topic.feedIds : '[]')
+    if (Array.isArray(parsed)) feedIds = parsed.filter((x): x is string => typeof x === 'string')
+  } catch { /* malformed rows degrade to no sources rather than breaking the page */ }
+  return { ...topic, feedIds }
+}
+
 // ---------------------------------------------------------------------------
 // GET
 // ---------------------------------------------------------------------------
@@ -59,7 +73,7 @@ export async function GET(req: NextRequest) {
         .from(morningReportTopics)
         .orderBy(asc(morningReportTopics.sortOrder))
         .all()
-      return NextResponse.json(topics)
+      return NextResponse.json(topics.map(withParsedFeedIds))
     }
 
     // --- single topic ---
@@ -72,7 +86,7 @@ export async function GET(req: NextRequest) {
         .where(eq(morningReportTopics.id, id))
         .get()
       if (!topic) return NextResponse.json({ error: 'not found' }, { status: 404 })
-      return NextResponse.json(topic)
+      return NextResponse.json(withParsedFeedIds(topic))
     }
 
     // --- report list (default when no type or type=reports) ---
