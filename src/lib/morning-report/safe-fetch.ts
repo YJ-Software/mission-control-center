@@ -24,7 +24,7 @@ const MAX_REDIRECTS = 3
 function isBlockedIPv4(ip: string): boolean {
   const p = ip.split('.').map(Number)
   if (p.length !== 4 || p.some((n) => Number.isNaN(n))) return true
-  const [a, b] = p
+  const [a, b, c] = p
   return (
     a === 0 ||                          // "this network"
     a === 10 ||                         // RFC1918
@@ -33,7 +33,11 @@ function isBlockedIPv4(ip: string): boolean {
     (a === 169 && b === 254) ||         // link-local, incl. cloud metadata
     (a === 172 && b >= 16 && b <= 31) || // RFC1918
     (a === 192 && b === 168) ||         // RFC1918
-    (a === 192 && b === 0) ||           // IETF protocol assignments
+    // Only two /24s here are reserved. Blocking 192.0.0.0/16 wholesale also
+    // took out 192.0.66.0/24, which is Automattic — that is how a TechCrunch
+    // feed came back as "internal address".
+    (a === 192 && b === 0 && c === 0) ||  // IETF protocol assignments
+    (a === 192 && b === 0 && c === 2) ||  // TEST-NET-1
     (a === 198 && (b === 18 || b === 19)) || // benchmarking
     a >= 224                            // multicast and reserved
   )

@@ -53,6 +53,14 @@ describe('assertPublicUrl — literal addresses', () => {
   it('allows a public literal address', async () => {
     await expect(assertPublicUrl('https://93.184.216.34/feed.xml')).resolves.toBeInstanceOf(URL)
   })
+
+  it('blocks only the two reserved /24s inside 192.0/16, not the whole range', async () => {
+    // Blocking 192.0.0.0/16 wholesale also caught 192.0.66.0/24 (Automattic),
+    // so a perfectly ordinary TechCrunch feed was refused as "internal".
+    await refuses('http://192.0.0.1/x')      // 192.0.0.0/24, IETF assignments
+    await refuses('http://192.0.2.1/x')      // 192.0.2.0/24, TEST-NET-1
+    await expect(assertPublicUrl('https://192.0.66.220/feed')).resolves.toBeInstanceOf(URL)
+  })
 })
 
 describe('assertPublicUrl — names', () => {
