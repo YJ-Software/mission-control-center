@@ -568,6 +568,14 @@
   },
   "morningReport": {
     "sources": {
+      "presetPick": "从常用来源选择（选择后会自动填入下方栏位）",
+      "presetGroups": {
+        "tech": "科技综合",
+        "chinese": "中文科技",
+        "research": "论文与新品",
+        "crypto": "加密货币",
+        "social": "社群"
+      },
       "guide": {
         "title": "如何获取 Google 快讯的 RSS 网址",
         "show": "展开说明",

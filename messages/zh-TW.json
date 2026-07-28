@@ -568,6 +568,14 @@
   },
   "morningReport": {
     "sources": {
+      "presetPick": "從常用來源選擇（選了會自動填入下方欄位）",
+      "presetGroups": {
+        "tech": "科技綜合",
+        "chinese": "中文科技",
+        "research": "論文與新品",
+        "crypto": "加密貨幣",
+        "social": "社群"
+      },
       "guide": {
         "title": "如何取得 Google 快訊的 RSS 網址",
         "show": "展開說明",

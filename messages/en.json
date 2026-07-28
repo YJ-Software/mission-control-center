@@ -568,6 +568,14 @@
   },
   "morningReport": {
     "sources": {
+      "presetPick": "Pick a common source (fills the fields below)",
+      "presetGroups": {
+        "tech": "Tech",
+        "chinese": "Chinese tech",
+        "research": "Research & launches",
+        "crypto": "Crypto",
+        "social": "Social"
+      },
       "guide": {
         "title": "Getting an RSS address from Google Alerts",
         "show": "Show guide",

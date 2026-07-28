@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { Rss, Plus, Trash2, RefreshCw, FlaskConical, Loader2, CheckCircle2, AlertTriangle, BookOpen, ChevronDown, ShieldAlert } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { FEED_PRESETS, PRESET_GROUPS } from '@/lib/morning-report/feed-presets'
 import { Button } from '@/components/ui/button'
 
 interface FeedRow {
@@ -107,6 +108,49 @@ export function NewsSources() {
           <h3 className="text-sm font-medium text-white/80">{t('sources.addTitle')}</h3>
         </div>
         <p className="text-xs text-white/40 leading-relaxed">{t('sources.addHint')}</p>
+
+        {/* Preset picker. Every entry was verified against this project's own
+            parser; the fields stay editable so a preset is a starting point,
+            not a commitment. */}
+        <select
+          value=""
+          onChange={e => {
+            const p = FEED_PRESETS.find(x => x.url === e.target.value)
+            if (!p) return
+            setLabel(p.label)
+            setUrl(p.url)
+            setPreview(null)
+          }}
+          className="w-full bg-white/[0.03] border border-white/[0.08] text-xs text-white/70
+            rounded-md px-3 py-2 outline-none focus:border-cyan-400/50"
+        >
+          <option value="" className="bg-[#0a0a1a] text-white/80">
+            {t('sources.presetPick')}
+          </option>
+          {PRESET_GROUPS.map(g => {
+            const items = FEED_PRESETS.filter(p => p.group === g)
+            if (items.length === 0) return null
+            return (
+              <optgroup key={g} label={t(`sources.presetGroups.${g}`)}>
+                {items.map(p => {
+                  // Already registered — offering it again would just create a
+                  // duplicate that fetches the same articles twice.
+                  const added = feeds.some(f => f.label === p.label)
+                  return (
+                    <option
+                      key={p.url}
+                      value={p.url}
+                      disabled={added}
+                      className="bg-[#0a0a1a] text-white/80"
+                    >
+                      {added ? `✓ ${p.label}` : p.label}
+                    </option>
+                  )
+                })}
+              </optgroup>
+            )
+          })}
+        </select>
 
         <div className="flex flex-col sm:flex-row gap-2">
           <Input
