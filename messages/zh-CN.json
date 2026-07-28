@@ -583,7 +583,20 @@
         "producthunt": "每日新产品发布",
         "coindesk": "加密货币市场与监管",
         "cointelegraph": "加密货币新闻，更新频繁",
-        "lobsters": "类 HN 的小型技术社群，信噪比高"
+        "lobsters": "类 HN 的小型技术社群，信噪比高",
+        "bbcWorld": "国际头条，量稳定",
+        "guardianWorld": "国际新闻，偏深度与评论",
+        "aljazeera": "中东与全球南方视角",
+        "npr": "美国公共广播，重点筛选",
+        "cnbc": "美股与宏观经济头条",
+        "cnbcTech": "CNBC 科技线，个股导向",
+        "marketwatch": "市场快讯与盘势",
+        "bbcZh": "BBC 中文，国际视角",
+        "cnaWorld": "中央社国际线，中文原生",
+        "cnaFinance": "中央社财经线，台股与产业",
+        "pts": "公视新闻，台湾公共媒体",
+        "ltn": "自由时报全站，量大",
+        "cnyes": "台股与财经实时，量大"
       },
       "presetPick": "从常用来源选择（选择后会自动填入下方栏位）",
       "presetGroups": {
@@ -591,7 +604,10 @@
         "chinese": "中文科技",
         "research": "论文与新品",
         "crypto": "加密货币",
-        "social": "社群"
+        "social": "社群",
+        "world": "国际新闻",
+        "finance": "财经",
+        "chineseWorld": "中文综合／财经"
       },
       "guide": {
         "title": "如何获取 Google 快讯的 RSS 网址",

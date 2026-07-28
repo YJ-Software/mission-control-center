@@ -583,7 +583,20 @@
         "producthunt": "New product launches, daily",
         "coindesk": "Crypto markets and regulation",
         "cointelegraph": "Crypto news, frequent updates",
-        "lobsters": "Small HN-like community, high signal"
+        "lobsters": "Small HN-like community, high signal",
+        "bbcWorld": "World headlines, steady volume",
+        "guardianWorld": "World news, analysis-heavy",
+        "aljazeera": "Middle East and Global South view",
+        "npr": "US public radio, selective",
+        "cnbc": "US markets and macro",
+        "cnbcTech": "CNBC tech desk, stock-oriented",
+        "marketwatch": "Market wires and moves",
+        "bbcZh": "BBC Chinese, world view",
+        "cnaWorld": "Taiwan news agency, world desk",
+        "cnaFinance": "Taiwan news agency, finance desk",
+        "pts": "Taiwan public broadcaster",
+        "ltn": "Liberty Times full site, high volume",
+        "cnyes": "Taiwan markets, real-time, high volume"
       },
       "presetPick": "Pick a common source (fills the fields below)",
       "presetGroups": {
@@ -591,7 +604,10 @@
         "chinese": "Chinese tech",
         "research": "Research & launches",
         "crypto": "Crypto",
-        "social": "Social"
+        "social": "Social",
+        "world": "World news",
+        "finance": "Finance",
+        "chineseWorld": "Chinese general & finance"
       },
       "guide": {
         "title": "Getting an RSS address from Google Alerts",

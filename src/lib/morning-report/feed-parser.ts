@@ -35,6 +35,17 @@ const parser = new XMLParser({
   trimValues: true,
 })
 
+/** Decode one numeric character reference, leaving anything out of range as
+ *  the empty string rather than throwing on hostile input. */
+function safeCodePoint(code: number): string {
+  if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return ''
+  try {
+    return String.fromCodePoint(code)
+  } catch {
+    return ''
+  }
+}
+
 /** Collapse markup and entities down to display text. */
 function toText(value: unknown): string {
   if (value == null) return ''
@@ -50,12 +61,19 @@ function toText(value: unknown): string {
     // spaces already exist, but it litters CJK text: 「人工智慧（<b>AI</b>）」
     // came out as 「人工智慧（ AI ）」 and went straight into the prompt.
     .replace(/<[^>]*>/g, '')
+    // Numeric references first, and both forms of them: publishers emit
+    // typographic punctuation this way rather than as named entities, so a
+    // MarketWatch headline arrived reading "Nvidia&#x2019;s".
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => safeCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => safeCodePoint(parseInt(d, 10)))
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    // Ampersand last: decoding it earlier would let "&amp;lt;" become a real
+    // "<" and re-enter the markup stripping above.
+    .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ')
     .trim()
 }

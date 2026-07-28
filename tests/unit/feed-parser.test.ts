@@ -90,6 +90,38 @@ describe('parseFeed — Google Alerts (Atom)', () => {
     expect(item.snippet).toBe('人工智慧（AI）泡沫憂慮')
   })
 
+  it('decodes numeric character references', () => {
+    // Publishers emit typographic punctuation this way, not as named
+    // entities — a MarketWatch headline arrived as "Nvidia&#x2019;s".
+    const xml = `<rss version="2.0"><channel><item>
+      <title>Nvidia&amp;#x2019;s new chip &amp;#8212; and &amp;#8220;more&amp;#8221;</title>
+      <link>https://example.com/n</link>
+    </item></channel></rss>`
+
+    expect(parseFeed(xml)[0].title).toBe('Nvidia’s new chip — and “more”')
+  })
+
+  it('decodes the ampersand last so escaped markup stays inert', () => {
+    // "&amp;lt;b&amp;gt;" is literal text meaning "<b>", not a tag. Decoding
+    // & first would turn it into one after the stripping already ran.
+    const xml = `<rss version="2.0"><channel><item>
+      <title>literal &amp;amp;lt;b&amp;amp;gt; tag</title>
+      <link>https://example.com/amp</link>
+    </item></channel></rss>`
+
+    expect(parseFeed(xml)[0].title).toBe('literal &lt;b&gt; tag')
+  })
+
+  it('drops an out-of-range numeric reference instead of throwing', () => {
+    const xml = `<rss version="2.0"><channel><item>
+      <title>bad &amp;#x110000; ref</title>
+      <link>https://example.com/bad</link>
+    </item></channel></rss>`
+
+    expect(() => parseFeed(xml)).not.toThrow()
+    expect(parseFeed(xml)[0].title).toBe('bad ref')
+  })
+
   it('still separates block-level elements', () => {
     // Removing every tag outright would run paragraphs together.
     const xml = `<rss version="2.0"><channel><item>

@@ -583,7 +583,20 @@
         "producthunt": "每日新產品發表",
         "coindesk": "加密貨幣市場與監管",
         "cointelegraph": "加密貨幣新聞，更新頻繁",
-        "lobsters": "類 HN 的小型技術社群，訊噪比高"
+        "lobsters": "類 HN 的小型技術社群，訊噪比高",
+        "bbcWorld": "國際頭條，量穩定",
+        "guardianWorld": "國際新聞，偏深度與評論",
+        "aljazeera": "中東與全球南方視角",
+        "npr": "美國公共廣播，重點篩選",
+        "cnbc": "美股與總體經濟頭條",
+        "cnbcTech": "CNBC 科技線，個股導向",
+        "marketwatch": "市場快訊與盤勢",
+        "bbcZh": "BBC 中文，國際視角",
+        "cnaWorld": "中央社國際線，中文原生",
+        "cnaFinance": "中央社財經線，台股與產業",
+        "pts": "公視新聞，台灣公共媒體",
+        "ltn": "自由時報全站，量大",
+        "cnyes": "台股與財經即時，量大"
       },
       "presetPick": "從常用來源選擇（選了會自動填入下方欄位）",
       "presetGroups": {
@@ -591,7 +604,10 @@
         "chinese": "中文科技",
         "research": "論文與新品",
         "crypto": "加密貨幣",
-        "social": "社群"
+        "social": "社群",
+        "world": "國際新聞",
+        "finance": "財經",
+        "chineseWorld": "中文綜合／財經"
       },
       "guide": {
         "title": "如何取得 Google 快訊的 RSS 網址",

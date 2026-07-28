@@ -22,7 +22,7 @@ export interface FeedPreset {
    *  own name stays as it is written. */
   id: string
   /** i18n key suffix under morningReport.sources.presetGroups */
-  group: 'tech' | 'chinese' | 'research' | 'crypto' | 'social'
+  group: 'tech' | 'world' | 'finance' | 'chinese' | 'chineseWorld' | 'research' | 'crypto' | 'social'
   label: string
   url: string
 }
@@ -35,9 +35,25 @@ export const FEED_PRESETS: FeedPreset[] = [
   { id: 'ars', group: 'tech', label: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/index' },
   { id: 'mitTR', group: 'tech', label: 'MIT Technology Review', url: 'https://www.technologyreview.com/feed/' },
 
+  { id: 'bbcWorld', group: 'world', label: 'BBC World', url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
+  { id: 'guardianWorld', group: 'world', label: 'The Guardian World', url: 'https://www.theguardian.com/world/rss' },
+  { id: 'aljazeera', group: 'world', label: 'Al Jazeera', url: 'https://www.aljazeera.com/xml/rss/all.xml' },
+  { id: 'npr', group: 'world', label: 'NPR News', url: 'https://feeds.npr.org/1001/rss.xml' },
+
+  { id: 'cnbc', group: 'finance', label: 'CNBC Top News', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
+  { id: 'cnbcTech', group: 'finance', label: 'CNBC Technology', url: 'https://www.cnbc.com/id/19854910/device/rss/rss.html' },
+  { id: 'marketwatch', group: 'finance', label: 'MarketWatch', url: 'https://feeds.content.dowjones.io/public/rss/mw_topstories' },
+
   { id: 'technews', group: 'chinese', label: 'TechNews 科技新報', url: 'https://technews.tw/feed/' },
   { id: 'ithome', group: 'chinese', label: 'iThome', url: 'https://www.ithome.com.tw/rss' },
   { id: 'cna', group: 'chinese', label: '中央社 科技', url: 'https://feeds.feedburner.com/rsscna/technology' },
+
+  { id: 'bbcZh', group: 'chineseWorld', label: 'BBC 中文', url: 'https://feeds.bbci.co.uk/zhongwen/trad/rss.xml' },
+  { id: 'cnaWorld', group: 'chineseWorld', label: '中央社 國際', url: 'https://feeds.feedburner.com/rsscna/intworld' },
+  { id: 'cnaFinance', group: 'chineseWorld', label: '中央社 財經', url: 'https://feeds.feedburner.com/rsscna/finance' },
+  { id: 'pts', group: 'chineseWorld', label: '公視新聞', url: 'https://news.pts.org.tw/xml/newsfeed.xml' },
+  { id: 'ltn', group: 'chineseWorld', label: '自由時報', url: 'https://news.ltn.com.tw/rss/all.xml' },
+  { id: 'cnyes', group: 'chineseWorld', label: '鉅亨網', url: 'https://news.cnyes.com/rss/v1/news/category/headline' },
 
   { id: 'arxivAI', group: 'research', label: 'arXiv cs.AI', url: 'http://export.arxiv.org/rss/cs.AI' },
   { id: 'arxivCL', group: 'research', label: 'arXiv cs.CL', url: 'http://export.arxiv.org/rss/cs.CL' },
@@ -58,4 +74,6 @@ export const FEED_PRESETS: FeedPreset[] = [
  * fails.
  */
 
-export const PRESET_GROUPS = ['tech', 'chinese', 'research', 'crypto', 'social'] as const
+export const PRESET_GROUPS = [
+  'tech', 'world', 'finance', 'chinese', 'chineseWorld', 'research', 'crypto', 'social',
+] as const
