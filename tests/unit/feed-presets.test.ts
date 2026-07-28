@@ -23,6 +23,12 @@ describe('FEED_PRESETS', () => {
     expect(new Set(labels).size).toBe(labels.length)
   })
 
+  it('has a unique id for every preset — the description is looked up by it', () => {
+    const ids = FEED_PRESETS.map((p) => p.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    for (const id of ids) expect(id).toMatch(/^[A-Za-z][A-Za-z0-9]*$/)
+  })
+
   it('only uses groups the UI renders', () => {
     for (const p of FEED_PRESETS) {
       expect(PRESET_GROUPS).toContain(p.group)

@@ -17,6 +17,10 @@
  */
 
 export interface FeedPreset {
+  /** Stable key for the one-line description under sources.presetDesc. Kept
+   *  separate from the label so the blurb can be translated while the source's
+   *  own name stays as it is written. */
+  id: string
   /** i18n key suffix under morningReport.sources.presetGroups */
   group: 'tech' | 'chinese' | 'research' | 'crypto' | 'social'
   label: string
@@ -24,25 +28,25 @@ export interface FeedPreset {
 }
 
 export const FEED_PRESETS: FeedPreset[] = [
-  { group: 'tech', label: 'Hacker News', url: 'https://hnrss.org/frontpage' },
-  { group: 'tech', label: 'Hacker News (Best)', url: 'https://hnrss.org/best' },
-  { group: 'tech', label: 'TechCrunch', url: 'https://techcrunch.com/feed/' },
-  { group: 'tech', label: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' },
-  { group: 'tech', label: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/index' },
-  { group: 'tech', label: 'MIT Technology Review', url: 'https://www.technologyreview.com/feed/' },
+  { id: 'hn', group: 'tech', label: 'Hacker News', url: 'https://hnrss.org/frontpage' },
+  { id: 'hnBest', group: 'tech', label: 'Hacker News (Best)', url: 'https://hnrss.org/best' },
+  { id: 'techcrunch', group: 'tech', label: 'TechCrunch', url: 'https://techcrunch.com/feed/' },
+  { id: 'verge', group: 'tech', label: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' },
+  { id: 'ars', group: 'tech', label: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/index' },
+  { id: 'mitTR', group: 'tech', label: 'MIT Technology Review', url: 'https://www.technologyreview.com/feed/' },
 
-  { group: 'chinese', label: 'TechNews 科技新報', url: 'https://technews.tw/feed/' },
-  { group: 'chinese', label: 'iThome', url: 'https://www.ithome.com.tw/rss' },
-  { group: 'chinese', label: '中央社 科技', url: 'https://feeds.feedburner.com/rsscna/technology' },
+  { id: 'technews', group: 'chinese', label: 'TechNews 科技新報', url: 'https://technews.tw/feed/' },
+  { id: 'ithome', group: 'chinese', label: 'iThome', url: 'https://www.ithome.com.tw/rss' },
+  { id: 'cna', group: 'chinese', label: '中央社 科技', url: 'https://feeds.feedburner.com/rsscna/technology' },
 
-  { group: 'research', label: 'arXiv cs.AI', url: 'http://export.arxiv.org/rss/cs.AI' },
-  { group: 'research', label: 'arXiv cs.CL', url: 'http://export.arxiv.org/rss/cs.CL' },
-  { group: 'research', label: 'Product Hunt', url: 'https://www.producthunt.com/feed' },
+  { id: 'arxivAI', group: 'research', label: 'arXiv cs.AI', url: 'http://export.arxiv.org/rss/cs.AI' },
+  { id: 'arxivCL', group: 'research', label: 'arXiv cs.CL', url: 'http://export.arxiv.org/rss/cs.CL' },
+  { id: 'producthunt', group: 'research', label: 'Product Hunt', url: 'https://www.producthunt.com/feed' },
 
-  { group: 'crypto', label: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
-  { group: 'crypto', label: 'Cointelegraph', url: 'https://cointelegraph.com/rss' },
+  { id: 'coindesk', group: 'crypto', label: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
+  { id: 'cointelegraph', group: 'crypto', label: 'Cointelegraph', url: 'https://cointelegraph.com/rss' },
 
-  { group: 'social', label: 'Lobsters', url: 'https://lobste.rs/rss' },
+  { id: 'lobsters', group: 'social', label: 'Lobsters', url: 'https://lobste.rs/rss' },
 ]
 
 /**

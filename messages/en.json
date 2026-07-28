@@ -568,6 +568,23 @@
   },
   "morningReport": {
     "sources": {
+      "presetDesc": {
+        "hn": "Daily engineer-community front page",
+        "hnBest": "HN top-scoring recent posts, fewer but better",
+        "techcrunch": "Startup funding and product launches",
+        "verge": "Consumer tech and industry commentary",
+        "ars": "In-depth engineering and science reporting",
+        "mitTR": "Research trends and long-form analysis",
+        "technews": "Taiwan view on semiconductors and tech",
+        "ithome": "Taiwan enterprise IT and security",
+        "cna": "Taiwan news agency, tech desk",
+        "arxivAI": "AI preprints, high volume",
+        "arxivCL": "NLP and LLM papers",
+        "producthunt": "New product launches, daily",
+        "coindesk": "Crypto markets and regulation",
+        "cointelegraph": "Crypto news, frequent updates",
+        "lobsters": "Small HN-like community, high signal"
+      },
       "presetPick": "Pick a common source (fills the fields below)",
       "presetGroups": {
         "tech": "Tech",

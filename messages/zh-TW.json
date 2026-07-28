@@ -568,6 +568,23 @@
   },
   "morningReport": {
     "sources": {
+      "presetDesc": {
+        "hn": "工程師社群每日熱門，技術與創業",
+        "hnBest": "HN 近期高分文章，量少但精",
+        "techcrunch": "新創募資與產品發表",
+        "verge": "消費性科技與產業評論",
+        "ars": "深度技術報導，偏工程與科學",
+        "mitTR": "研究趨勢與長篇分析",
+        "technews": "台灣視角的半導體與科技產業",
+        "ithome": "台灣企業 IT 與資安",
+        "cna": "中央社科技線，中文原生",
+        "arxivAI": "AI 領域論文預印本，量大",
+        "arxivCL": "自然語言處理與 LLM 論文",
+        "producthunt": "每日新產品發表",
+        "coindesk": "加密貨幣市場與監管",
+        "cointelegraph": "加密貨幣新聞，更新頻繁",
+        "lobsters": "類 HN 的小型技術社群，訊噪比高"
+      },
       "presetPick": "從常用來源選擇（選了會自動填入下方欄位）",
       "presetGroups": {
         "tech": "科技綜合",

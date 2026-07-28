@@ -152,7 +152,7 @@ export function NewsSources() {
                       disabled={added}
                       style={OPTION_STYLE}
                     >
-                      {added ? `✓ ${p.label}` : p.label}
+                      {(added ? `✓ ${p.label}` : p.label) + ` — ${t(`sources.presetDesc.${p.id}`)}`}
                     </option>
                   )
                 })}
