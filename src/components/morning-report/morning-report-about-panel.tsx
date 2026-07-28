@@ -4,10 +4,14 @@ import { useTranslations } from 'next-intl'
 import {
   Sunrise, AlertTriangle, Workflow, Info,
   CalendarClock, Coins, ListChecks, Mic, Send, Filter, FileText,
+  Rss, SlidersHorizontal, History, BellRing,
 } from 'lucide-react'
 
 // One icon per feature, matched by order to the `features` i18n array.
-const FEATURE_ICONS = [CalendarClock, Coins, ListChecks, Mic, Send, Filter, FileText]
+const FEATURE_ICONS = [
+  CalendarClock, Coins, ListChecks, Mic, Send, Filter, FileText,
+  Rss, SlidersHorizontal, History, BellRing,
+]
 
 export function MorningReportAboutPanel() {
   const t = useTranslations('morningReport.about')
