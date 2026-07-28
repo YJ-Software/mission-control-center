@@ -27,6 +27,15 @@ interface PreviewResult {
 
 const API = '/api/morning-report'
 
+/**
+ * Native <option> and <optgroup> don't reliably take CSS classes — several
+ * browsers render them with the OS default palette regardless — so a dark UI
+ * has to set their colours inline. Skipping the optgroup is what turned the
+ * group headings into blank white bars.
+ */
+const OPTION_STYLE = { backgroundColor: '#0a0a1a', color: 'rgba(255,255,255,0.8)' } as const
+const OPTGROUP_STYLE = { backgroundColor: '#0a0a1a', color: 'rgba(255,255,255,0.45)' } as const
+
 function relTime(unix: number | null, never: string): string {
   if (!unix) return never
   const mins = Math.round((Date.now() / 1000 - unix) / 60)
@@ -124,14 +133,14 @@ export function NewsSources() {
           className="w-full bg-white/[0.03] border border-white/[0.08] text-xs text-white/70
             rounded-md px-3 py-2 outline-none focus:border-cyan-400/50"
         >
-          <option value="" className="bg-[#0a0a1a] text-white/80">
+          <option value="" style={OPTION_STYLE}>
             {t('sources.presetPick')}
           </option>
           {PRESET_GROUPS.map(g => {
             const items = FEED_PRESETS.filter(p => p.group === g)
             if (items.length === 0) return null
             return (
-              <optgroup key={g} label={t(`sources.presetGroups.${g}`)}>
+              <optgroup key={g} label={t(`sources.presetGroups.${g}`)} style={OPTGROUP_STYLE}>
                 {items.map(p => {
                   // Already registered — offering it again would just create a
                   // duplicate that fetches the same articles twice.
@@ -141,7 +150,7 @@ export function NewsSources() {
                       key={p.url}
                       value={p.url}
                       disabled={added}
-                      className="bg-[#0a0a1a] text-white/80"
+                      style={OPTION_STYLE}
                     >
                       {added ? `✓ ${p.label}` : p.label}
                     </option>
