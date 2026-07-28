@@ -48,6 +48,7 @@ import {
   getRecentlyCitedUrls,
   wasCitedRecently,
   pruneNewsArticles,
+  backfillCitedUrlsFromReports,
 } from '@/lib/morning-report/news-store'
 import { db } from '@/lib/db'
 import { newsArticles } from '@/lib/schema'
@@ -198,5 +199,67 @@ describe('pruneNewsArticles', () => {
 
     expect(db.select().from(newsArticles).all().map((r) => r.url))
       .toEqual(['https://example.com/old-citation'])
+  })
+})
+
+describe('backfillCitedUrlsFromReports', () => {
+  /** A tmp dir holding reports named the way the pipeline writes them. */
+  function reportDir(files: Record<string, string>): string {
+    const d = mkdtempSync(join(tmpdir(), 'mcc-backfill-'))
+    for (const [name, body] of Object.entries(files)) writeFileSync(join(d, name), body)
+    return d
+  }
+
+  const stamp = (daysBack: number) => {
+    const dt = new Date()
+    dt.setDate(dt.getDate() - daysBack)
+    return dt.toISOString().slice(0, 10).replace(/-/g, '')
+  }
+
+  it('seeds an empty ledger from reports the old mechanism left behind', () => {
+    // Without this, the first report after upgrading has no dedup memory and
+    // can repeat yesterday's stories — a regression caused by the upgrade.
+    const d = reportDir({
+      [`morning-report-ai-${stamp(1)}.md`]: 'see https://example.com/a',
+      [`morning-report-${stamp(1)}.md`]: 'merged https://example.com/b',
+    })
+
+    expect(backfillCitedUrlsFromReports(d, 14)).toBeGreaterThan(0)
+    expect(getRecentlyCitedUrls(14).sort()).toEqual([
+      'https://example.com/a',
+      'https://example.com/b',
+    ])
+  })
+
+  it('runs once — a ledger with anything in it is left alone', () => {
+    seed('https://example.com/already', { usedInReport: daysAgo(1) })
+    const d = reportDir({ [`morning-report-ai-${stamp(1)}.md`]: 'https://example.com/new' })
+
+    expect(backfillCitedUrlsFromReports(d, 14)).toBe(0)
+    expect(getRecentlyCitedUrls(14)).toEqual(['https://example.com/already'])
+  })
+
+  it('ignores reports older than the window', () => {
+    const d = reportDir({
+      [`morning-report-ai-${stamp(2)}.md`]: 'https://example.com/recent',
+      [`morning-report-ai-${stamp(90)}.md`]: 'https://example.com/ancient',
+    })
+
+    backfillCitedUrlsFromReports(d, 14)
+    expect(getRecentlyCitedUrls(14)).toEqual(['https://example.com/recent'])
+  })
+
+  it('attributes each link to the date in its filename', () => {
+    const d = reportDir({ [`morning-report-ai-${stamp(3)}.md`]: 'https://example.com/x' })
+
+    backfillCitedUrlsFromReports(d, 14)
+    const expected = new Date()
+    expected.setDate(expected.getDate() - 3)
+    expect(db.select().from(newsArticles).all()[0].usedInReport)
+      .toBe(expected.toISOString().slice(0, 10))
+  })
+
+  it('survives a directory that is not there', () => {
+    expect(backfillCitedUrlsFromReports(join(dir, 'nope'), 14)).toBe(0)
   })
 })

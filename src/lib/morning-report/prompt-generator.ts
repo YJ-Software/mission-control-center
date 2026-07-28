@@ -4,7 +4,12 @@ import { db } from '@/lib/db'
 import { morningReportTopics, morningReportFormatTemplate, morningReportConfig } from '@/lib/schema'
 import { eq, asc } from 'drizzle-orm'
 import { getGeneratedDir, getTmpDir, getDateVars, substituteVars } from './utils'
-import { getRecentlyCitedUrls, getCandidatesForFeeds, type CandidateRow } from './news-store'
+import {
+  getRecentlyCitedUrls,
+  getCandidatesForFeeds,
+  backfillCitedUrlsFromReports,
+  type CandidateRow,
+} from './news-store'
 
 interface PromptResult {
   topicId: string
@@ -155,6 +160,10 @@ export function generatePrompts(date?: Date): GeneratePromptsOutput {
   const dedupDays = Number(config.dedupDays) > 0
     ? Number(config.dedupDays)
     : DEFAULT_DEDUP_DAYS
+  // An install upgrading into the ledger has nothing in it yet. Seed from the
+  // reports the previous mechanism read, so the first run after upgrading
+  // still knows what yesterday used. No-ops once the ledger has anything.
+  backfillCitedUrlsFromReports(tmpDir, dedupDays)
   const prevUrls = getRecentlyCitedUrls(dedupDays)
   const prevUrlsBlock = buildCitedUrlsBlock(prevUrls, dedupDays)
 

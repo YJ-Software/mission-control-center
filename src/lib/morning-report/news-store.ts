@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, readdirSync } from 'fs'
+import { join } from 'path'
 import { db } from '@/lib/db'
 import { newsArticles } from '@/lib/schema'
 import { sql } from 'drizzle-orm'
@@ -145,6 +146,46 @@ export function getCandidatesForFeeds(
   } catch (err) {
     console.warn('[news-store] could not read candidates:', (err as Error).message)
     return []
+  }
+}
+
+/**
+ * Seed the ledger from reports already on disk, once.
+ *
+ * On an existing install the ledger starts empty, so the first report after
+ * upgrading would go out with no dedup memory at all and could repeat
+ * yesterday's stories — a visible regression caused purely by the upgrade.
+ *
+ * The files the old mechanism read are still there, so they are read once and
+ * folded in. Runs only when the ledger has no citations at all: after that the
+ * write-back keeps it current, and re-running would just re-add rows that
+ * retention is meant to expire.
+ */
+export function backfillCitedUrlsFromReports(tmpDir: string, days = 14): number {
+  try {
+    const existing = db.get<{ n: number }>(sql`
+      SELECT COUNT(*) AS n FROM news_articles WHERE used_in_report IS NOT NULL
+    `)
+    if ((existing?.n ?? 0) > 0) return 0
+    if (!existsSync(tmpDir)) return 0
+
+    const cutoff = daysAgo(days)
+    let total = 0
+    // morning-report-<topic>-yyyyMMdd.md and the merged morning-report-yyyyMMdd.md
+    for (const file of readdirSync(tmpDir)) {
+      const m = file.match(/^morning-report-(?:[a-z0-9_-]+-)?(\d{4})(\d{2})(\d{2})\.md$/i)
+      if (!m) continue
+      const date = `${m[1]}-${m[2]}-${m[3]}`
+      if (date < cutoff) continue
+      total += recordCitedUrls(join(tmpDir, file), date).recorded
+    }
+    if (total > 0) {
+      console.log(`[news-store] seeded ledger with ${total} link(s) from existing reports`)
+    }
+    return total
+  } catch (err) {
+    console.warn('[news-store] backfill failed:', (err as Error).message)
+    return 0
   }
 }
 
