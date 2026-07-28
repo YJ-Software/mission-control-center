@@ -57,12 +57,23 @@ describe('buildSourceBlock', () => {
     expect(build('feed+search')).toContain('（technews.tw）')
   })
 
-  it('lets the agent keep searching in feed+search mode', () => {
+  it('requires searching in feed+search mode, not merely permits it', () => {
+    // The first wording said "若數量不足…再自行搜尋補充". Against a real feed
+    // the agent judged 30 candidates sufficient and searched zero times, so
+    // the whole topic came from one alert's keyword. The condition was the
+    // problem: it gave the model a way out.
     const block = build('feed+search')
 
-    expect(block).toContain('優先')
-    expect(block).toContain('再自行搜尋補充')
+    expect(block).toContain('這些不是全部素材')
+    expect(block).toContain('必須另外自行搜尋')
+    expect(block).toContain('即使以上素材看起來已經足夠，仍然要搜尋')
+    expect(block).not.toContain('若數量不足')
     expect(block).not.toContain('不要自行搜尋')
+  })
+
+  it('tells the agent why the list is not enough on its own', () => {
+    // A bare instruction is easier to rationalise away than one with a reason.
+    expect(build('feed+search')).toContain('盲區')
   })
 
   it('forbids searching in feed mode', () => {
