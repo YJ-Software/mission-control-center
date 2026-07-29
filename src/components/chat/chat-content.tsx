@@ -117,16 +117,22 @@ export function ChatContent() {
   useEffect(() => {
     const sidebar = document.querySelector('[data-sidebar]') as HTMLElement | null
     const header = containerRef.current?.closest('.flex.flex-col')?.querySelector('header') as HTMLElement | null
+    // Deliberately not Tailwind's own `hidden`: the sidebar already carries
+    // that for its responsive rule (`hidden md:flex`), so removing it here
+    // — which the else branch does on every mount, focus mode off or not —
+    // left nothing hiding the sidebar below the md breakpoint.
+    // See .chat-focus-hidden in globals.css.
+    const cls = 'chat-focus-hidden'
     if (toggleState.focusMode) {
-      sidebar?.classList.add('hidden')
-      header?.classList.add('hidden')
+      sidebar?.classList.add(cls)
+      header?.classList.add(cls)
     } else {
-      sidebar?.classList.remove('hidden')
-      header?.classList.remove('hidden')
+      sidebar?.classList.remove(cls)
+      header?.classList.remove(cls)
     }
     return () => {
-      sidebar?.classList.remove('hidden')
-      header?.classList.remove('hidden')
+      sidebar?.classList.remove(cls)
+      header?.classList.remove(cls)
     }
   }, [toggleState.focusMode])
 

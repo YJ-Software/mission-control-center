@@ -277,3 +277,21 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Chat focus mode hides the sidebar and header from outside React, by
+ * toggling a class on elements it doesn't own.
+ *
+ * It used to toggle Tailwind's own `hidden`, which the sidebar already carries
+ * for its responsive rule (`hidden md:flex`). Turning focus mode *off* then
+ * removed that too, so below the md breakpoint nothing hid the sidebar any
+ * more and it sat on top of the chat — visible only on /chat, and only on a
+ * phone-width viewport.
+ *
+ * A dedicated class keeps the two concerns apart. !important is deliberate:
+ * it has to beat `md:flex`, which applies at exactly the widths where focus
+ * mode is most wanted.
+ */
+.chat-focus-hidden {
+  display: none !important;
+}
