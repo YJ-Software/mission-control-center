@@ -13,7 +13,7 @@ export function BrowserPanel() {
       value={value}
       className="px-3 py-2 text-sm text-white/50 border-b-2 border-transparent -mb-px
         data-[state=active]:border-sky-400 data-[state=active]:text-white
-        hover:text-white/80 transition-colors font-medium"
+        hover:text-white/80 transition-colors font-medium whitespace-nowrap shrink-0"
     >
       {label}
     </Tabs.Trigger>
@@ -22,7 +22,7 @@ export function BrowserPanel() {
   return (
     <div className="p-6">
       <Tabs.Root defaultValue="about">
-        <Tabs.List className="flex gap-1 mb-4 border-b border-white/[0.08]">
+        <Tabs.List className="flex gap-1 mb-4 border-b border-white/[0.08] overflow-x-auto">
           {subTab('about', t('about'))}
           {subTab('overview', t('overview'))}
         </Tabs.List>

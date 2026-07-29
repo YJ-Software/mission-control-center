@@ -73,7 +73,7 @@ export function WikiPanel() {
       value={value}
       className="px-3 py-2 text-sm text-white/50 border-b-2 border-transparent -mb-px
         data-[state=active]:border-violet-400 data-[state=active]:text-white
-        hover:text-white/80 transition-colors font-medium"
+        hover:text-white/80 transition-colors font-medium whitespace-nowrap shrink-0"
     >
       {label}
     </Tabs.Trigger>
@@ -81,7 +81,7 @@ export function WikiPanel() {
 
   return (
     <Tabs.Root defaultValue="about">
-      <Tabs.List className="flex gap-1 mb-4 border-b border-white/[0.08]">
+      <Tabs.List className="flex gap-1 mb-4 border-b border-white/[0.08] overflow-x-auto">
         {subTab('about', t('about'))}
         {subTab('manage', t('manage'))}
       </Tabs.List>
