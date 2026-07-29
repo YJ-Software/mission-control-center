@@ -69,8 +69,12 @@ curl -fsSL https://raw.githubusercontent.com/YJ-Software/mission-control-center/
 ### 晨報系統（Morning Report）
 - **主題管理** — 自訂晨報主題（名稱、emoji、模板、排程時間、模型、投遞方式）
 - **格式模板** — 統一 HTML 格式模板，支援變數替換（`${TODAY}`、`${LANGUAGE}` 等）
-- **URL 去重** — 自動讀取前一天報告中的 URL，避免重複引用
-- **執行管線** — generate-prompts → 各主題執行 → finalize（合併 + HTML 轉換）→ podcast
+- **RSS 新聞來源** — 接 Google 快訊或任何 RSS／Atom 來源，排程抓入候選池；內建 28 個經實測驗證的來源（國際、財經、中文媒體、論文、加密貨幣）
+- **來源模式** — 每個主題各自綁定來源並選擇 agent 自由度：自行搜尋／來源＋搜尋（兩者都要）／只用來源
+- **URL 去重** — 報告引用過的連結寫入帳本，預設回溯 14 天（`dedupDays` 可調）；比對前正規化網址，解開 Google 快訊轉址、移除追蹤參數
+- **模板版本歷史** — 所有可編輯模板每次儲存留版本，可比對差異與還原；「還原預設」亦可復原
+- **缺漏告警** — 主題未產出時推播至儀表板通知與操作者頻道
+- **執行管線** — 抓取來源（獨立排程）→ generate-prompts → 各主題執行 → finalize（合併 + HTML 轉換）→ podcast
 - **Podcast 生成** — edge-tts 語音合成 + ffmpeg 音訊合併，支援段落切分與 Agent 潤稿
 - **Cron 同步** — 主題自動同步為 OpenClaw cron jobs（`mr-*` 前綴）
 - **公開發佈** — 可設定 public tunnel 對外提供晨報與 Podcast 存取
@@ -308,7 +312,7 @@ src/
 │   ├── cron/               # Cron 元件
 │   └── ui/                 # shadcn/ui 基礎元件
 ├── lib/                    # 核心邏輯
-│   ├── morning-report/     # 晨報管線（prompt、finalize、podcast、sync）
+│   ├── morning-report/     # 晨報管線（prompt、RSS 來源、去重帳本、模板版本、finalize、podcast、sync）
 │   ├── browser/            # 瀏覽器設定與服務管理
 │   ├── headless-vnc/       # VNC 堆疊安裝與管理
 │   ├── second-brain/       # NotebookLM CLI + Obsidian 管理
@@ -317,7 +321,7 @@ src/
 │   ├── openclaw.ts         # Gateway WebSocket 客戶端
 │   ├── gateway-rpc.ts      # Gateway JSON-RPC
 │   ├── sessions.ts         # Session 讀取與成本分析
-│   ├── schema.ts           # Drizzle ORM Schema（15 張表）
+│   ├── schema.ts           # Drizzle ORM Schema（22 張表）
 │   └── db.ts               # 資料庫初始化
 ├── store/                  # Zustand + WebSocket Context
 ├── i18n/                   # 多語系設定
@@ -328,7 +332,7 @@ src/
 
 ## 資料庫 Schema
 
-系統使用 SQLite + Drizzle ORM，共 15 張表：
+系統使用 SQLite + Drizzle ORM，共 22 張表：
 
 | 表名 | 說明 |
 |------|------|
@@ -342,6 +346,13 @@ src/
 | `morningReportRuns` | 晨報執行歷史 |
 | `morningReportRunTopics` | 晨報主題執行歷史 |
 | `morningReportFormatTemplate` | 晨報格式模板 |
+| `morningReportTemplateVersions` | 模板編輯歷史（主題 prompt／格式／訊息模板） |
+| `newsArticles` | 新聞帳本（已引用連結與 RSS 候選池） |
+| `newsFeeds` | 已註冊的 RSS／Atom 來源 |
+| `notifications` | 儀表板通知（鈴鐺與 toast） |
+| `csConversations` | LINE 客服對話 |
+| `csMessages` | LINE 客服訊息紀錄 |
+| `csAgentPause` | LINE 客服接手暫停狀態 |
 | `backupDestinations` | 備份目的地 |
 | `backupSources` | 備份來源 |
 | `backupSchedules` | 備份排程 |
@@ -526,36 +537,13 @@ Manifest 公開網址：`https://raw.githubusercontent.com/<owner>/<repo>/main/r
 
 ---
 
-## 近期重大更新
+## 版本紀錄
 
-> 完整 commit 紀錄請看 `git log` 或 GitHub Releases；以下只列影響使用者操作或語意的關鍵變動。
+每個版本的變更內容、原因與影響範圍都寫在 GitHub Releases：
 
-### 2026.6.1-v0.3.53（2026-06-04）— 升 openclaw 帶 plugin sync
-- **dashboard 的「Update OpenClaw」按鈕改跑 `openclaw update --yes`**，原本只跑 `npm install -g openclaw@latest` + `openclaw doctor --fix`，會把外掛 plugin（如 `@openclaw/codex`）留在舊版的 nested openclaw → 升完 host 後跑 codex 模型噴 `ERR_PACKAGE_PATH_NOT_EXPORTED`。`openclaw update` 內建「plugin update sync after core update」，一指令搞定 host + 所有 plugin
-- 若你的晨報主題選 `codex/gpt-5.5` 一直失敗，多半就是這個 — 在 dashboard 點一次升級即可
+https://github.com/YJ-Software/mission-control-center/releases
 
-### 2026.6.1-v0.3.52（2026-06-04）— release 與 openclaw 版本配對
-- **新增配對版本格式 `<openclawVersion>-v<mccVersion>`**（例：`2026.6.1-v0.3.53`），同步出現在 GitHub release tag / title、`release-manifest.json`、`/api/health`、dashboard sidebar
-- 配對的意義：tarball **在 throwaway 跑過 Playwright E2E 全綠**，配對的 openclaw 版本就是前綴 → 是個事實宣告而非裝飾
-- 前綴 sticky / 後綴自由：純 MCC 修補不用重跑 E2E，前綴自動沿用 `release-manifest.json` 的上一筆；換 openclaw 配對才要重跑 E2E（用 `MCC_OPENCLAW_VERSION=<新版>` 宣告）
-- `/api/health` 多了 `mccVersion` 與 `openclawVersion` 兩個欄位，升級比對改用 `mccVersion`（純 semver），避免 openclaw 前綴搞壞 `split('.')` 排序
-- 詳見上面「版本命名規則」與 `.claude/skills/release/SKILL.md`
-
-### 2026.6.1-v0.3.51（2026-06-04）— openclaw 2026.6.1 兼容
-- **openclaw 2026.6.1 開始把 Doctor warnings 框寫到 stdout** → MCC 的 `JSON.parse` 在 `/api/openclaw/models`、`/api/openclaw/auth` 等路由噴錯，導致 LLM 管理頁面模型下拉選空白
-- 修法：openclaw spawn 全面加 `--log-level silent --no-color`，並在 JSON 解析前剝掉非 JSON 前綴（防止上游又把 banner 寫到 stdout）
-
-### v0.3.50（2026-06-04）— release tarball 包 morning-report 預設模板
-- `data/morning-report/default-templates/` 的預設模板搬到 `assets/`，避開 `install.sh` 的 `ln -sf $STATE/data` 把模板 symlink 蓋掉的問題（過去 fresh install 會噴 `ENOENT _format.md`）
-
-### v0.3.49（2026-06-03）— Dashboard 快速操作精簡
-- 移除 5 個 unused 按鈕：Disk Cleanup / Restart Claude Tmux / Usage Scrape / Git GC All / Kill Tmux Sessions（含後端 dead code + i18n key）
-
-### v0.3.41 → v0.3.48（2026-06-03）— LLM 管理頁面
-- 新增 `/llm-auth` 頁，整合：
-  - **Auth profiles**：8 個 provider（OpenAI Codex / Anthropic / Z.ai / Kimi / Google / MiniMax / MiniMax CN / DeepSeek）、OAuth device-code 與 API key 兩種登入方式，支援複製到其他 agent
-  - **Models 分頁**：全域預設 + per-agent override，模型 / 備用模型 / Alias 全部走 UI，optimistic update 即時回顯
-- E2E spec `tests/e2e/llm-auth-kimi.spec.ts` 把 add-key → set-override → chat 全流程包進 release gate
+儀表板的「升級」按鈕也會直接顯示最新版的說明，不需要離開介面。
 
 ---
 
