@@ -39,7 +39,7 @@ export function AgentsPageClient() {
     <MainLayout title={t('title')} subtitle={t('subtitle')} onMenuToggle={toggleDrawer}>
       <div className="flex flex-col gap-6 p-6">
         <AgentSelector state={state} />
-        <nav role="tablist" className="flex gap-2 border-b">
+        <nav role="tablist" className="flex gap-2 border-b overflow-x-auto">
           {TABS.map((tab) => (
             <button
               key={tab}
@@ -48,8 +48,8 @@ export function AgentsPageClient() {
               onClick={() => setTab(tab)}
               className={
                 state.tab === tab
-                  ? 'border-b-2 border-primary px-3 py-2 text-sm font-medium'
-                  : 'px-3 py-2 text-sm text-muted-foreground'
+                  ? 'border-b-2 border-primary px-3 py-2 text-sm font-medium whitespace-nowrap shrink-0'
+                  : 'px-3 py-2 text-sm text-muted-foreground whitespace-nowrap shrink-0'
               }
             >
               {t(`tabs.${tab}`)}

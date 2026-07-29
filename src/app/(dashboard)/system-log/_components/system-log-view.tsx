@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { CheckCircle2, AlertCircle, Loader2, Clock, RotateCcw, ChevronRight, Search } from 'lucide-react'
+import { CheckCircle2, AlertCircle, Loader2, Clock, RotateCcw, ChevronRight, ChevronLeft, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { JobMeta, LogLine, JobStatus } from '@/lib/jobs/types'
 
@@ -47,6 +47,11 @@ export function SystemLogView() {
 
   const allJobs = useMemo(() => list?.jobs ?? [], [list])
 
+  // Below md the two panes can't sit side by side, so they take turns: the
+  // list until a job is tapped, the viewer after. Tracked separately from
+  // selectedId because a job is auto-selected on load for the desktop pane —
+  // keying off that alone would drop a phone straight into the viewer.
+  const [detailOpen, setDetailOpen] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | JobStatus>('all')
   const [kindFilter, setKindFilter] = useState<'all' | string>('all')
   const [query, setQuery] = useState('')
@@ -84,7 +89,10 @@ export function SystemLogView() {
 
   return (
     <div className="flex h-full min-h-0 gap-3 p-3">
-      <aside className="w-72 shrink-0 cyber-card overflow-hidden flex flex-col">
+      <aside className={cn(
+        'w-full md:w-72 shrink-0 cyber-card overflow-hidden flex-col',
+        detailOpen ? 'hidden md:flex' : 'flex',
+      )}>
         <div className="px-3 py-2 border-b border-white/[0.06] flex items-center justify-between">
           <h3 className="text-xs font-semibold text-white/70">{t('jobs')}</h3>
           <span className="font-mono text-[10px] text-white/30">
@@ -137,7 +145,7 @@ export function SystemLogView() {
             return (
               <button
                 key={job.id}
-                onClick={() => selectJob(job.id)}
+                onClick={() => { selectJob(job.id); setDetailOpen(true) }}
                 className={cn(
                   'w-full text-left px-3 py-2.5 border-b border-white/[0.04] transition-colors',
                   active ? 'bg-white/[0.07]' : 'hover:bg-white/[0.03]',
@@ -165,7 +173,19 @@ export function SystemLogView() {
         </div>
       </aside>
 
-      <section className="flex-1 cyber-card overflow-hidden flex flex-col min-w-0">
+      <section className={cn(
+        'flex-1 cyber-card overflow-hidden flex-col min-w-0',
+        detailOpen ? 'flex' : 'hidden md:flex',
+      )}>
+        {/* Only reachable on phones, where the list is currently hidden. */}
+        <button
+          type="button"
+          onClick={() => setDetailOpen(false)}
+          className="md:hidden flex items-center gap-1.5 px-3 py-2 text-[11px] text-white/50 hover:text-white/80 border-b border-white/[0.06] shrink-0"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" />
+          {t('backToList')}
+        </button>
         {selectedId ? (
           <JobViewer jobId={selectedId} />
         ) : (

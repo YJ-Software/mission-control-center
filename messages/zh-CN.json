@@ -541,6 +541,7 @@
     "runStatusSkipped": "跳过"
   },
   "systemLog": {
+    "backToList": "返回列表",
     "title": "系统日志",
     "subtitle": "后台任务与升级历史",
     "jobs": "任务列表",

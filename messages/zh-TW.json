@@ -541,6 +541,7 @@
     "runStatusSkipped": "跳過"
   },
   "systemLog": {
+    "backToList": "返回清單",
     "title": "系統紀錄",
     "subtitle": "背景工作與升級歷程",
     "jobs": "工作清單",

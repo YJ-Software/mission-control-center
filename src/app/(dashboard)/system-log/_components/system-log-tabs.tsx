@@ -32,7 +32,7 @@ export function SystemLogTabs() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <nav className="flex items-center gap-1 px-3 pt-3" role="tablist">
+      <nav className="flex items-center gap-1 px-3 pt-3 overflow-x-auto" role="tablist">
         {TABS.map((tab) => {
           const on = active === tab.id
           const Icon = tab.icon
@@ -43,7 +43,7 @@ export function SystemLogTabs() {
               aria-selected={on}
               onClick={() => select(tab.id)}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-t-lg border-b-2 px-3 py-2 text-[12px] font-medium transition-colors',
+                'inline-flex items-center gap-1.5 rounded-t-lg border-b-2 px-3 py-2 text-[12px] font-medium transition-colors whitespace-nowrap shrink-0',
                 on
                   ? 'border-cyan-400 text-white'
                   : 'border-transparent text-white/45 hover:text-white/75',

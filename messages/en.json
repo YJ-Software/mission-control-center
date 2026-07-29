@@ -541,6 +541,7 @@
     "runStatusSkipped": "Skipped"
   },
   "systemLog": {
+    "backToList": "Back to list",
     "title": "System Log",
     "subtitle": "Background jobs & upgrade history",
     "jobs": "Jobs",
