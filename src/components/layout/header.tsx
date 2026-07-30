@@ -112,7 +112,14 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   }
 
   return (
-    <header className="relative h-12 flex items-center justify-between px-3 md:px-6 shrink-0 bg-white/[0.03] backdrop-blur border-b border-white/[0.08]">
+    // `z-40` is load-bearing, not decoration. `backdrop-blur` makes this header
+    // its own stacking context, so the notification dropdown's `z-50` only ranks
+    // it *within* the header — and `.cyber-card` (position:relative +
+    // backdrop-filter) makes every content card a stacking context too. Same
+    // level, later in the DOM, so cards painted over the open dropdown. 40 keeps
+    // the header above page content while staying under the z-50 overlays
+    // (Sheet / Dialog / AlertDialog / mobile-overlay).
+    <header className="relative z-40 h-12 flex items-center justify-between px-3 md:px-6 shrink-0 bg-white/[0.03] backdrop-blur border-b border-white/[0.08]">
       <div className="flex items-center gap-3">
         {onMenuToggle && (
           <button

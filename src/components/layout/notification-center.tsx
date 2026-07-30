@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { Bell, X, Trash2, AlertCircle, AlertTriangle, Info, CheckCheck } from 'lucide-react'
@@ -58,6 +59,9 @@ export function NotificationCenter() {
   const [open, setOpen] = useState(false)
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const dropdownRef = useRef<HTMLDivElement>(null)
+  // Toasts render through a portal (see below); `document` only exists after mount.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
 
   const { data } = useQuery<ListResponse>({
     queryKey: ['notifications'],
@@ -218,8 +222,17 @@ export function NotificationCenter() {
         )}
       </div>
 
-      {/* Toasts (corner, ephemeral) */}
-      <div className="fixed bottom-4 right-4 z-[60] space-y-2 max-w-[360px] pointer-events-none">
+      {/*
+        Toasts (corner, ephemeral) — portalled to <body> rather than left in place.
+        This component renders inside <header>, which carries `backdrop-blur`;
+        an element with a backdrop-filter becomes the containing block for its
+        `position: fixed` descendants. Left here, "bottom-4 right-4" resolved
+        against the 48px header instead of the viewport, so toasts appeared at
+        the top-right and hung off the top edge — and their z-[60] was capped
+        inside the header's stacking context. The portal restores both.
+      */}
+      {mounted && createPortal(
+        <div className="fixed bottom-4 right-4 z-[60] space-y-2 max-w-[360px] pointer-events-none">
         {toasts.map(toast => (
           <div
             key={toast.id}
@@ -245,7 +258,9 @@ export function NotificationCenter() {
             </div>
           </div>
         ))}
-      </div>
+        </div>,
+        document.body,
+      )}
     </>
   )
 }
