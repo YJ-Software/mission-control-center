@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.7.1-2-v0.3.74",
-    "mccVersion": "0.3.74",
+    "version": "2026.7.1-2-v0.3.75",
+    "mccVersion": "0.3.75",
     "openclawVersion": "2026.7.1-2",
-    "releaseDate": "2026-07-29T11:21:24.098Z",
-    "notes": "## 修正（手機版面）\n\n本次修正皆僅影響窄螢幕（未滿 768px），桌面版面不受影響。\n\n- **對話頁的側邊選單在手機上不會收合**：對話頁的「專注模式」以切換 Tailwind 的 `hidden` 類別來隱藏側邊選單與標題列，而側邊選單本身即以該類別實作響應式收合（`hidden md:flex`）。關閉專注模式時會一併移除該類別，且此分支於每次掛載時都會執行——因此只要開啟對話頁，側邊選單在窄螢幕下便失去隱藏依據，覆蓋於內容之上並將對話區壓縮至僅餘數字元寬度。\n\n  專注模式改用專屬類別，使「因螢幕寬度而隱藏」與「因使用者操作而隱藏」互不影響。\n\n- **系統紀錄的日誌內容在手機上無法檢視**：該頁為固定雙欄配置，左側工作清單固定 288px 且不縮放，右側日誌面板因而被推出畫面且無法捲動至。\n\n  窄螢幕改為主從切換：預設顯示工作清單，點選項目後切換至該項日誌並提供返回操作；768px 以上維持雙欄。\n\n- **分頁列在窄螢幕被裁切**：第二大腦、Wiki、Obsidian、NotebookLM、瀏覽器、系統紀錄與 Agents 等頁面的分頁列未處理水平溢出，分頁標籤超出容器後遭裁切且無法捲動存取。已補上水平捲動，並避免分頁標籤遭壓縮換行。",
+    "releaseDate": "2026-08-02T17:35:57.952Z",
+    "notes": "- fix(ui): 通知面板打開後被頁面卡片蓋住 — header 的 backdrop-blur 會自成 stacking context，補上 z-40\n- fix(ui): 通知 toast 改用 portal 掛到 body — 原本困在 header 的 backdrop-filter containing block 裡，bottom-4 對到的是 48px 的 header 而非視窗\n- test: 新增 header stacking 回歸測試",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-2-v0.3.74/mission-control-v0.3.74-linux-x64.tar.gz",
-        "sha256": "0d85821516a66b7f1493e37594154ad12f624434c0238f40a7ce99bfafd52c2f",
-        "size": 27245606
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-2-v0.3.75/mission-control-v0.3.75-linux-x64.tar.gz",
+        "sha256": "9f266c8b7c147ee0209c335424aa4b48115e77ce25b54ed1c6ca31ea2e62b001",
+        "size": 27271442
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.7.1-2-v0.3.74",
+      "mccVersion": "0.3.74",
+      "openclawVersion": "2026.7.1-2",
+      "releaseDate": "2026-07-29T11:21:24.098Z"
+    },
     {
       "version": "2026.7.1-2-v0.3.73",
       "mccVersion": "0.3.73",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.65",
       "openclawVersion": "2026.7.1",
       "releaseDate": "2026-07-17T12:35:48.871Z"
-    },
-    {
-      "version": "2026.6.10-v0.3.64",
-      "mccVersion": "0.3.64",
-      "openclawVersion": "2026.6.10",
-      "releaseDate": "2026-06-30T11:42:17.398Z"
     }
   ]
 }
