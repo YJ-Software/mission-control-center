@@ -8,6 +8,15 @@ const nextConfig: NextConfig = {
   // tree-shaken `.next/standalone/` tree that customers can extract + run
   // without `npm install`. Gated by env so dev workflow stays unchanged.
   ...(process.env.BUILD_STANDALONE === '1' ? { output: 'standalone' as const } : {}),
+  // Pin the file-tracing root to this directory. Next.js otherwise infers it
+  // from the nearest lockfile walking up, so a stray package.json anywhere
+  // above (`~/package.json` from an absent-minded `npm i`) silently moves the
+  // root to the home directory. Everything then lands under
+  // `.next/standalone/projects/mission-control-center/…`, which makes
+  // build-release.mjs's strip list — it deletes `standalone/<name>` — miss
+  // entirely, and the tarball ships `dist/` and `data/` whole. That is how a
+  // 27 MB release became 3.7 GB.
+  outputFileTracingRoot: __dirname,
   serverExternalPackages: ['better-sqlite3', 'node-pty'],
   // Next.js 16 dev mode blocks HMR/font/routes for non-allowlisted origins.
   // Dashboards are routinely opened over Tailscale (100.64.0.0/10), LAN, or

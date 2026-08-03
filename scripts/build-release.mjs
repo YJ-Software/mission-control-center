@@ -340,6 +340,19 @@ async function main() {
   }
 
   const sizeMb = (execFileSync('du', ['-sm', tarballPath]).toString().split('\t')[0] || '?').trim()
+  // A correct tarball is ~27 MB. It only grows this far past that when NFT
+  // over-copies the repo (see outputFileTracingRoot in next.config.ts), and the
+  // failure is silent: the build "succeeds" and publish uploads whatever it is
+  // handed. Fail here instead — a customer's upgrade downloads this file.
+  const MAX_TARBALL_MB = 120
+  if (Number(sizeMb) > MAX_TARBALL_MB) {
+    throw new Error(
+      `${tarballName} is ${sizeMb} MB (limit ${MAX_TARBALL_MB} MB).\n` +
+      `  Almost always means Next.js file tracing over-copied the repo root.\n` +
+      `  Check: du -sh .next/standalone/* — anything other than node_modules/\n` +
+      `  .next/ server.js and the runtime assets should not be there.`,
+    )
+  }
   console.log(`\n✓ Built ${tarballName} (${sizeMb} MB)`)
   console.log(`  → ${tarballPath}`)
   console.log(`\nInstall on target box:`)
