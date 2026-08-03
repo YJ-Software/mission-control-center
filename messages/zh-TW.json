@@ -582,6 +582,7 @@
         "arxivAI": "AI 領域論文預印本，量大",
         "arxivCL": "自然語言處理與 LLM 論文",
         "producthunt": "每日新產品發表",
+        "githubTrending": "每日竄升的開源專案（非官方產生器）",
         "coindesk": "加密貨幣市場與監管",
         "cointelegraph": "加密貨幣新聞，更新頻繁",
         "lobsters": "類 HN 的小型技術社群，訊噪比高",

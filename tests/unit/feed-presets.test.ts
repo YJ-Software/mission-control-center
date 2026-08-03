@@ -57,6 +57,20 @@ describe('FEED_PRESETS', () => {
     }
   })
 
+  it('has a description in every locale — the picker renders one per option', () => {
+    // `t('sources.presetDesc.<id>')` is interpolated straight into the <option>
+    // label, so a preset added without its blurb doesn't degrade quietly: the
+    // whole picker fails to render. Adding the entry and forgetting one of the
+    // three message files is the easy way to do that.
+    for (const locale of ['zh-TW', 'zh-CN', 'en'] as const) {
+      const desc = require(`../../messages/${locale}.json`)
+        .morningReport.sources.presetDesc as Record<string, string>
+      for (const p of FEED_PRESETS) {
+        expect(desc[p.id], `${locale} is missing sources.presetDesc.${p.id}`).toBeTruthy()
+      }
+    }
+  })
+
   it('does not offer Google News keyword RSS', () => {
     // It needs no setup and returns plenty, which makes it tempting — but its
     // items link to opaque news.google.com ids that never resolve to the

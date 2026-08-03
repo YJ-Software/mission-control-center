@@ -58,6 +58,12 @@ export const FEED_PRESETS: FeedPreset[] = [
   { id: 'arxivAI', group: 'research', label: 'arXiv cs.AI', url: 'http://export.arxiv.org/rss/cs.AI' },
   { id: 'arxivCL', group: 'research', label: 'arXiv cs.CL', url: 'http://export.arxiv.org/rss/cs.CL' },
   { id: 'producthunt', group: 'research', label: 'Product Hunt', url: 'https://www.producthunt.com/feed' },
+  // GitHub publishes no feed for its trending page — /trending.atom answers 406
+  // — so this is a third-party generator that scrapes it into RSS daily. Listed
+  // because it parsed clean (15 items, 15 distinct URLs, all github.com), but it
+  // is one volunteer's GitHub Pages site: if it ever goes stale, drop it rather
+  // than leaving a preset that quietly returns yesterday's list forever.
+  { id: 'githubTrending', group: 'research', label: 'GitHub Trending', url: 'https://mshibanami.github.io/GitHubTrendingRSS/daily/all.xml' },
 
   { id: 'coindesk', group: 'crypto', label: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
   { id: 'cointelegraph', group: 'crypto', label: 'Cointelegraph', url: 'https://cointelegraph.com/rss' },

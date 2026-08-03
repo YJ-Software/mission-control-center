@@ -582,6 +582,7 @@
         "arxivAI": "AI preprints, high volume",
         "arxivCL": "NLP and LLM papers",
         "producthunt": "New product launches, daily",
+        "githubTrending": "Repos trending today (unofficial generator)",
         "coindesk": "Crypto markets and regulation",
         "cointelegraph": "Crypto news, frequent updates",
         "lobsters": "Small HN-like community, high signal",
