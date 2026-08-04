@@ -2,19 +2,9 @@ import { NextResponse } from 'next/server'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { findOpenclawBin } from '@/lib/morning-report/openclaw'
+import { parseCliVersion, isUpdateAvailable } from '@/lib/version-compare'
 
 const execFileP = promisify(execFile)
-
-function compareVersion(a: string, b: string): number {
-  const pa = a.split('.').map((n) => parseInt(n, 10) || 0)
-  const pb = b.split('.').map((n) => parseInt(n, 10) || 0)
-  const len = Math.max(pa.length, pb.length, 3)
-  for (let i = 0; i < len; i++) {
-    const d = (pa[i] || 0) - (pb[i] || 0)
-    if (d !== 0) return d
-  }
-  return 0
-}
 
 async function readCurrentVersion(): Promise<string | null> {
   const bin = findOpenclawBin()
@@ -24,10 +14,10 @@ async function readCurrentVersion(): Promise<string | null> {
     //   "OpenClaw 2026.5.5 (b1abf9d) — One CLI to rule them all..."
     //   "OpenClaw 2026.7.1-2 (0790d9f) — ..."
     //   "2026.5.5"
-    // The build suffix (`-2`) is part of the version — a `[\d.]`-style match
-    // drops it and misreports which build is installed.
-    const match = stdout.match(/OpenClaw\s+v?(\d[\w.-]*)/) || stdout.match(/\b(\d+\.\d+(?:\.\d+)?[\w.-]*)/)
-    return match?.[1] ?? null
+    // The build suffix (`-2`) is part of the version — dropping it misreports
+    // which build is installed, and comparing it as a dotted segment loses it
+    // just as badly (`parseInt('1-2') === 1`).
+    return parseCliVersion(stdout, 'OpenClaw') || null
   } catch {
     return null
   }
@@ -57,7 +47,7 @@ export async function GET() {
       })
     }
     const latest = await readLatestVersion()
-    const hasUpdate = compareVersion(latest.version, current) > 0
+    const hasUpdate = isUpdateAvailable(current, latest.version)
     return NextResponse.json({
       installed: true,
       current,
