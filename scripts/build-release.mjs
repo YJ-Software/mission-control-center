@@ -19,7 +19,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import { tmpdir } from 'node:os'
@@ -278,6 +278,8 @@ async function main() {
     '.env.e2e.local',
     '.git',
     '.gitignore',
+    '.claude',         // dev tooling — skills/ ships our own release runbook otherwise
+    '.github',         // issue templates, CI config
     'data',            // runtime sqlite + morning-report output (possibly huge)
     'dist',            // previous release tarballs
     'docs',
@@ -311,9 +313,19 @@ async function main() {
   // install wizard (mem0-setup.ts, handoff-config.ts) resolves them relative
   // to process.cwd() and runs `uv sync` against them at install time. Copied
   // AFTER the strip step so the 'deploy' entry above doesn't nuke it.
+  //
+  // Sources only. Running these servers locally leaves a uv virtualenv next to
+  // them (`.venv` alone is ~460 MB) which is gitignored, so whether the copy
+  // blows past the tarball size limit depends on what the build machine has
+  // happened to run — filter the local-only dirs out rather than trusting the
+  // checkout to be clean. `uv sync` recreates them at install time anyway.
+  const MCP_LOCAL_ONLY = new Set(['.venv', 'venv', '__pycache__', 'node_modules', '.git', '.ruff_cache', '.pytest_cache'])
   const mcpSourceDir = join(ROOT, 'deploy', 'mcp')
   if (existsSync(mcpSourceDir)) {
-    cpSync(mcpSourceDir, join(STANDALONE, 'deploy', 'mcp'), { recursive: true })
+    cpSync(mcpSourceDir, join(STANDALONE, 'deploy', 'mcp'), {
+      recursive: true,
+      filter: (src) => !MCP_LOCAL_ONLY.has(basename(src)),
+    })
   }
 
   // Bundled default templates: copy under `assets/` (not `data/`) so that
