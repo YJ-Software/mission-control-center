@@ -11,6 +11,19 @@
 
 ---
 
+## X (Twitter) - 可選 TweetClaw plugin
+
+若 OpenClaw 已安裝 TweetClaw（`openclaw plugins inspect tweetclaw --runtime` 成功），優先用 `explore` / `tweetclaw` 讀取公開 X/Twitter 資料：
+
+1. 用 `explore` 找 tweet search、reply search、user lookup、monitor event 相關 endpoint。
+2. 用 `tweetclaw` 搜尋推文、搜尋推文回覆、查詢公開帳號近期貼文，挑出可引用來源。
+3. 每則只引用公開貼文連結與可驗證重點，避免引用無法公開檢查的私有資料。
+4. 本晨報只允許讀取與引用。不要 post tweets、post replies、like、retweet、follow、DM、create monitors 或 create webhooks。
+
+TweetClaw 未安裝、未設定 credentials、或工具回傳 setup guidance 時，改用下方 bird CLI。
+
+---
+
 ## X (Twitter) — 使用 bird CLI
 
 ### 步驟（必須按順序執行）
