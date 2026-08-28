@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.7.1-2-v0.3.78",
-    "mccVersion": "0.3.78",
+    "version": "2026.7.1-2-v0.3.79",
+    "mccVersion": "0.3.79",
     "openclawVersion": "2026.7.1-2",
-    "releaseDate": "2026-08-13T09:59:43.584Z",
-    "notes": "- docs(morning-report): social 晨報預設模板新增可選的 TweetClaw 來源流程。若 OpenClaw 已安裝 TweetClaw plugin 則優先用它讀取公開 X/Twitter 資料（僅限讀取與引用，明確禁止發文/回覆/按讚/轉推/追蹤/私訊/建立 monitor），未安裝或未設定 credentials 時自動 fallback 回原本的 bird CLI\n- docs(readme): 中英文 README 的晨報功能清單補上 TweetClaw 來源說明\n- docs(readme): 修正 acknowledgements 中失效的 x11vnc 連結（karlrunge.com → github.com/LibVNC/x11vnc）\n\n感謝 @kriptoburak 貢獻（#1）。",
+    "releaseDate": "2026-08-28T08:51:00.344Z",
+    "notes": "- feat(cs): outbound reply filter in shadow mode — flags openclaw noise (model-fallback banners, reasoning residue, tool/provider errors, internal paths) in AI replies to customers\n- Shadow mode only records; replies are never altered or blocked. It hangs off the existing cs-event mirror, so it adds no latency to the send path and needs no plugin change or gateway restart\n- New Customer Service → Settings card: shadow toggle, hit counts, per-rule tallies, and a per-hit diff of what the customer received vs what an enforcing filter would have sent\n- 'enforce' mode is stored but not yet settable — enforcing requires the plugin's message_sending hook to await a verdict",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-2-v0.3.78/mission-control-v0.3.78-linux-x64.tar.gz",
-        "sha256": "15cd7922182e8fcdf018644fb9d8e7cc213eb67b7e6ede98fb8ab765ee720015",
-        "size": 27117444
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-2-v0.3.79/mission-control-v0.3.79-linux-x64.tar.gz",
+        "sha256": "d3aa7a7fc95f472b587097042b1db7407cd8a35d938be566f909e41ae19b1f65",
+        "size": 26010679
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.7.1-2-v0.3.78",
+      "mccVersion": "0.3.78",
+      "openclawVersion": "2026.7.1-2",
+      "releaseDate": "2026-08-13T09:59:43.584Z"
+    },
     {
       "version": "2026.7.1-2-v0.3.77",
       "mccVersion": "0.3.77",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.69",
       "openclawVersion": "2026.7.1-2",
       "releaseDate": "2026-07-22T07:50:27.434Z"
-    },
-    {
-      "version": "2026.7.1-2-v0.3.68",
-      "mccVersion": "0.3.68",
-      "openclawVersion": "2026.7.1-2",
-      "releaseDate": "2026-07-22T07:32:32.879Z"
     }
   ]
 }
