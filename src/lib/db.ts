@@ -179,6 +179,20 @@ export function initDb() {
       operator_id TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS cs_outbound_filter_hits (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      channel_id TEXT,
+      mode TEXT NOT NULL,
+      outcome TEXT NOT NULL,
+      rule_ids TEXT NOT NULL,
+      matches TEXT NOT NULL,
+      original_text TEXT NOT NULL,
+      proposed_text TEXT,
+      created_at INTEGER DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_cs_filter_hits_created ON cs_outbound_filter_hits(created_at DESC);
+
     CREATE TABLE IF NOT EXISTS notifications (
       id TEXT PRIMARY KEY,
       type TEXT NOT NULL,

@@ -154,6 +154,24 @@ export const csAgentPause = sqliteTable('cs_agent_pause', {
   operatorId: text('operator_id'),
 })
 
+// Outbound reply filter log. One row per bot reply that tripped a rule in
+// src/lib/customer-service/outbound-filter.ts. In shadow mode this is the
+// whole feature: nothing is altered, we just record what an enforcing
+// filter *would* have done so the rules can be tuned against real traffic.
+// original_text is kept in full (replies are short, retention is 30 days).
+export const csOutboundFilterHits = sqliteTable('cs_outbound_filter_hits', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  channelId: text('channel_id'),             // 'line' | 'telegram' | … (mirror is channel-agnostic)
+  mode: text('mode').notNull(),              // mode in force when recorded: 'shadow' | 'enforce'
+  outcome: text('outcome').notNull(),        // 'rewrite' | 'block'
+  ruleIds: text('rule_ids').notNull(),       // JSON string[] — denormalised for cheap tallying
+  matches: text('matches').notNull(),        // JSON RuleMatch[] incl. the matched sample
+  originalText: text('original_text').notNull(),
+  proposedText: text('proposed_text'),       // null when the reply would have been blocked
+  createdAt: integer('created_at').default(sql`(unixepoch())`),
+})
+
 // Dashboard-wide notification feed (header bell + toast). Producers:
 // MCC upgrade check, OpenClaw upgrade, cs storage threshold, future
 // alerts. Read-state is per-row; "cleared" = deleted.

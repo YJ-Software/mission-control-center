@@ -9,6 +9,7 @@ import { StorageCard } from './storage-card'
 import { MemoryProviderForm } from './memory-provider-form'
 import { QuickReplyLlmCard } from './quick-reply-llm-card'
 import { PluginConfigCard } from './plugin-config-card'
+import { OutboundFilterCard } from './outbound-filter-card'
 
 interface AgentInfo {
   id: string
@@ -127,6 +128,8 @@ export function SettingsTab() {
       <PluginConfigCard />
 
       <LineChannelCard />
+
+      <OutboundFilterCard />
 
       <MemoryProviderForm />
 

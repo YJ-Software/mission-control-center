@@ -1906,6 +1906,39 @@
       "notDelivered": "NOT delivered to LINE",
       "hasUndelivered": "has undelivered replies"
     },
+    "outboundFilter": {
+      "title": "Outbound Filter (Shadow Mode)",
+      "description": "Inspects every AI reply sent to customers and flags openclaw noise — model fallback banners, reasoning residue, tool errors, internal paths. It only records; nothing is blocked. Replies go out as normal and this log shows what an enforcing filter would have done, so you can confirm the rules don't eat real answers.",
+      "shadowNote": "Shadow mode piggybacks on the existing cs-event mirror rather than the send path, so it adds no latency and needs no gateway restart. Once a few days of samples show no false positives, wire it into the plugin's message_sending hook to actually enforce.",
+      "mode": {
+        "off": "Off",
+        "shadow": "Shadow",
+        "enforce": "Enforcing"
+      },
+      "turnOn": "Enable shadow mode",
+      "turnOff": "Disable",
+      "clear": "Clear log",
+      "loading": "Loading…",
+      "empty": "No hits yet — no false positives, and no noise caught either.",
+      "emptyOff": "Shadow mode is off; nothing is being recorded.",
+      "recentHits": "Recent hits",
+      "byRule": "Hits per rule",
+      "stats": {
+        "total": "Total hits",
+        "last24h": "Last 24h",
+        "wouldBlock": "Would be blocked"
+      },
+      "outcome": {
+        "allow": "Allowed",
+        "rewrite": "Would rewrite",
+        "block": "Would block"
+      },
+      "detail": {
+        "original": "What the customer actually received",
+        "proposed": "What would be sent instead",
+        "nothingSent": "(blocked entirely — no message would be sent)"
+      }
+    },
     "quickReplyLlm": {
       "title": "Quick Reply LLM",
       "description": "Used by both AI quick-reply suggestions and the handoff memory extractor.",

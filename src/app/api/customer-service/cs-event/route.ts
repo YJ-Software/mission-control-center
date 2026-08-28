@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { recordMessage, maybeRefreshProfile, type Direction, type MessageType } from '@/lib/customer-service/cs-store'
+import { inspectOutbound } from '@/lib/customer-service/outbound-filter'
 import { fetchMessageContent } from '@/lib/customer-service/line-api'
 import { saveImage, CS_MEDIA_DIR } from '@/lib/customer-service/cs-media'
 import { writeFileSync } from 'fs'
@@ -124,6 +125,14 @@ export async function POST(req: NextRequest) {
       packageId: raw.packageId ?? raw.stickerPackageId,
       stickerId: raw.stickerId,
     }
+  }
+
+  // Outbound reply filter, shadow mode. The plugin's message_sending mirror
+  // gives us the exact text the customer is about to receive, so we evaluate
+  // it here rather than adding a second call on the send path. Shadow mode
+  // only logs — the reply has already left by the time we see it.
+  if (body.direction === 'bot' && t === 'text' && text) {
+    inspectOutbound({ userId: body.userId, text, channelId: body.channelId ?? null })
   }
 
   const stored = recordMessage({

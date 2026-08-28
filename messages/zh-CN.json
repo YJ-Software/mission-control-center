@@ -1906,6 +1906,39 @@
       "notDelivered": "未送达 LINE",
       "hasUndelivered": "有未送达讯息"
     },
+    "outboundFilter": {
+      "title": "回复过滤 (Shadow Mode)",
+      "description": "检查 AI 发给客户的每则回复,标记出 openclaw 的杂讯(模型 fallback 横幅、推理残留、工具错误、内部路径)。目前只记录不拦截 —— 消息照常发出,这里只留下「如果拦截会怎样」的记录,让你先确认规则不会误杀真正的回复。",
+      "shadowNote": "Shadow mode 依靠既有的 cs-event 镜像运作,不在发送路径上,所以不会增加延迟、也不需要重启 gateway。累积几天的样本、确认规则没误判之后,再接上 plugin 的 message_sending hook 改成真的拦截。",
+      "mode": {
+        "off": "已停用",
+        "shadow": "Shadow",
+        "enforce": "拦截中"
+      },
+      "turnOn": "启用 Shadow Mode",
+      "turnOff": "停用",
+      "clear": "清空记录",
+      "loading": "加载中…",
+      "empty": "还没有任何命中 —— 规则没有误判,也还没抓到杂讯。",
+      "emptyOff": "Shadow mode 已停用,不会记录任何东西。",
+      "recentHits": "最近命中",
+      "byRule": "各规则命中次数",
+      "stats": {
+        "total": "累计命中",
+        "last24h": "24 小时内",
+        "wouldBlock": "会被整则拦下"
+      },
+      "outcome": {
+        "allow": "放行",
+        "rewrite": "会被改写",
+        "block": "会被拦下"
+      },
+      "detail": {
+        "original": "客户实际收到的内容",
+        "proposed": "拦截后会发出的内容",
+        "nothingSent": "(整则拦下,不会发出任何消息)"
+      }
+    },
     "quickReplyLlm": {
       "title": "Quick Reply LLM",
       "description": "对话中的 AI 自动建议 quick reply 与接手后沉淀客户记忆都会用这颗 LLM。",
