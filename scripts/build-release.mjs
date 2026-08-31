@@ -285,6 +285,14 @@ async function main() {
     'docs',
     'tests',
     'playwright-report',
+    // SECURITY: Playwright run artifacts. Traces capture full request/response
+    // bodies and videos capture the dashboard UI, so an E2E run before a build
+    // would otherwise ship session cookies and provider API keys to customers
+    // (and 50+ MB of webm with them). Sibling of playwright-report, missed when
+    // that one was added.
+    'test-results',
+    '.vscode',
+    '.superpowers',
     'src',             // compiled into .next/ already
     'deploy',
     'scripts',
