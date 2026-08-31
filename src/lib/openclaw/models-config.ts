@@ -231,34 +231,104 @@ export interface AgentListEntry {
 
 const SAFE_AGENT_ID = /^[a-zA-Z0-9_.-]+$/
 
-export async function getAgentsList(): Promise<AgentListEntry[]> {
-  const r = await runOpenclaw(['config', 'get', 'agents.list'])
-  if (r.code !== 0) {
-    // Fresh openclaw.json doesn't have agents.list until something writes it.
-    if (r.stderr.includes('not found')) return []
-    throw new Error(`config get failed (${r.code}): ${r.stderr.trim()}`)
-  }
-  let parsed: Array<{ id?: string; model?: AgentModelOverride }>
-  try {
-    parsed = extractJson(r.stdout) as Array<{ id?: string; model?: AgentModelOverride }>
-  } catch {
-    return []
-  }
-  if (!Array.isArray(parsed)) return []
-  return parsed
-    .filter((e) => typeof e?.id === 'string' && SAFE_AGENT_ID.test(e.id))
-    .map((e) => ({ id: e.id as string, model: e.model }))
+/** OpenClaw ≥2026.8.1 keeps per-agent config in the keyed map `agents.entries`;
+ * older builds used the `agents.list` array. Both are read; writes go back in
+ * whichever shape this OpenClaw actually uses. */
+export type AgentsConfigShape = 'entries' | 'list'
+
+type AgentEntryObject = Record<string, unknown>
+
+function isPlainObject(v: unknown): v is AgentEntryObject {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-async function writeAgentsList(list: AgentListEntry[]): Promise<void> {
-  const r = await runOpenclaw([
-    'config',
-    'set',
-    'agents.list',
-    JSON.stringify(list),
-    '--strict-json',
-  ])
-  if (r.code !== 0) throw new Error(`config set failed (${r.code}): ${r.stderr.trim()}`)
+export function detectAgentsShape(agents: unknown): AgentsConfigShape {
+  if (isPlainObject(agents) && isPlainObject(agents.entries)) return 'entries'
+  // Legacy is also the safe default: pre-2026.8.1 builds reject agents.entries
+  // outright, so a config with neither key must be written the old way.
+  return 'list'
+}
+
+export function agentsToList(agents: unknown): AgentListEntry[] {
+  if (!isPlainObject(agents)) return []
+  if (isPlainObject(agents.entries)) {
+    return Object.entries(agents.entries)
+      .filter(([id]) => SAFE_AGENT_ID.test(id))
+      .map(([id, e]) => ({
+        id,
+        model: isPlainObject(e) ? (e.model as AgentModelOverride | undefined) : undefined,
+      }))
+  }
+  if (Array.isArray(agents.list)) {
+    return (agents.list as Array<{ id?: string; model?: AgentModelOverride }>)
+      .filter((e) => typeof e?.id === 'string' && SAFE_AGENT_ID.test(e.id))
+      .map((e) => ({ id: e.id as string, model: e.model }))
+  }
+  return []
+}
+
+/** Compute the new value for the agents sub-path with one agent's model
+ * override set (or removed, when `override` is undefined).
+ *
+ * Read-modify-write of the whole container is deliberate on both shapes:
+ * entries carry per-agent config far beyond `model`, and rebuilding the map
+ * from our reduced {id, model} view would delete it. It also keeps the agent
+ * id out of the config path, so an id containing dots can't reach into
+ * somewhere else in the config. */
+export function applyAgentOverride(
+  agents: unknown,
+  agentId: string,
+  override: AgentModelOverride | undefined,
+): { path: string; value: unknown } {
+  if (!SAFE_AGENT_ID.test(agentId)) throw new Error(`invalid agent id: ${agentId}`)
+  const shape = detectAgentsShape(agents)
+  const root = isPlainObject(agents) ? agents : {}
+
+  if (shape === 'entries') {
+    const entries = isPlainObject(root.entries) ? { ...root.entries } : {}
+    const existing = isPlainObject(entries[agentId]) ? { ...entries[agentId] } : {}
+    if (override === undefined) {
+      if (!(agentId in entries)) return { path: 'agents.entries', value: entries }
+      delete existing.model
+    } else {
+      existing.model = override
+    }
+    entries[agentId] = existing
+    return { path: 'agents.entries', value: entries }
+  }
+
+  const list = Array.isArray(root.list)
+    ? (root.list as AgentEntryObject[]).map((e) => (isPlainObject(e) ? { ...e } : e))
+    : []
+  const idx = list.findIndex((e) => isPlainObject(e) && e.id === agentId)
+  if (override === undefined) {
+    if (idx >= 0) delete (list[idx] as AgentEntryObject).model
+  } else if (idx >= 0) {
+    ;(list[idx] as AgentEntryObject).model = override
+  } else {
+    list.push({ id: agentId, model: override })
+  }
+  return { path: 'agents.list', value: list }
+}
+
+/** Read the whole `agents` object. Returns {} when this OpenClaw has no agents
+ * config at all — including 2026.8.1's "Unknown config path", which the old
+ * `not found`-only check mistook for a hard failure and turned into a 500. */
+async function readAgentsConfig(): Promise<unknown> {
+  const r = await runOpenclaw(['config', 'get', 'agents'])
+  if (r.code !== 0) {
+    if (/not found|unknown config path/i.test(r.stderr)) return {}
+    throw new Error(`config get failed (${r.code}): ${r.stderr.trim()}`)
+  }
+  try {
+    return extractJson(r.stdout)
+  } catch {
+    return {}
+  }
+}
+
+export async function getAgentsList(): Promise<AgentListEntry[]> {
+  return agentsToList(await readAgentsConfig())
 }
 
 export async function setAgentModelOverride(
@@ -272,28 +342,21 @@ export async function setAgentModelOverride(
     if (!Array.isArray(override.fallbacks)) throw new Error('fallbacks must be an array')
     for (const m of override.fallbacks) assertSafeModelId(m)
   }
-  // Read-modify-write the whole agents.list because `config set` replaces
-  // array indexes only when the agent is already in the list; on a fresh
-  // openclaw.json with no agents.list we'd otherwise have no target index.
-  const list = await getAgentsList()
-  const idx = list.findIndex((e) => e.id === agentId)
-  if (idx >= 0) {
-    list[idx] = { ...list[idx], model: override }
-  } else {
-    list.push({ id: agentId, model: override })
-  }
-  await writeAgentsList(list)
+  await writeAgentOverride(agentId, override)
 }
 
 export async function clearAgentModelOverride(agentId: string): Promise<void> {
   if (!SAFE_AGENT_ID.test(agentId)) throw new Error(`invalid agent id: ${agentId}`)
-  const list = await getAgentsList()
-  const idx = list.findIndex((e) => e.id === agentId)
-  if (idx < 0) return // already absent — no-op
-  const next = { ...list[idx] }
-  delete next.model
-  list[idx] = next
-  await writeAgentsList(list)
+  await writeAgentOverride(agentId, undefined)
+}
+
+async function writeAgentOverride(
+  agentId: string,
+  override: AgentModelOverride | undefined,
+): Promise<void> {
+  const { path, value } = applyAgentOverride(await readAgentsConfig(), agentId, override)
+  const r = await runOpenclaw(['config', 'set', path, JSON.stringify(value), '--strict-json'])
+  if (r.code !== 0) throw new Error(`config set failed (${r.code}): ${r.stderr.trim()}`)
 }
 
 /** Read the TRUE global defaults (agents.defaults.model) from openclaw.json,
