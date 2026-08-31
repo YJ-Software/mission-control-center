@@ -9,13 +9,61 @@ import { resolveHome, generatePassword } from '@/lib/headless-vnc'
 
 export type InstallTarget = 'obsidian' | 'couchdb' | 'headless-deps'
 
-function getLatestObsidianVersion(): string {
+export interface ObsidianDeb {
+  version: string
+  url: string
+}
+
+/** Obsidian ships mobile builds from the same repo as desktop ones, so
+ * `/releases/latest` can be an APK-only release with no .deb at all (v1.13.8
+ * was exactly that). Walk the releases newest-first and take the first one
+ * that actually publishes an amd64 .deb, using the asset's own URL instead of
+ * reconstructing a filename. */
+export function pickObsidianDesktopDeb(releases: unknown): ObsidianDeb | null {
+  if (!Array.isArray(releases)) return null
+  for (const rel of releases) {
+    if (!rel || typeof rel !== 'object') continue
+    const r = rel as { tag_name?: unknown; prerelease?: unknown; assets?: unknown }
+    if (r.prerelease === true) continue
+    if (typeof r.tag_name !== 'string' || !Array.isArray(r.assets)) continue
+    const asset = (r.assets as Array<{ name?: unknown; browser_download_url?: unknown }>).find(
+      (a) =>
+        typeof a?.name === 'string' &&
+        /^obsidian_.+_amd64\.deb$/i.test(a.name) &&
+        typeof a.browser_download_url === 'string',
+    )
+    if (!asset) continue
+    return {
+      version: r.tag_name.replace(/^v/, ''),
+      url: asset.browser_download_url as string,
+    }
+  }
+  return null
+}
+
+// Pinned last resort: used only when the releases API is unreachable or rate
+// limited (unauthenticated GitHub allows 60 req/h per IP). Known to exist.
+const FALLBACK_DEB: ObsidianDeb = {
+  version: '1.13.7',
+  url: 'https://github.com/obsidianmd/obsidian-releases/releases/download/v1.13.7/obsidian_1.13.7_amd64.deb',
+}
+
+function getLatestObsidianDeb(): ObsidianDeb {
   try {
-    const url = execFileSync('curl', ['-sL', '-o', '/dev/null', '-w', '%{url_effective}', 'https://github.com/obsidianmd/obsidian-releases/releases/latest'], { encoding: 'utf8', timeout: 10000 }).trim()
-    const version = url.split('/').pop()?.replace('v', '')
-    if (version && /^\d+\.\d+\.\d+$/.test(version)) return version
+    const out = execFileSync(
+      'curl',
+      [
+        '-sfL',
+        '-H',
+        'Accept: application/vnd.github+json',
+        'https://api.github.com/repos/obsidianmd/obsidian-releases/releases?per_page=20',
+      ],
+      { encoding: 'utf8', timeout: 15000, maxBuffer: 8 * 1024 * 1024 },
+    )
+    const picked = pickObsidianDesktopDeb(JSON.parse(out))
+    if (picked) return picked
   } catch {}
-  return '1.12.4' // fallback
+  return FALLBACK_DEB
 }
 
 /** Generate openbox rc.xml that maximizes all windows by default */
@@ -136,7 +184,7 @@ WantedBy=default.target
 export function installObsidian(locale: string = 'zh-TW'): ReadableStream<Uint8Array> {
   const homeDir = os.homedir()
   const unitDir = path.join(homeDir, '.config/systemd/user')
-  const obsidianVersion = getLatestObsidianVersion()
+  const obsidianDeb = getLatestObsidianDeb()
 
   // Auto-generate VNC password if not set
   let vncPassword = getObsidianConfig('vnc_password')
@@ -158,7 +206,7 @@ export function installObsidian(locale: string = 'zh-TW'): ReadableStream<Uint8A
 
   const commands = [
     { label: 'Installing Xvfb, openbox, x11vnc, websockify and dependencies', cmd: 'sudo', args: ['apt', 'install', '-y', 'xvfb', 'openbox', 'x11vnc', 'websockify', 'novnc', 'xdg-utils', 'libnotify4', 'libnss3', 'libsecret-1-0'] },
-    { label: `Downloading Obsidian v${obsidianVersion}`, cmd: 'wget', args: ['-q', '--show-progress', '-O', '/tmp/obsidian.deb', `https://github.com/obsidianmd/obsidian-releases/releases/download/v${obsidianVersion}/obsidian_${obsidianVersion}_amd64.deb`] },
+    { label: `Downloading Obsidian v${obsidianDeb.version}`, cmd: 'wget', args: ['-q', '--show-progress', '-O', '/tmp/obsidian.deb', obsidianDeb.url] },
     // Use `apt install <file>` so missing runtime libraries are auto-resolved;
     // `dpkg -i` alone fails on the first missing dependency and leaves the
     // system in a half-installed state.
