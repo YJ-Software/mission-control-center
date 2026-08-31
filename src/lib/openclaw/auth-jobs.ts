@@ -6,7 +6,7 @@ import * as pty from 'node-pty'
 import type { JobSpec } from '../jobs/runner'
 import type { LogStream, TriggerSource } from '../jobs/types'
 import { copyProfile, readProfiles } from './auth-profiles'
-import { findProvider } from './auth-providers'
+import { findProvider, type ProviderSpec } from './auth-providers'
 
 let cachedPath: string | null = null
 function augmentedPath(): string {
@@ -38,6 +38,105 @@ function augmentedPath(): string {
 
 function childEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return { ...process.env, ...extra, PATH: augmentedPath() }
+}
+
+// Run an openclaw subcommand and capture stdout. Used by the plugin probe,
+// which has to read `plugins list` / `plugins search` output rather than just
+// an exit code.
+function captureOpenclaw(args: string[]): Promise<{ code: number; stdout: string }> {
+  return new Promise((resolve) => {
+    const child = spawn('openclaw', ['--no-color', ...args], {
+      env: childEnv(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (d: string) => (stdout += d))
+    child.stderr.on('data', () => {})
+    child.on('error', () => resolve({ code: 127, stdout: '' }))
+    child.on('close', (code) => resolve({ code: code ?? 0, stdout }))
+  })
+}
+
+/** Indirection so the consent guard can be unit-tested without a live
+ * OpenClaw. `listed` = plugin is installed and registered; `available` = this
+ * OpenClaw build knows the plugin exists at all (false on older versions). */
+export interface PluginProbe {
+  listed: (pluginId: string) => Promise<boolean>
+  available: (pluginId: string) => Promise<boolean>
+  install: (pluginPackage: string) => Promise<number>
+}
+
+export const realPluginProbe: PluginProbe = {
+  listed: async (pluginId) => {
+    const { code, stdout } = await captureOpenclaw(['plugins', 'list'])
+    if (code !== 0) return false
+    // `plugins list` renders a table; the id sits in its own column.
+    return new RegExp(`\\b${pluginId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(stdout)
+  },
+  available: async (pluginId) => {
+    const { code, stdout } = await captureOpenclaw(['plugins', 'search', pluginId])
+    if (code !== 0) return false
+    return /clawhub:|Install:/i.test(stdout)
+  },
+  install: async (pluginPackage) => {
+    const { code } = await captureOpenclaw([
+      'plugins',
+      'install',
+      pluginPackage,
+      '--accept-capabilities',
+    ])
+    return code
+  },
+}
+
+/** Make sure a plugin-backed provider's plugin is installed and
+ * capability-consented BEFORE any auth profile is written for it.
+ *
+ * Returns 0 to continue. Returns non-zero only in the one case where
+ * continuing would brick the gateway: this OpenClaw knows the plugin, it is
+ * not installed, and we failed to install it. */
+export async function ensureProviderPlugin(
+  spec: ProviderSpec | undefined,
+  probe: PluginProbe,
+  log: (s: LogStream, t: string) => void,
+): Promise<number> {
+  if (!spec?.pluginId || !spec.pluginPackage) return 0
+  const { pluginId, pluginPackage } = spec
+
+  if (await probe.listed(pluginId)) {
+    log('system', `plugin ${pluginId} already installed`)
+    return 0
+  }
+  if (!(await probe.available(pluginId))) {
+    // Older OpenClaw with no such plugin — the models.providers template path
+    // still applies, so leave auth alone.
+    log('system', `no ${pluginId} plugin on this OpenClaw — using provider config`)
+    return 0
+  }
+
+  log('system', `installing ${pluginPackage} with capability consent`)
+  const code = await probe.install(pluginPackage)
+  if (code !== 0) {
+    log(
+      'stderr',
+      `failed to install ${pluginPackage} (exit ${code}). Refusing to save the ` +
+        `key: OpenClaw would demand capability consent for plugin "${pluginId}" ` +
+        `at gateway startup and refuse to start, with no way to grant it.`,
+    )
+    return code
+  }
+  log('system', `installed ${pluginId}`)
+  return 0
+}
+
+/** Phase wrapper for the guard above. Must run BEFORE the auth phase. */
+function ensureProviderPluginPhase(providerId: string) {
+  return {
+    name: `ensure ${providerId} plugin (capability consent)`,
+    inline: (log: (s: LogStream, t: string) => void) =>
+      ensureProviderPlugin(findProvider(providerId), realPluginProbe, log),
+  }
 }
 
 // Spawn `openclaw config get models.providers.<id>` and resolve true if
@@ -216,6 +315,7 @@ export function buildDeviceCodeLoginJob(opts: DeviceCodeLoginOptions): JobSpec {
     label: `Login ${provider} (device code) → agent ${agent}`,
     triggeredBy,
     phases: [
+      ensureProviderPluginPhase(provider),
       {
         name: `openclaw models auth login --provider ${provider} --device-code`,
         inline: async (log, ctx) => {
@@ -335,6 +435,7 @@ export function buildPasteApiKeyJob(opts: PasteApiKeyOptions): JobSpec {
     label: `Paste API key for ${provider} → agent ${agent}`,
     triggeredBy,
     phases: [
+      ensureProviderPluginPhase(provider),
       {
         name: `openclaw models auth paste-api-key --provider ${provider}`,
         inline: async (log) => {
