@@ -1,5 +1,22 @@
 # OCD deployer patch — OpenClaw 2026.8.1 plugin trust gate
 
+> **RESOLVED 2026-09-01.** TWNoC shipped the deployer fix and a fresh
+> WHMCS/OCD deploy onto a rebuilt throwaway VPS now completes green in 7.4
+> minutes. Verified on the deployed box:
+>
+> | Issue | Outcome |
+> |---|---|
+> | 1 — `plugins install` trust gate | **Fixed.** `lossless-claw` 1.0.0 installs and comes up `enabled`, sourced from `~/.openclaw/npm/…`. Not a stale config entry — the plugin is really there. |
+> | 2 — rescue block blames the gateway | **Not exercised.** Nothing failed this run, so the rescue path never ran. The fix is unverified, not disproven. |
+> | 3 — qwen key seeded in one lane only | **Fixed.** The key is in both `models.providers.qwen-portal.apiKey` and the auth store, and the `cron-job` E2E spec passes on a fresh deploy — it had failed for the entire previous run. |
+> | 3b — the issued key was dead | **Fixed.** This deploy's key authenticates and lists models against `https://spark.gbox.tw/v1`. |
+>
+> One incidental note for whoever reads the logs next: on 2026.8.1 the auth
+> store moved to `~/.openclaw/state/openclaw.sqlite`, so the path in Issue 3
+> below is out of date. The lane split itself still holds.
+>
+> Everything below is the original report, kept as filed.
+
 **Status:** deployer-side fix (TWNoC OCD ansible). NOT a Mission Control bug.
 Found during the OpenClaw 2026.8.1 E2E on the throwaway VPS, 2026-08-31.
 
