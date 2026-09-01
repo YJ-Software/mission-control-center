@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.8.1-v0.3.81",
-    "mccVersion": "0.3.81",
-    "openclawVersion": "2026.8.1",
-    "releaseDate": "2026-09-01T15:10:32.766Z",
-    "notes": "- fix(cs): close the outbound-filter leaks found by backtesting the shadow-mode rules against all 146 historical bot replies\n- New block rules: llm-request-failed (the most common leak — reached a real customer on 2026-08-29) and model-meta (the model narrating its own tooling instead of answering)\n- tool-error now also matches openclaw's tool-failure banner; internal-path and runtime-mention changed from strip to block, because excising a path from machine output left a worse message than the original\n- Backtest after the change: 22 of 146 flagged, all genuine noise, zero false positives — the same 124 real customer replies still pass untouched\n- fix(cs): the cs-event mirror no longer records non-LINE channels, which was filing operator Telegram traffic as a customer conversation",
+    "version": "2026.8.2-v0.3.82",
+    "mccVersion": "0.3.82",
+    "openclawVersion": "2026.8.2",
+    "releaseDate": "2026-09-01T18:19:10.296Z",
+    "notes": "- 配對 OpenClaw 2026.8.2：在 throwaway 上實測 17/17 E2E 全綠、gateway 全程零重啟\n- feat(browser): /browser 啟動時自動把 OpenCLI extension 載入 Chrome。先前只在 Chromium 上用 --load-extension，而安裝程序裝的是 Google Chrome（該旗標無效），所以 extension 一直躺在 ~/.opencli/extension 沒被載入，要手動去 chrome://extensions 開。現改以 CDP 載入並掛在 chrome-headless 的 ExecStartPost —— 這個載入不會留存，每次 Chrome 啟動都要重下，因此也涵蓋 systemd 自行重啟的情況。載入失敗一律 exit 0，不會讓正常的瀏覽器被判定為故障\n- fix(config): 支援 openclaw.json 的 SecretRef。把明文憑證搬進 secret store 後，設定欄位會變成 {source,provider,id} 物件；MCC 原本當字串讀，而物件是 truthy 導致 fallback 失效，會把物件當 gateway token 送出並靜默斷線。現在一律先解析，env/file 來源會解出實值，store 來源（設計上不可讀）回報明確原因，且永不回傳物件\n- docs(readme): 移除已下架的任務／聯絡人／行事曆／內容管理四個模組，並修正資料表數量與遺漏的 csOutboundFilterHits",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.8.1-v0.3.81/mission-control-v0.3.81-linux-x64.tar.gz",
-        "sha256": "5707de7bccc3d6411a123560fc6c5075b0c47f4d17eb2300989e948488436a97",
-        "size": 26080064
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.8.2-v0.3.82/mission-control-v0.3.82-linux-x64.tar.gz",
+        "sha256": "4380447983ef3e6fdf281ad0eaab85b2e69c984187aab3549294bd9d41fcee44",
+        "size": 26850219
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.8.1-v0.3.81",
+      "mccVersion": "0.3.81",
+      "openclawVersion": "2026.8.1",
+      "releaseDate": "2026-09-01T15:10:32.766Z"
+    },
     {
       "version": "2026.8.1-v0.3.80",
       "mccVersion": "0.3.80",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.72",
       "openclawVersion": "2026.7.1-2",
       "releaseDate": "2026-07-28T08:57:45.851Z"
-    },
-    {
-      "version": "2026.7.1-2-v0.3.71",
-      "mccVersion": "0.3.71",
-      "openclawVersion": "2026.7.1-2",
-      "releaseDate": "2026-07-26T06:52:01.234Z"
     }
   ]
 }
