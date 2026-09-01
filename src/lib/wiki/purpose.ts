@@ -33,6 +33,12 @@ import { settings } from '@/lib/schema'
 import { eq } from 'drizzle-orm'
 import { getServerEnv } from '@/lib/server-env'
 import { allowPlugins } from '@/lib/plugins/allowlist'
+import {
+  ensurePluginConsented,
+  realPluginProbe,
+  type ConsentLog,
+  type PluginProbe,
+} from '@/lib/openclaw/plugin-consent'
 
 const execFileAsync = promisify(execFile)
 
@@ -214,8 +220,49 @@ async function restartGateway(): Promise<string> {
  * in customer-service/memory-backend. Callers that switch to customer-service
  * should invoke that step too (the customer-service API route does).
  */
+/** The EXTERNAL plugin a purpose needs before its config can be applied.
+ *
+ * memory-wiki ships with OpenClaw (stock:memory-wiki/index.js), so only the
+ * agent purpose has anything to install. */
+export function requiredExternalPlugin(
+  purpose: WikiPurpose,
+): { id: string; pkg: string } | null {
+  return purpose === 'agent' ? { id: 'memory-lancedb', pkg: '@openclaw/memory-lancedb' } : null
+}
+
+/** Install + consent to the purpose's external plugin before anything enables
+ * it in openclaw.json.
+ *
+ * Without this, applying the agent purpose writes
+ * plugins.entries["memory-lancedb"].enabled = true and points
+ * plugins.slots.memory at it, and OpenClaw 2026.8.1 then refuses to report the
+ * gateway ready ("requires capability consent") and restart-loops. Returns 0
+ * to continue; non-zero means the caller must NOT write the config. */
+export async function ensurePurposePlugins(
+  purpose: WikiPurpose,
+  probe: PluginProbe = realPluginProbe,
+  log: ConsentLog = () => {},
+): Promise<number> {
+  const required = requiredExternalPlugin(purpose)
+  if (!required) return 0
+  return ensurePluginConsented(required.id, required.pkg, probe, log)
+}
+
 export async function setPurpose(purpose: WikiPurpose): Promise<{ output: string }> {
   if (!existsSync(OPENCLAW_JSON)) throw new Error('openclaw.json missing — run the wiki install wizard first')
+
+  // Before anything is written: the config below enables an external plugin and
+  // then restarts the gateway. If the plugin is not consented, that restart
+  // never comes back.
+  const notes: string[] = []
+  const consent = await ensurePurposePlugins(purpose, realPluginProbe, (_s, t) => notes.push(t))
+  if (consent !== 0) {
+    throw new Error(
+      `無法啟用 ${requiredExternalPlugin(purpose)?.id}（capability consent 失敗）。` +
+        `已停止套用，openclaw.json 未變更、gateway 未重啟 —— 否則 gateway 會拒絕啟動並無限重啟。\n` +
+        notes.join('\n'),
+    )
+  }
 
   setSetting(PURPOSE_KEY, purpose)
 

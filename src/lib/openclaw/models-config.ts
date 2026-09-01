@@ -4,7 +4,9 @@ import os from 'node:os'
 import path from 'node:path'
 
 let cachedPath: string | null = null
-function augmentedPath(): string {
+/** PATH with the usual openclaw install locations folded in, so a spawn works
+ * from a systemd unit whose PATH is minimal. Shared with auth-profiles.ts. */
+export function augmentedPath(): string {
   if (cachedPath !== null) return cachedPath
   const home = os.homedir()
   const candidates = [

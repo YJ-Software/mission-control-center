@@ -22,6 +22,7 @@ import { db } from '@/lib/db'
 import { settings } from '@/lib/schema'
 import { eq } from 'drizzle-orm'
 import { applyPurposeToConfig, getPurpose } from '@/lib/wiki/purpose'
+import { ensurePluginConsented, realPluginProbe } from '@/lib/openclaw/plugin-consent'
 
 const execFileAsync = promisify(execFile)
 
@@ -62,12 +63,28 @@ const OPENCLAW_NPM_PROJECTS = join(homedir(), '.openclaw', 'npm', 'projects')
 /** memory-lancedb is an EXTERNAL OpenClaw plugin (`@openclaw/memory-lancedb`)
  *  since 2026.6.x — it must be `openclaw plugins install`ed, not just
  *  referenced in openclaw.json. Detect its installed npm project dir. */
-function lancedbPluginInstalled(): boolean {
+function lancedbPluginPresent(): boolean {
   try {
     return existsSync(OPENCLAW_NPM_PROJECTS) &&
       readdirSync(OPENCLAW_NPM_PROJECTS).some((d) => d.startsWith('openclaw-memory-lancedb-'))
   } catch {
     return false
+  }
+}
+
+/** Whether memory-lancedb can actually be enabled — i.e. OpenClaw lists it,
+ *  which means installed AND capability-consented.
+ *
+ *  The npm project dir alone is not enough: OpenClaw's startup repair
+ *  npm-installs a configured-but-missing plugin by itself, so the dir turns up
+ *  on a box where the plugin is still unconsented and still stops the gateway
+ *  from starting. Reporting "已安裝" there sends the operator looking in the
+ *  wrong place. Falls back to the dir check only if the CLI is unusable. */
+async function lancedbPluginUsable(): Promise<boolean> {
+  try {
+    return await realPluginProbe.listed('memory-lancedb')
+  } catch {
+    return lancedbPluginPresent()
   }
 }
 
@@ -164,22 +181,33 @@ export async function detect(): Promise<DetectResult> {
     bgeM3Available,
     embeddingsWork,
     openclawConfigured,
-    lancedbPluginInstalled: lancedbPluginInstalled(),
+    lancedbPluginInstalled: await lancedbPluginUsable(),
     vaultExists: existsSync(DEFAULT_WIKI_VAULT),
     defuddleBin: await which('defuddle'),
   }
 }
 
-/** Install the external memory-lancedb plugin if missing. Idempotent — skips
- *  when the plugin's npm project dir already exists. A newly installed plugin
+/** Install + capability-consent the external memory-lancedb plugin. Idempotent
+ *  — skips when OpenClaw already lists the plugin. A newly installed plugin
  *  only loads after a gateway restart, so we restart on fresh install. */
 async function ensureLancedbPlugin(progress: Progress): Promise<void> {
-  if (lancedbPluginInstalled()) {
-    progress('install-lancedb-plugin', 'memory-lancedb plugin 已安裝')
-    return
+  // The npm project dir is NOT proof the plugin is usable: OpenClaw's startup
+  // repair npm-installs a configured-but-missing plugin on its own, so the dir
+  // can exist while the plugin is still absent from `plugins list` and still
+  // blocks gateway startup for want of capability consent. Probe consent, and
+  // install WITH --accept-capabilities — otherwise enabling it below bricks the
+  // gateway on OpenClaw 2026.8.1.
+  const code = await ensurePluginConsented(
+    'memory-lancedb',
+    '@openclaw/memory-lancedb',
+    realPluginProbe,
+    (_stream, text) => progress('install-lancedb-plugin', text),
+  )
+  if (code !== 0) {
+    throw new Error(
+      'memory-lancedb 安裝或 capability consent 失敗 —— 中止，避免 gateway 被設定成無法啟動',
+    )
   }
-  progress('install-lancedb-plugin', '安裝 @openclaw/memory-lancedb plugin...')
-  await execFileAsync('openclaw', ['plugins', 'install', '@openclaw/memory-lancedb'], { timeout: 180_000 })
   // Plugin code is only picked up after a gateway restart.
   try {
     await execFileAsync('openclaw', ['gateway', 'restart'], { timeout: 60_000 })
