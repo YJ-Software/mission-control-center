@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.7.1-2-v0.3.79",
-    "mccVersion": "0.3.79",
-    "openclawVersion": "2026.7.1-2",
-    "releaseDate": "2026-08-28T08:51:00.344Z",
-    "notes": "- feat(cs): outbound reply filter in shadow mode — flags openclaw noise (model-fallback banners, reasoning residue, tool/provider errors, internal paths) in AI replies to customers\n- Shadow mode only records; replies are never altered or blocked. It hangs off the existing cs-event mirror, so it adds no latency to the send path and needs no plugin change or gateway restart\n- New Customer Service → Settings card: shadow toggle, hit counts, per-rule tallies, and a per-hit diff of what the customer received vs what an enforcing filter would have sent\n- 'enforce' mode is stored but not yet settable — enforcing requires the plugin's message_sending hook to await a verdict",
+    "version": "2026.8.1-v0.3.80",
+    "mccVersion": "0.3.80",
+    "openclawVersion": "2026.8.1",
+    "releaseDate": "2026-09-01T14:00:11.695Z",
+    "notes": "- 配對 OpenClaw 2026.8.1：本版是第一個在 2026.8.1 上完成完整驗證的 MCC（乾淨部署 + 17/17 E2E 全綠，gateway 零重啟）\n- fix(llm-auth): 2026.8.1 把 auth profiles 從 openclaw-agent.sqlite 搬回 openclaw.json 的 auth.profiles。舊 sqlite 檔還在、表卻永遠是空的，於是加金鑰其實成功卻顯示「登入失敗」。刪除憑證也改走 openclaw models auth logout —— 先前在 2026.8.1 上是靜默無效的\n- fix(llm-auth): 2026.8.1 起 Kimi 改為外掛型 provider。在外掛尚未取得 capability consent 前寫入憑證，會讓 gateway 拒絕啟動並無限重啟，且沒有 CLI 復原路徑。現在一律先安裝並取得同意才寫入\n- fix(wiki): 切換 wiki 用途會啟用外部外掛 memory-lancedb 並重啟 gateway，同樣造成磚化。注意「npm 目錄存在」不等於「已取得同意」—— OpenClaw 會自行補裝缺失外掛，目錄因此自己出現。現以 plugins list 為準\n- fix(models): 相容 2026.8.1 的 agents.entries 設定結構（原為 agents.list），修正模型分頁崩潰與每個 agent 的模型覆寫讀寫\n- fix(obsidian): 改以 releases API 挑出真正含 amd64.deb 的版本；latest 有時只有 APK，自組檔名會 404\n- fix(build): 排除 test-results/，避免 Playwright 的錄影與 trace（含 session cookie 與 provider 金鑰）被打包出貨",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.7.1-2-v0.3.79/mission-control-v0.3.79-linux-x64.tar.gz",
-        "sha256": "d3aa7a7fc95f472b587097042b1db7407cd8a35d938be566f909e41ae19b1f65",
-        "size": 26010679
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.8.1-v0.3.80/mission-control-v0.3.80-linux-x64.tar.gz",
+        "sha256": "09fd28af6640bee56822ae1db2c55c329ac7c77b472da74e5e9313da1a8696c0",
+        "size": 26844988
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.7.1-2-v0.3.79",
+      "mccVersion": "0.3.79",
+      "openclawVersion": "2026.7.1-2",
+      "releaseDate": "2026-08-28T08:51:00.344Z"
+    },
     {
       "version": "2026.7.1-2-v0.3.78",
       "mccVersion": "0.3.78",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.70",
       "openclawVersion": "2026.7.1-2",
       "releaseDate": "2026-07-25T10:41:44.073Z"
-    },
-    {
-      "version": "2026.7.1-2-v0.3.69",
-      "mccVersion": "0.3.69",
-      "openclawVersion": "2026.7.1-2",
-      "releaseDate": "2026-07-22T07:50:27.434Z"
     }
   ]
 }
