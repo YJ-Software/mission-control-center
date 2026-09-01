@@ -1,11 +1,14 @@
 import { readFile, writeFile, readdir, rename, stat } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import os from 'node:os'
+import { spawn } from 'node:child_process'
 import Database from 'better-sqlite3'
+import { augmentedPath } from './models-config'
 
 const AGENTS_ROOT = join(os.homedir(), '.openclaw', 'agents')
+const CONFIG_PATH = join(os.homedir(), '.openclaw', 'openclaw.json')
 
 // OpenClaw 2026.6.5+ stores per-agent auth profiles in a SQLite DB
 // (openclaw-agent.sqlite) instead of the legacy auth-profiles.json. The
@@ -52,6 +55,68 @@ function readStateDb(dbPath: string): StateFile | null {
   } finally {
     db?.close()
   }
+}
+
+/** Read auth profiles out of openclaw.json's `auth.profiles`.
+ *
+ * OpenClaw 2026.8.1 moved the profiles AGAIN — out of the per-agent
+ * openclaw-agent.sqlite that 2026.6.5 introduced, and back into the main
+ * config. The sqlite file is left behind on upgraded boxes, so a reader that
+ * only knows the sqlite store hits no error, it just sees zero profiles.
+ *
+ * Two shape differences from the older stores:
+ *  - the entry says `mode` where the sqlite/JSON stores said `type`
+ *  - there is no raw `key`; 2026.8.1 keeps the secret behind a keyRef
+ *
+ * Returns null — not an empty ProfilesFile — when there is nothing here, so
+ * callers can fall through to the older stores on older OpenClaw. */
+export function readAuthProfilesFromConfig(configPath: string): ProfilesFile | null {
+  if (!existsSync(configPath)) return null
+  let raw: unknown
+  try {
+    raw = JSON.parse(readFileSync(configPath, 'utf8'))
+  } catch {
+    return null
+  }
+  const auth = (raw as { auth?: { profiles?: unknown } } | null)?.auth
+  const src = auth?.profiles
+  if (!src || typeof src !== 'object' || Array.isArray(src)) return null
+  const entries = Object.entries(src as Record<string, Record<string, unknown>>)
+  if (entries.length === 0) return null
+
+  const profiles: Record<string, AuthProfileEntry> = {}
+  for (const [profileId, entry] of entries) {
+    if (!entry || typeof entry !== 'object') continue
+    profiles[profileId] = {
+      ...entry,
+      // `mode` is 2026.8.1's spelling of `type`; summarizeProfiles and the UI
+      // both read `type`, and would otherwise render every row as "unknown".
+      type: (entry.type as string) ?? (entry.mode as string) ?? 'unknown',
+      provider: (entry.provider as string) ?? profileId.split(':')[0],
+    }
+  }
+  return Object.keys(profiles).length > 0 ? { version: 1, profiles } : null
+}
+
+/** Pick the store that this OpenClaw actually reads from.
+ *
+ * Config wins: a box upgraded from 2026.7 keeps its populated sqlite store,
+ * but OpenClaw has moved on to the config, so preferring sqlite would show
+ * profiles that no longer drive anything. */
+export function chooseProfiles(
+  fromConfig: ProfilesFile | null,
+  fromDb: ProfilesFile | null,
+  fromLegacy: ProfilesFile,
+): ProfilesFile {
+  return fromConfig ?? fromDb ?? fromLegacy
+}
+
+/** argv for removing a profile through the CLI. On 2026.8.1 the profile lives
+ * in openclaw.json behind a keyRef, so rewriting the sqlite store — what
+ * removeProfile did on its own — leaves the profile in place and makes the
+ * dashboard's delete button a silent no-op. */
+export function buildLogoutArgs(agentId: string, profileId: string): string[] {
+  return ['models', 'auth', '--agent', agentId, 'logout', profileId, '--yes']
 }
 
 /** Pick a provider's raw API key from a ProfilesFile, matching by `provider`
@@ -214,10 +279,12 @@ async function writeStateStore(agentId: string, state: StateFile): Promise<void>
 }
 
 export async function readProfiles(agentId: string): Promise<ProfilesFile> {
-  // Prefer the openclaw 2026.6.5+ SQLite store; fall back to the legacy JSON
-  // file for older openclaw installs.
-  const fromDb = readAuthStoreDb(authDbPath(agentId))
-  if (fromDb) return fromDb
+  // Three store generations are in play: openclaw.json `auth.profiles`
+  // (2026.8.1+), the per-agent SQLite store (2026.6.5+), and the legacy JSON.
+  // Newest wins — see chooseProfiles.
+  const fromConfig = readAuthProfilesFromConfig(CONFIG_PATH)
+  const fromDb = fromConfig ? null : readAuthStoreDb(authDbPath(agentId))
+  if (fromConfig || fromDb) return chooseProfiles(fromConfig, fromDb, { version: 1, profiles: {} })
   const p = join(AGENTS_ROOT, agentId, 'agent', 'auth-profiles.json')
   return readJson<ProfilesFile>(p, { version: 1, profiles: {} })
 }
@@ -273,7 +340,50 @@ function pickExpiry(entry: AuthProfileEntry): number | undefined {
   return undefined
 }
 
-export async function removeProfile(agentId: string, profileId: string): Promise<void> {
+/** Run an openclaw subcommand, resolving its exit code. */
+export type OpenclawRunner = (args: string[]) => Promise<number>
+
+const cliRunner: OpenclawRunner = (args) =>
+  new Promise((resolve) => {
+    const child = spawn('openclaw', ['--log-level', 'silent', '--no-color', ...args], {
+      env: { ...process.env, PATH: augmentedPath() },
+      stdio: ['ignore', 'ignore', 'ignore'],
+    })
+    const timer = setTimeout(() => child.kill('SIGTERM'), 30_000)
+    child.on('error', () => {
+      clearTimeout(timer)
+      resolve(127)
+    })
+    child.on('close', (code: number | null) => {
+      clearTimeout(timer)
+      resolve(code ?? 0)
+    })
+  })
+
+export interface RemoveProfileOptions {
+  run?: OpenclawRunner
+  configPath?: string
+}
+
+export async function removeProfile(
+  agentId: string,
+  profileId: string,
+  opts: RemoveProfileOptions = {},
+): Promise<void> {
+  const { run = cliRunner, configPath = CONFIG_PATH } = opts
+
+  // On 2026.8.1 the profile lives in openclaw.json behind a keyRef, and the
+  // per-agent sqlite store it replaced is inert. Rewriting that store would
+  // report success while leaving the profile exactly where it was, so removal
+  // has to go through the CLI.
+  if (readAuthProfilesFromConfig(configPath)) {
+    const code = await run(buildLogoutArgs(agentId, profileId))
+    if (code !== 0) {
+      throw new Error(`openclaw models auth logout ${profileId} failed (exit ${code})`)
+    }
+    return
+  }
+
   const profiles = await readProfiles(agentId)
   const state = await readState(agentId)
   const provider = profileId.split(':')[0]
