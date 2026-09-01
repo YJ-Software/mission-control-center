@@ -47,8 +47,8 @@ All fields optional; the defaults match the farfaraway-cs setup.
 ## Install
 
 ```bash
-openclaw plugins install -l /path/to/openclaw-customer-id-injector
-openclaw plugins enable customer-id-injector
+openclaw plugins install -l /path/to/openclaw-customer-id-injector --force --accept-capabilities
+openclaw plugins enable customer-id-injector --accept-capabilities
 systemctl --user restart openclaw-gateway
 ```
 

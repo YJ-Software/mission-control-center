@@ -39,8 +39,8 @@ Registers a single `inbound_claim` hook. When a message arrives:
 ## Install (manual)
 
 ```bash
-openclaw plugins install -l /path/to/this/dir
-openclaw plugins enable business-hours-gate
+openclaw plugins install -l /path/to/this/dir --force --accept-capabilities
+openclaw plugins enable business-hours-gate --accept-capabilities
 systemctl --user restart openclaw-gateway
 ```
 
