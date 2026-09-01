@@ -1,12 +1,13 @@
 'use client'
 
 import * as Tabs from '@radix-ui/react-tabs'
-import { Search, Podcast, Network, Shield } from 'lucide-react'
+import { Search, Podcast, Network, Shield, KeyRound } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { SetupSearch } from './setup-search'
 import { SetupNotebookLM } from './setup-notebooklm'
 import { SetupTailscale } from './setup-tailscale'
 import { SetupImunifyAV } from './setup-imunifyav'
+import { SetupSecrets } from './setup-secrets'
 
 export function SetupContent() {
   const t = useTranslations('setup')
@@ -16,6 +17,7 @@ export function SetupContent() {
     { value: 'notebooklm', icon: Podcast, label: t('tabs.notebooklm') },
     { value: 'tailscale', icon: Network, label: t('tabs.tailscale') },
     { value: 'imunifyav', icon: Shield, label: t('tabs.imunifyav') },
+    { value: 'secrets', icon: KeyRound, label: t('tabs.secrets') },
   ]
 
   return (
@@ -40,6 +42,7 @@ export function SetupContent() {
         <Tabs.Content value="notebooklm"><SetupNotebookLM /></Tabs.Content>
         <Tabs.Content value="tailscale"><SetupTailscale /></Tabs.Content>
         <Tabs.Content value="imunifyav"><SetupImunifyAV /></Tabs.Content>
+        <Tabs.Content value="secrets"><SetupSecrets /></Tabs.Content>
       </Tabs.Root>
     </div>
   )

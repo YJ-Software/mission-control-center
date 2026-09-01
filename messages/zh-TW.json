@@ -1550,10 +1550,22 @@
       ],
       "howTitle": "運作方式",
       "how": [
-        { "label": "安裝", "desc": "伺服器裝上 Chrome、無頭桌面（Xvfb／Openbox／x11vnc／websockify）與 OpenCLI" },
-        { "label": "登入", "desc": "用「總覽」的 VNC 畫面開網站，像平常一樣手動登入一次" },
-        { "label": "連線", "desc": "OpenCLI 擴充與 daemon 透過 CDP（127.0.0.1:9222）接上同一個 Chrome" },
-        { "label": "操作", "desc": "Agent 下 opencli 指令，在你已登入的分頁上操作並擷取結果" }
+        {
+          "label": "安裝",
+          "desc": "伺服器裝上 Chrome、無頭桌面（Xvfb／Openbox／x11vnc／websockify）與 OpenCLI"
+        },
+        {
+          "label": "登入",
+          "desc": "用「總覽」的 VNC 畫面開網站，像平常一樣手動登入一次"
+        },
+        {
+          "label": "連線",
+          "desc": "OpenCLI 擴充與 daemon 透過 CDP（127.0.0.1:9222）接上同一個 Chrome"
+        },
+        {
+          "label": "操作",
+          "desc": "Agent 下 opencli 指令，在你已登入的分頁上操作並擷取結果"
+        }
       ],
       "capabilitiesTitle": "能做什麼",
       "capabilities": [
@@ -2349,7 +2361,8 @@
       "search": "搜尋設定",
       "notebooklm": "NotebookLM",
       "tailscale": "Tailscale",
-      "imunifyav": "防毒軟體"
+      "imunifyav": "防毒軟體",
+      "secrets": "憑證加固"
     },
     "search": {
       "title": "網路搜尋設定",
@@ -2440,6 +2453,23 @@
       "purgeDesc": "移除程式並清除所有設定檔、資料與狀態",
       "purgeSuccess": "ImunifyAV 已完整移除（含設定與資料）",
       "installLogs": "安裝記錄"
+    },
+    "secrets": {
+      "description": "把 openclaw.json 裡的明文憑證搬進獨立的機密檔案，設定檔只留下指向它的參照。",
+      "scopeNote": "機密檔案本身仍是明文，靠 600 權限保護 —— 這不是加密。它的用途是讓憑證離開 agent 與 workspace 工具讀得到的設定檔。",
+      "currentStatus": "目前狀態",
+      "hardened": "設定檔中沒有明文憑證",
+      "plaintextFound": "設定檔中仍有 {count} 個明文憑證",
+      "actionTitle": "執行加固",
+      "actionDesc": "要搬哪些欄位由 OpenClaw 的 secrets audit 決定，不是寫死的清單。可重複執行：已經是參照的欄位會跳過。",
+      "restartWarning": "這會一次改寫所有憑證並重啟 gateway。動作前會自動備份設定檔。",
+      "run": "開始加固",
+      "running": "執行中…",
+      "movedCount": "已搬移 {count} 個憑證",
+      "alreadyHardened": "已經加固過，沒有變更",
+      "bundleAt": "機密檔案：",
+      "backupAt": "設定檔備份：",
+      "restartFailed": "gateway 重啟失敗，請手動重啟："
     }
   },
   "llmAuth": {

@@ -1550,10 +1550,22 @@
       ],
       "howTitle": "How it works",
       "how": [
-        { "label": "Install", "desc": "The server gets Chrome, a headless desktop (Xvfb / Openbox / x11vnc / websockify), and OpenCLI" },
-        { "label": "Log in", "desc": "Open the site on the Overview tab's VNC screen and log in once, like you normally would" },
-        { "label": "Connect", "desc": "The OpenCLI extension + daemon attach to that same Chrome over CDP (127.0.0.1:9222)" },
-        { "label": "Operate", "desc": "Agents run opencli commands, acting on your logged-in tab and extracting results" }
+        {
+          "label": "Install",
+          "desc": "The server gets Chrome, a headless desktop (Xvfb / Openbox / x11vnc / websockify), and OpenCLI"
+        },
+        {
+          "label": "Log in",
+          "desc": "Open the site on the Overview tab's VNC screen and log in once, like you normally would"
+        },
+        {
+          "label": "Connect",
+          "desc": "The OpenCLI extension + daemon attach to that same Chrome over CDP (127.0.0.1:9222)"
+        },
+        {
+          "label": "Operate",
+          "desc": "Agents run opencli commands, acting on your logged-in tab and extracting results"
+        }
       ],
       "capabilitiesTitle": "What it can do",
       "capabilities": [
@@ -2057,8 +2069,8 @@
       "rows": {
         "distPatched": "OpenClaw dist patched",
         "distPatchedOk": "All three webhook handlers async-ack (covers the third plugin-bound handler added in 4.29)",
-        "distPatchedBad": "OpenClaw dist not patched; LINE will time out and retry (customers see duplicates)"
-        ,"dropinInstalled": "systemd drop-in installed (auto-reapplies on upgrade)",
+        "distPatchedBad": "OpenClaw dist not patched; LINE will time out and retry (customers see duplicates)",
+        "dropinInstalled": "systemd drop-in installed (auto-reapplies on upgrade)",
         "dropinInstalledOk": "Patch script runs before every gateway start; survives npm update -g openclaw",
         "dropinInstalledBad": "Upgrading OpenClaw will overwrite the patch; install this drop-in to auto-reapply"
       },
@@ -2196,9 +2208,21 @@
         "loading": "Loading settings…",
         "notRegistered": "MCP server not registered yet. Run the install wizard first.",
         "modes": {
-          "openai": { "tag": "recommended", "name": "OpenAI-compat", "desc": "Any OpenAI-compatible endpoint: Gemini OAI-compat, OpenRouter, vLLM, LM Studio…" },
-          "gemini": { "tag": "native", "name": "Gemini · native", "desc": "Google AI Studio API. Some features (cache, grounding) only on native SDK." },
-          "ollama": { "tag": "local", "name": "Ollama · offline", "desc": "Fully local, CPU only. Slower extraction (5-30s)." }
+          "openai": {
+            "tag": "recommended",
+            "name": "OpenAI-compat",
+            "desc": "Any OpenAI-compatible endpoint: Gemini OAI-compat, OpenRouter, vLLM, LM Studio…"
+          },
+          "gemini": {
+            "tag": "native",
+            "name": "Gemini · native",
+            "desc": "Google AI Studio API. Some features (cache, grounding) only on native SDK."
+          },
+          "ollama": {
+            "tag": "local",
+            "name": "Ollama · offline",
+            "desc": "Fully local, CPU only. Slower extraction (5-30s)."
+          }
         },
         "fields": {
           "model": "Model ID",
@@ -2270,8 +2294,13 @@
           "avgSearchLatency": "Avg search latency",
           "failures7d": "Failures (7d)"
         },
-        "chart": { "title": "Last 7 days" },
-        "recent": { "title": "Latest 25 calls", "empty": "No calls yet." },
+        "chart": {
+          "title": "Last 7 days"
+        },
+        "recent": {
+          "title": "Latest 25 calls",
+          "empty": "No calls yet."
+        },
         "noData": {
           "title": "No telemetry data yet",
           "description": "The AI assistant hasn't called mem0 tools yet, or server.py hasn't been started. Triggering an add/search from LINE will start producing data."
@@ -2332,7 +2361,8 @@
       "search": "Search",
       "notebooklm": "NotebookLM",
       "tailscale": "Tailscale",
-      "imunifyav": "Antivirus"
+      "imunifyav": "Antivirus",
+      "secrets": "Credentials"
     },
     "search": {
       "title": "Web Search Settings",
@@ -2423,6 +2453,23 @@
       "purgeDesc": "Remove the program and delete all config files, data, and state",
       "purgeSuccess": "ImunifyAV has been fully removed (including config and data)",
       "installLogs": "Install Logs"
+    },
+    "secrets": {
+      "description": "Move the plaintext credentials in openclaw.json into a separate secrets file, leaving only references behind in the config.",
+      "scopeNote": "The secrets file is still plaintext, protected by 0600 permissions — this is not encryption. The point is getting credentials out of the config that agents and workspace tools can read.",
+      "currentStatus": "Current status",
+      "hardened": "No plaintext credentials in the config",
+      "plaintextFound": "{count} plaintext credentials still in the config",
+      "actionTitle": "Run hardening",
+      "actionDesc": "Which fields move is decided by OpenClaw's secrets audit, not a hardcoded list. Safe to re-run: fields that are already references are skipped.",
+      "restartWarning": "This rewrites every credential in one pass and restarts the gateway. The config is backed up first.",
+      "run": "Harden credentials",
+      "running": "Running…",
+      "movedCount": "Moved {count} credentials",
+      "alreadyHardened": "Already hardened, nothing changed",
+      "bundleAt": "Secrets file:",
+      "backupAt": "Config backup:",
+      "restartFailed": "Gateway restart failed, restart it manually:"
     }
   },
   "llmAuth": {

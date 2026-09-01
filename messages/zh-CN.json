@@ -1550,10 +1550,22 @@
       ],
       "howTitle": "运作方式",
       "how": [
-        { "label": "安装", "desc": "服务器装上 Chrome、无头桌面（Xvfb／Openbox／x11vnc／websockify）与 OpenCLI" },
-        { "label": "登录", "desc": "用「总览」的 VNC 画面打开网站，像平常一样手动登录一次" },
-        { "label": "连接", "desc": "OpenCLI 扩展与 daemon 通过 CDP（127.0.0.1:9222）接上同一个 Chrome" },
-        { "label": "操作", "desc": "Agent 下 opencli 指令，在你已登录的标签页上操作并提取结果" }
+        {
+          "label": "安装",
+          "desc": "服务器装上 Chrome、无头桌面（Xvfb／Openbox／x11vnc／websockify）与 OpenCLI"
+        },
+        {
+          "label": "登录",
+          "desc": "用「总览」的 VNC 画面打开网站，像平常一样手动登录一次"
+        },
+        {
+          "label": "连接",
+          "desc": "OpenCLI 扩展与 daemon 通过 CDP（127.0.0.1:9222）接上同一个 Chrome"
+        },
+        {
+          "label": "操作",
+          "desc": "Agent 下 opencli 指令，在你已登录的标签页上操作并提取结果"
+        }
       ],
       "capabilitiesTitle": "能做什么",
       "capabilities": [
@@ -2196,9 +2208,21 @@
         "loading": "读取设置…",
         "notRegistered": "尚未注册 MCP server，请先用「安装向导」完成安装。",
         "modes": {
-          "openai": { "tag": "推荐", "name": "OpenAI 兼容", "desc": "任何兼容端点：Gemini OpenAI-compat、OpenRouter、vLLM、LM Studio…" },
-          "gemini": { "tag": "原生", "name": "Gemini · 原生", "desc": "Google AI Studio API；某些功能仅在原生 SDK。" },
-          "ollama": { "tag": "本地", "name": "Ollama · 完全离线", "desc": "纯本机，CPU only。萃取较慢（5-30s）。" }
+          "openai": {
+            "tag": "推荐",
+            "name": "OpenAI 兼容",
+            "desc": "任何兼容端点：Gemini OpenAI-compat、OpenRouter、vLLM、LM Studio…"
+          },
+          "gemini": {
+            "tag": "原生",
+            "name": "Gemini · 原生",
+            "desc": "Google AI Studio API；某些功能仅在原生 SDK。"
+          },
+          "ollama": {
+            "tag": "本地",
+            "name": "Ollama · 完全离线",
+            "desc": "纯本机，CPU only。萃取较慢（5-30s）。"
+          }
         },
         "fields": {
           "model": "模型 ID",
@@ -2270,8 +2294,13 @@
           "avgSearchLatency": "search 平均延迟",
           "failures7d": "失败次数（7d）"
         },
-        "chart": { "title": "近 7 天分布" },
-        "recent": { "title": "最近 25 次调用", "empty": "暂无调用记录。" },
+        "chart": {
+          "title": "近 7 天分布"
+        },
+        "recent": {
+          "title": "最近 25 次调用",
+          "empty": "暂无调用记录。"
+        },
         "noData": {
           "title": "尚无 telemetry 数据",
           "description": "AI 客服还没调用过 mem0 工具，或 server.py 未启动。从 LINE 触发任一次 add/search 即开始累积。"
@@ -2332,7 +2361,8 @@
       "search": "搜索设置",
       "notebooklm": "NotebookLM",
       "tailscale": "Tailscale",
-      "imunifyav": "防毒软件"
+      "imunifyav": "防毒软件",
+      "secrets": "凭证加固"
     },
     "search": {
       "title": "网络搜索设置",
@@ -2423,6 +2453,23 @@
       "purgeDesc": "移除程序并清除所有配置文件、数据与状态",
       "purgeSuccess": "ImunifyAV 已完整移除（含配置与数据）",
       "installLogs": "安装记录"
+    },
+    "secrets": {
+      "description": "把 openclaw.json 里的明文凭证搬进独立的机密文件，配置文件只保留指向它的引用。",
+      "scopeNote": "机密文件本身仍是明文，靠 600 权限保护 —— 这不是加密。它的用途是让凭证离开 agent 与 workspace 工具能读到的配置文件。",
+      "currentStatus": "当前状态",
+      "hardened": "配置文件中没有明文凭证",
+      "plaintextFound": "配置文件中仍有 {count} 个明文凭证",
+      "actionTitle": "执行加固",
+      "actionDesc": "要搬哪些字段由 OpenClaw 的 secrets audit 决定，不是写死的清单。可重复执行：已经是引用的字段会跳过。",
+      "restartWarning": "这会一次改写所有凭证并重启 gateway。操作前会自动备份配置文件。",
+      "run": "开始加固",
+      "running": "执行中…",
+      "movedCount": "已搬移 {count} 个凭证",
+      "alreadyHardened": "已经加固过，没有变更",
+      "bundleAt": "机密文件：",
+      "backupAt": "配置文件备份：",
+      "restartFailed": "gateway 重启失败，请手动重启："
     }
   },
   "llmAuth": {
