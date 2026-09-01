@@ -34,8 +34,27 @@ export interface ResolvedSecret {
   reason?: string
 }
 
+/** The `secrets` block of openclaw.json. A file ref carries no path of its
+ * own — the path lives on the provider entry named by the ref. */
+export interface SecretsConfig {
+  providers?: Record<string, { source?: string; path?: string; mode?: string }>
+}
+
 export interface ResolveOptions {
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>
+  secrets?: SecretsConfig
+}
+
+/** Walk an absolute JSON pointer (RFC 6901). Returns undefined if it dead-ends. */
+function jsonPointer(doc: unknown, pointer: string): unknown {
+  if (pointer === '') return doc
+  let cur: unknown = doc
+  for (const rawSeg of pointer.split('/').slice(1)) {
+    const seg = rawSeg.replace(/~1/g, '/').replace(/~0/g, '~')
+    if (cur == null || typeof cur !== 'object') return undefined
+    cur = (cur as Record<string, unknown>)[seg]
+  }
+  return cur
 }
 
 /** Resolve a config field that may be a plain string or a SecretRef.
@@ -62,15 +81,37 @@ export function resolveSecretRef(raw: unknown, opts: ResolveOptions = {}): Resol
         : { value: null, reason: `env SecretRef ${raw.id} is not set in the environment` }
     }
     case 'file': {
+      const provider = opts.secrets?.providers?.[raw.provider ?? '']
+      if (!provider?.path) {
+        return {
+          value: null,
+          reason: `file SecretRef provider "${raw.provider}" is not configured under secrets.providers`,
+        }
+      }
+      let text: string
       try {
-        // Trailing newline is near-universal in secret files and never part of
-        // the credential.
-        const v = readFileSync(raw.id, 'utf8').replace(/\r?\n$/, '')
-        return v ? { value: v } : { value: null, reason: `file SecretRef ${raw.id} is empty` }
+        text = readFileSync(provider.path, 'utf8')
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        return { value: null, reason: `file SecretRef ${raw.id} unreadable: ${msg}` }
+        return { value: null, reason: `file SecretRef provider "${raw.provider}" unreadable: ${msg}` }
       }
+      // Anything other than singleValue is JSON — that is OpenClaw's default.
+      if (provider.mode === 'singleValue') {
+        // A trailing newline is near-universal in secret files and never part
+        // of the credential.
+        const v = text.replace(/\r?\n$/, '')
+        return v ? { value: v } : { value: null, reason: `file SecretRef ${provider.path} is empty` }
+      }
+      let doc: unknown
+      try {
+        doc = JSON.parse(text)
+      } catch {
+        return { value: null, reason: `file SecretRef provider "${raw.provider}" is not valid JSON` }
+      }
+      const found = jsonPointer(doc, raw.id)
+      return typeof found === 'string' && found.length > 0
+        ? { value: found }
+        : { value: null, reason: `file SecretRef pointer ${raw.id} did not resolve to a string` }
     }
     case 'store':
       return {

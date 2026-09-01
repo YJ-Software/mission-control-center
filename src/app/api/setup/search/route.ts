@@ -30,7 +30,7 @@ export async function GET() {
     // ref means the key IS configured but is deliberately unreadable here, so
     // report it as configured without trying to mask an object.
     const rawTavilyKey = tavilyEntry?.config?.webSearch?.apiKey
-    const tavilyApiKey = resolveSecretRef(rawTavilyKey).value ?? ''
+    const tavilyApiKey = resolveSecretRef(rawTavilyKey, { secrets: config.secrets }).value ?? ''
     const tavilyKeyIsRef = isSecretRef(rawTavilyKey)
     const tavilyEnabled = tavilyEntry?.enabled ?? false
 

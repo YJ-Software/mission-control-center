@@ -39,7 +39,7 @@ function bootstrapEnvLocal() {
   try {
     const configPath = join(homedir(), '.openclaw', 'openclaw.json')
     const config = JSON.parse(readFileSync(configPath, 'utf8'))
-    gatewayToken = resolveSecretRef(config?.gateway?.auth?.token).value ?? ''
+    gatewayToken = resolveSecretRef(config?.gateway?.auth?.token, { secrets: config?.secrets }).value ?? ''
   } catch {}
 
   const lines = [
@@ -113,7 +113,9 @@ function resolveGatewayToken(): string {
     const config = JSON.parse(readFileSync(configPath, 'utf8'))
     // The field may be a plain string or a SecretRef object. Resolving it keeps
     // an object from being handed on as if it were the token.
-    const { value, reason } = resolveSecretRef(config?.gateway?.auth?.token)
+    const { value, reason } = resolveSecretRef(config?.gateway?.auth?.token, {
+      secrets: config?.secrets,
+    })
     if (value) {
       console.log('[Gateway] Token auto-detected from ~/.openclaw/openclaw.json')
       return value

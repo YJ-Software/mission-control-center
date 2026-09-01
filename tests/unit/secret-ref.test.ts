@@ -62,18 +62,58 @@ describe('resolveSecretRef', () => {
     expect(r.reason).toMatch(/MISSING/)
   })
 
-  it('resolves a file ref and trims the trailing newline', () => {
+  // A file ref does NOT carry a path. The path lives on the provider entry in
+  // secrets.providers, and `id` is an identifier within it: the literal
+  // "value" in singleValue mode, or an absolute JSON pointer otherwise (json
+  // is the default mode). Treating `id` as a path silently resolves nothing.
+  it('resolves a singleValue file provider and trims the trailing newline', () => {
     const p = join(dir, 'tok')
     writeFileSync(p, 'file-token\n')
-    expect(resolveSecretRef({ source: 'file', provider: 'default', id: p }).value).toBe(
-      'file-token',
+    const r = resolveSecretRef(
+      { source: 'file', provider: 'local-file', id: 'value' },
+      { secrets: { providers: { 'local-file': { source: 'file', path: p, mode: 'singleValue' } } } },
     )
+    expect(r.value).toBe('file-token')
+  })
+
+  it('resolves a json file provider through the JSON pointer', () => {
+    const p = join(dir, 'secrets.json')
+    writeFileSync(p, JSON.stringify({ gateway: { token: 'ptr-token' } }))
+    const r = resolveSecretRef(
+      { source: 'file', provider: 'bundle', id: '/gateway/token' },
+      { secrets: { providers: { bundle: { source: 'file', path: p } } } },
+    )
+    expect(r.value).toBe('ptr-token')
+  })
+
+  it('reports a file ref whose provider is not configured', () => {
+    const r = resolveSecretRef({ source: 'file', provider: 'missing', id: 'value' }, { secrets: {} })
+    expect(r.value).toBeNull()
+    expect(r.reason).toMatch(/missing/)
   })
 
   it('reports a file ref whose file is missing instead of throwing', () => {
-    const r = resolveSecretRef({ source: 'file', provider: 'default', id: join(dir, 'nope') })
+    const r = resolveSecretRef(
+      { source: 'file', provider: 'local-file', id: 'value' },
+      {
+        secrets: {
+          providers: { 'local-file': { source: 'file', path: join(dir, 'nope'), mode: 'singleValue' } },
+        },
+      },
+    )
     expect(r.value).toBeNull()
     expect(r.reason).toBeTruthy()
+  })
+
+  it('reports a JSON pointer that does not resolve', () => {
+    const p = join(dir, 'partial.json')
+    writeFileSync(p, JSON.stringify({ gateway: {} }))
+    const r = resolveSecretRef(
+      { source: 'file', provider: 'bundle', id: '/gateway/token' },
+      { secrets: { providers: { bundle: { source: 'file', path: p } } } },
+    )
+    expect(r.value).toBeNull()
+    expect(r.reason).toMatch(/\/gateway\/token/)
   })
 
   // The whole point of the store is that secret-kind entries cannot be read
