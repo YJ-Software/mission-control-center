@@ -101,7 +101,36 @@ if [[ ! -f "$ENV_FILE" ]]; then
   log "generating state/.env.local"
   GATEWAY_TOKEN=""
   if [[ -f "$HOME/.openclaw/openclaw.json" ]]; then
-    GATEWAY_TOKEN="$(node -e "try{const c=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));process.stdout.write(c?.gateway?.auth?.token||'')}catch(e){}" || true)"
+    # The token may be a SecretRef object rather than a string once secrets have
+    # been moved out of openclaw.json. Resolve file/env refs; anything else
+    # leaves the token empty and the server falls back to reading the config.
+    GATEWAY_TOKEN="$(node -e "
+try{
+  const fs=require('fs');
+  const c=JSON.parse(fs.readFileSync(process.env.HOME+'/.openclaw/openclaw.json','utf8'));
+  const t=c?.gateway?.auth?.token;
+  let v='';
+  if (typeof t==='string') v=t;
+  else if (t && typeof t==='object' && typeof t.source==='string') {
+    if (t.source==='env') v=process.env[t.id]||'';
+    else if (t.source==='file') {
+      const p=c?.secrets?.providers?.[t.provider];
+      if (p&&p.path) {
+        const raw=fs.readFileSync(p.path,'utf8');
+        if (p.mode==='singleValue') v=raw.replace(/\r?\n\$/,'');
+        else {
+          let cur=JSON.parse(raw);
+          for (const seg of String(t.id).split('/').slice(1)) {
+            const k=seg.replace(/~1/g,'/').replace(/~0/g,'~');
+            cur = (cur==null||typeof cur!=='object') ? undefined : cur[k];
+          }
+          if (typeof cur==='string') v=cur;
+        }
+      }
+    }
+  }
+  process.stdout.write(v);
+}catch(e){}" || true)"
   fi
   PASSWORD="$(node -e "process.stdout.write(require('crypto').randomBytes(16).toString('base64url'))")"
   SECRET="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64url'))")"
