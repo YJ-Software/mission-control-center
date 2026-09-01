@@ -167,10 +167,6 @@ curl -fsSL https://raw.githubusercontent.com/YJ-Software/mission-control-center/
 > ⚠️ wiki-person 模式在 OpenClaw 4.29 無法運作：plugin 透過 `api.registerTool` 註冊的 `wiki_apply` / `wiki_get` 等工具不會暴露給 agent 模型，agent 看不到。預設走 mem0，wiki-person UI 為 scaffolding，等 OpenClaw 補上 plugin tool 暴露機制再啟用。
 
 ### 其他功能模組
-- **任務管理（Tasks）** — 待辦事項追蹤（todo / in-progress / done）、優先度、指派、專案、到期日
-- **聯絡人（Contacts）** — 聯絡人資料庫（角色、handle、時區、備註）
-- **行事曆（Calendar）** — 事件管理，可與 Google Calendar 同步
-- **內容管理（Content）** — 內容排程與發佈追蹤（idea → draft → published）
 - **系統設定（Settings）** — 密碼、Gateway Token、偏好設定
 - **設定精靈（Setup）** — 首次安裝引導（Tailscale、搜尋引擎、NotebookLM）
 
@@ -188,8 +184,6 @@ curl -fsSL https://raw.githubusercontent.com/YJ-Software/mission-control-center/
 | 多語系 | next-intl（zh-TW / zh-CN / en） |
 | 終端機 | node-pty + xterm.js |
 | 動畫 | Framer Motion |
-| 富文字編輯 | TipTap |
-| 行事曆 | FullCalendar |
 | 拖放 | @dnd-kit |
 
 ---
@@ -333,7 +327,7 @@ src/
 
 ## 資料庫 Schema
 
-系統使用 SQLite + Drizzle ORM，共 22 張表：
+系統使用 SQLite + Drizzle ORM，共 23 張表（`src/lib/schema.ts` 18 張，`src/lib/backup/schema.ts` 5 張）：
 
 | 表名 | 說明 |
 |------|------|
@@ -354,6 +348,7 @@ src/
 | `csConversations` | LINE 客服對話 |
 | `csMessages` | LINE 客服訊息紀錄 |
 | `csAgentPause` | LINE 客服接手暫停狀態 |
+| `csOutboundFilterHits` | 客服外送訊息過濾命中紀錄 |
 | `backupDestinations` | 備份目的地 |
 | `backupSources` | 備份來源 |
 | `backupSchedules` | 備份排程 |
