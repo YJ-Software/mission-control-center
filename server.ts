@@ -17,6 +17,7 @@ import { homedir } from 'os'
 import next from 'next'
 import { loadEnvConfig } from '@next/env'
 import { WebSocketServer, WebSocket } from 'ws'
+import { resolveSecretRef } from './src/lib/openclaw/secret-ref'
 import { initDb, db } from './src/lib/db'
 import { morningReportConfig } from './src/lib/schema'
 import { eq } from 'drizzle-orm'
@@ -38,7 +39,7 @@ function bootstrapEnvLocal() {
   try {
     const configPath = join(homedir(), '.openclaw', 'openclaw.json')
     const config = JSON.parse(readFileSync(configPath, 'utf8'))
-    gatewayToken = config?.gateway?.auth?.token || ''
+    gatewayToken = resolveSecretRef(config?.gateway?.auth?.token).value ?? ''
   } catch {}
 
   const lines = [
@@ -110,11 +111,14 @@ function resolveGatewayToken(): string {
   try {
     const configPath = join(homedir(), '.openclaw', 'openclaw.json')
     const config = JSON.parse(readFileSync(configPath, 'utf8'))
-    const token = config?.gateway?.auth?.token
-    if (token) {
+    // The field may be a plain string or a SecretRef object. Resolving it keeps
+    // an object from being handed on as if it were the token.
+    const { value, reason } = resolveSecretRef(config?.gateway?.auth?.token)
+    if (value) {
       console.log('[Gateway] Token auto-detected from ~/.openclaw/openclaw.json')
-      return token
+      return value
     }
+    if (reason) console.warn(`[Gateway] gateway.auth.token unusable: ${reason}`)
   } catch {}
 
   console.warn('[Gateway] No token found in env or ~/.openclaw/openclaw.json')

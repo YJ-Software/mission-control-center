@@ -6,6 +6,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { getServerEnv } from '@/lib/server-env'
 import { allowPlugins } from '@/lib/plugins/allowlist'
+import { resolveSecretRef, isSecretRef } from '@/lib/openclaw/secret-ref'
 
 const execFileAsync = promisify(execFile)
 const OPENCLAW_CONFIG = join(homedir(), '.openclaw', 'openclaw.json')
@@ -25,7 +26,12 @@ export async function GET() {
     const config = readConfig()
 
     const tavilyEntry = config.plugins?.entries?.tavily
-    const tavilyApiKey = tavilyEntry?.config?.webSearch?.apiKey ?? ''
+    // The key may be a SecretRef object rather than a string. A store-backed
+    // ref means the key IS configured but is deliberately unreadable here, so
+    // report it as configured without trying to mask an object.
+    const rawTavilyKey = tavilyEntry?.config?.webSearch?.apiKey
+    const tavilyApiKey = resolveSecretRef(rawTavilyKey).value ?? ''
+    const tavilyKeyIsRef = isSecretRef(rawTavilyKey)
     const tavilyEnabled = tavilyEntry?.enabled ?? false
 
     const searchProvider = config.tools?.web?.search?.provider ?? ''
@@ -33,12 +39,18 @@ export async function GET() {
     const fetchEnabled = config.tools?.web?.fetch?.enabled ?? false
 
     return NextResponse.json({
-      tavilyApiKey: tavilyApiKey ? maskApiKey(tavilyApiKey) : '',
+      // A store-backed ref is configured but unreadable here — say so
+      // rather than masking an object into nonsense.
+      tavilyApiKey: tavilyApiKey
+        ? maskApiKey(tavilyApiKey)
+        : tavilyKeyIsRef
+          ? '(secret store)'
+          : '',
       tavilyEnabled,
       searchProvider,
       searchEnabled,
       fetchEnabled,
-      hasApiKey: !!tavilyApiKey,
+      hasApiKey: !!tavilyApiKey || tavilyKeyIsRef,
     })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
