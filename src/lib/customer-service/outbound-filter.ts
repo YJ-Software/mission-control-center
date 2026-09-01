@@ -70,7 +70,7 @@ export const DEFAULT_RULES: FilterRule[] = [
     id: 'tool-error',
     label: 'Tool / shell error',
     action: 'block',
-    pattern: /\b(?:ENOENT|EACCES|ECONNREFUSED|ETIMEDOUT|command not found|no such file or directory|permission denied|tool (?:call )?(?:failed|error)|exited with code \d+)\b/gi,
+    pattern: /\b(?:ENOENT|EACCES|ECONNREFUSED|ETIMEDOUT|command not found|no such file or directory|permission denied|tool (?:call )?(?:failed|error)|exited with code \d+)\b|^⚠️?\s*🛠️?.*$/gim,
   },
   {
     id: 'provider-error',
@@ -79,9 +79,26 @@ export const DEFAULT_RULES: FilterRule[] = [
     pattern: /\b(?:rate[_ ]?limit(?:ed|_error)?|overloaded_error|insufficient_quota|context (?:window |length )?exceeded|invalid[_ ]api[_ ]key|authentication_error|upstream (?:error|timeout))\b/gi,
   },
   {
+    // The single most common leak in production: four occurrences across
+    // 2026-07/08, every one delivered verbatim to a customer.
+    id: 'llm-request-failed',
+    label: 'LLM request failure',
+    action: 'block',
+    pattern: /\bLLM request failed\b|\bprovider rejected the request\b|\brequest failed:\s*provider\b/gi,
+  },
+  {
+    // The model narrating its own tooling instead of answering. English-only
+    // by nature — the agent replies to customers in Chinese, so these cannot
+    // collide with a real answer.
+    id: 'model-meta',
+    label: 'Model narrating its own tools',
+    action: 'block',
+    pattern: /\bBased on the tools available to me\b|\bI (?:can(?:'|’)?t|cannot|do(?:n(?:'|’)?t| not) have|am unable to) (?:use|access|run|execute)\b[^\n]{0,60}?\b(?:tool|exec|shell|command)\b|\bthe `?\w+`? tool (?:returned|failed|is not available)\b/gi,
+  },
+  {
     id: 'internal-path',
     label: 'Internal path leak',
-    action: 'strip',
+    action: 'block',
     pattern: /(?:\/home\/[\w.-]+|\/root|~?\/\.openclaw|\/var\/log)\/[\w./-]*/g,
   },
   {
@@ -91,9 +108,12 @@ export const DEFAULT_RULES: FilterRule[] = [
     pattern: /<media:[a-z]+>/gi,
   },
   {
+    // Same reasoning as internal-path: a reply that names the runtime is a
+    // status banner or an error, not an answer with a bad word in it. The
+    // agent sells office space; it has no legitimate reason to say "openclaw".
     id: 'runtime-mention',
     label: 'Runtime / session identifier leak',
-    action: 'strip',
+    action: 'block',
     pattern: /\b(?:openclaw|mission[- ]control|gateway (?:restart|session)|sessionKey|session_key)\b[^\n]{0,40}/gi,
   },
 ]

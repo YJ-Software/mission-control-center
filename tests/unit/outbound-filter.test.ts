@@ -83,10 +83,13 @@ describe('evaluateOutbound — known leaks are caught', () => {
     expect(v.outcome).toBe('block')
   })
 
-  it('strips internal filesystem paths', () => {
+  it('blocks a reply containing an internal filesystem path', () => {
+    // Stripping used to leave the surrounding machine output behind — e.g.
+    // "find files in  -> show first 50 lines failed" — which reads worse to a
+    // customer than the original. Text like this is machine output throughout.
     const v = evaluateOutbound('資料存在 /home/openclaw/.openclaw/workspaces/farfaraway-cs/wiki 裡面')
-    expect(v.outcome).toBe('rewrite')
-    expect(v.proposedText).not.toContain('/home/openclaw')
+    expect(v.outcome).toBe('block')
+    expect(v.proposedText).toBeNull()
   })
 
   it('strips unrendered media placeholders', () => {
@@ -99,6 +102,33 @@ describe('evaluateOutbound — known leaks are caught', () => {
     const v = evaluateOutbound('<media:image>')
     expect(v.outcome).toBe('block')
     expect(v.proposedText).toBeNull()
+  })
+
+  it('blocks the LLM request failure that reached a customer on 2026-08-29', () => {
+    const v = evaluateOutbound('LLM request failed: provider rejected the request schema or tool payload.')
+    expect(v.outcome).toBe('block')
+    expect(v.matched.map(m => m.ruleId)).toContain('llm-request-failed')
+  })
+
+  it('blocks the bare LLM failure variant', () => {
+    expect(evaluateOutbound('LLM request failed.').outcome).toBe('block')
+  })
+
+  it('blocks the model narrating its own missing tools', () => {
+    const v = evaluateOutbound('I can\'t use the tool "exec" here because it isn\'t available. I need to stop retrying it and answer without that tool.')
+    expect(v.outcome).toBe('block')
+    expect(v.matched.map(m => m.ruleId)).toContain('model-meta')
+  })
+
+  it('blocks the "Based on the tools available to me" preamble', () => {
+    const v = evaluateOutbound('Based on the tools available to me, I attempted to read the wiki directory, but the `read` tool returned `EISDIR`.')
+    expect(v.outcome).toBe('block')
+    expect(v.matched.map(m => m.ruleId)).toContain('model-meta')
+  })
+
+  it("blocks openclaw's tool-failure banner even with no path in it", () => {
+    const v = evaluateOutbound('⚠️ 🛠️ find files in the wiki -> show first 50 lines failed')
+    expect(v.outcome).toBe('block')
   })
 
   it('a block rule wins over a strip rule in the same reply', () => {

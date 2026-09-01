@@ -92,6 +92,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'userId and direction required' }, { status: 400 })
   }
 
+  // The gate plugin's mirror is channel-agnostic — it fires for every channel
+  // openclaw delivers on, not just LINE. That put internal Telegram traffic
+  // (cron reports announced to the operator) into the customer conversation
+  // log as a bot reply to a "customer" named by the Telegram chat id.
+  //
+  // Drop events we can positively identify as another channel. An absent or
+  // unrecognised channelId is still recorded: mislabelling a real customer
+  // conversation out of existence is far worse than one stray row.
+  if (body.channelId && body.channelId !== 'line') {
+    return NextResponse.json({ ok: true, skipped: `channel:${body.channelId}` })
+  }
+
   const t = (body.type ?? 'text') as MessageType
   let payload: Record<string, unknown> | undefined = body.payload && typeof body.payload === 'object'
     ? body.payload as Record<string, unknown>
