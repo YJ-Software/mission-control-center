@@ -26,6 +26,7 @@ import {
   detectComponents,
 } from './config'
 import { getServerEnv } from '@/lib/server-env'
+import { shouldLoadExtensionViaCdp, writeOpencliLoader } from './opencli-extension'
 
 function getChromeUserDataDir(): string {
   return path.join(os.homedir(), '.config', 'chrome-headless-data')
@@ -77,8 +78,8 @@ function buildChromeCommand(): string {
   if (typeof process.getuid === 'function' && process.getuid() === 0) {
     args.unshift('--no-sandbox')
   }
-  // Note: --load-extension is not supported in Google Chrome (only Chromium).
-  // For Google Chrome, users must manually load the extension via chrome://extensions.
+  // --load-extension only works on Chromium. Google Chrome ignores it — it is
+  // loaded over CDP after startup instead, see buildVncStackConfig.
   const chromeBinLower = chromeBin.toLowerCase()
   const isChromium = chromeBinLower.includes('chromium')
   if (isChromium && isOpencliExtensionInstalled()) {
@@ -89,6 +90,19 @@ function buildChromeCommand(): string {
 
 function hasInputMethod(): boolean {
   return allInputMethodInstalled()
+}
+
+/** Google Chrome ignores --load-extension, so the OpenCLI extension is pushed
+ * in over CDP after startup. That load is dropped on every Chrome restart, so
+ * it hangs off ExecStartPost and runs once per start. Returns undefined when
+ * there is nothing to load, or when Chromium already took the launch flag. */
+function buildOpencliPostStart(): string | undefined {
+  const chromeBin = getChromeBinaryPath() || 'chromium-browser'
+  if (!shouldLoadExtensionViaCdp(chromeBin, isOpencliExtensionInstalled())) return undefined
+  const cdpPort = parseInt(getBrowserConfig('cdp_port') || '9222', 10)
+  const script = writeOpencliLoader(cdpPort, getOpencliExtensionDir())
+  // process.execPath, not a bare `node`: systemd user units get a minimal PATH.
+  return `${process.execPath} ${script}`
 }
 
 export function buildVncStackConfig(): VncStackConfig {
@@ -102,6 +116,7 @@ export function buildVncStackConfig(): VncStackConfig {
     appCommand: buildChromeCommand(),
     appDescription: 'Headless Chrome browser',
     inputMethod: hasInputMethod(),
+    appPostStart: buildOpencliPostStart(),
   }
 }
 

@@ -16,6 +16,12 @@ export interface VncStackConfig {
   openboxConfigFile?: string
   /** Enable fcitx5 input method service in the VNC stack */
   inputMethod?: boolean
+  /** Command to run after the app starts, as the unit's ExecStartPost. Used to
+   * load the OpenCLI extension into Chrome over CDP — that load is dropped on
+   * every restart, so it has to be re-issued per start rather than once at
+   * install time. Whatever runs here must exit 0 even when it fails, or a
+   * healthy browser gets reported as a failed unit. */
+  appPostStart?: string
 }
 
 function userUnitDir(): string {
@@ -43,15 +49,37 @@ export function writeOpenboxConfig(config: VncStackConfig): string {
   return configFile
 }
 
+/** The app (browser) unit. Split out of writeSystemdUnits so the ExecStartPost
+ * wiring can be asserted without touching the filesystem. */
+export function renderAppUnit(config: VncStackConfig): string {
+  const envLines = config.appEnv
+    ? Object.entries(config.appEnv).map(([k, v]) => `Environment=${k}=${v}`).join('\n')
+    : ''
+  return `[Unit]
+Description=${config.appDescription}
+Requires=openbox-${config.prefix}.service${config.inputMethod ? `\nRequires=fcitx5-${config.prefix}.service` : ''}
+After=openbox-${config.prefix}.service${config.inputMethod ? `\nAfter=fcitx5-${config.prefix}.service` : ''}
+
+[Service]
+Environment=DISPLAY=${config.display}${config.inputMethod ? `
+Environment=GTK_IM_MODULE=fcitx
+Environment=QT_IM_MODULE=fcitx
+Environment=XMODIFIERS=@im=fcitx
+Environment=LANG=zh_TW.UTF-8` : ''}
+${envLines}
+ExecStart=${config.appCommand}${config.appPostStart ? `\nExecStartPost=${config.appPostStart}` : ''}
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target`
+}
+
 export function writeSystemdUnits(config: VncStackConfig): string[] {
   const dir = userUnitDir()
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 
   const openboxConfig = writeOpenboxConfig(config)
-
-  const envLines = config.appEnv
-    ? Object.entries(config.appEnv).map(([k, v]) => `Environment=${k}=${v}`).join('\n')
-    : ''
 
   const units: Record<string, string> = {
     [`xvfb-${config.prefix}.service`]: `[Unit]
@@ -95,24 +123,7 @@ RestartSec=10
 WantedBy=default.target`,
     } : {}),
 
-    [`${config.prefix}-headless.service`]: `[Unit]
-Description=${config.appDescription}
-Requires=openbox-${config.prefix}.service${config.inputMethod ? `\nRequires=fcitx5-${config.prefix}.service` : ''}
-After=openbox-${config.prefix}.service${config.inputMethod ? `\nAfter=fcitx5-${config.prefix}.service` : ''}
-
-[Service]
-Environment=DISPLAY=${config.display}${config.inputMethod ? `
-Environment=GTK_IM_MODULE=fcitx
-Environment=QT_IM_MODULE=fcitx
-Environment=XMODIFIERS=@im=fcitx
-Environment=LANG=zh_TW.UTF-8` : ''}
-${envLines}
-ExecStart=${config.appCommand}
-Restart=on-failure
-RestartSec=10
-
-[Install]
-WantedBy=default.target`,
+    [`${config.prefix}-headless.service`]: renderAppUnit(config),
 
     [`x11vnc-${config.prefix}.service`]: `[Unit]
 Description=x11vnc VNC server (${config.prefix})
