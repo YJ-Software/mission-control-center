@@ -125,15 +125,35 @@ test.describe('LLM 管理 — kimi auth + per-agent override + chat', () => {
       p.profileId.startsWith(PROVIDER_PROFILE_PREFIX),
     )
 
-    await api(baseURL, cookieHeader, 'POST', '/api/openclaw/models/agent-override', {
-      agent: 'main',
-      action: 'clear',
-    })
+    // Both cleanup calls are ASSERTED. A silently-failing cleanup leaves the
+    // agent pinned to kimi/kimi-code with no kimi credential, and every later
+    // spec in the run then dies on `No API key found for provider "kimi"` —
+    // which reads as a dozen unrelated failures instead of one cleanup bug.
+    const cleared = await api(
+      baseURL,
+      cookieHeader,
+      'POST',
+      '/api/openclaw/models/agent-override',
+      { agent: 'main', action: 'clear' },
+    )
+    expect(cleared.status, `override clear failed: ${JSON.stringify(cleared.body)}`).toBe(200)
+
     if (newProfile) {
-      await api(baseURL, cookieHeader, 'POST', '/api/openclaw/auth/remove', {
+      const removed = await api(baseURL, cookieHeader, 'POST', '/api/openclaw/auth/remove', {
         agent: 'main',
         profileId: newProfile.profileId,
       })
+      expect(removed.status, `profile remove failed: ${JSON.stringify(removed.body)}`).toBe(200)
     }
+
+    // And verify the env is actually back to baseline, not merely that the
+    // calls returned 200.
+    const after = await api(baseURL, cookieHeader, 'GET', '/api/openclaw/auth/agents')
+    const mainAfter = (
+      after.body as { agents: { id: string; profiles: { profileId: string }[] }[] }
+    ).agents.find((a) => a.id === 'main')
+    expect(
+      mainAfter?.profiles.filter((p) => p.profileId.startsWith(PROVIDER_PROFILE_PREFIX)) ?? [],
+    ).toHaveLength(0)
   })
 })
