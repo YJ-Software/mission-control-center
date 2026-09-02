@@ -74,6 +74,15 @@ async function main() {
   }
   console.log('[phase-3] dashboard reachable on VPS localhost')
 
+  // Capture what the deployer left behind BEFORE we wipe it. `ufw --force
+  // reset` below destroys OCD's rules, and on 2026-09-02 that meant we could
+  // not answer "does OCD leave :3737 open to the world?" after the fact — the
+  // only evidence left was ufw.log BLOCK lines. Keep the pre-reset state in
+  // the phase record so the next fresh deploy answers it for free.
+  const preResetStatus = await ssh(env, 'ufw status verbose 2>&1; echo "--- numbered ---"; ufw status numbered 2>&1')
+  const preResetRules = await ssh(env, 'cat /etc/ufw/user.rules 2>/dev/null | grep -vE "^\\s*#" | grep -v "^$" | head -80')
+  console.log(`[phase-3] ufw state left by the deployer (pre-reset):\n${preResetStatus}`)
+
   // Reset and configure ufw
   console.log('[phase-3] applying ufw rules')
   await ssh(env, 'ufw --force reset')
@@ -95,7 +104,13 @@ async function main() {
   }
   console.log(`[phase-3] dashboard reachable from local: ${remote.status}`)
 
-  writePhaseRecord(3, { ok: true, observed_ip: observed, ufw: ruleList })
+  writePhaseRecord(3, {
+    ok: true,
+    observed_ip: observed,
+    ufw: ruleList,
+    deployer_ufw_status: preResetStatus,
+    deployer_ufw_user_rules: preResetRules,
+  })
 }
 
 main().catch(err => {
