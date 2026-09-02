@@ -5,7 +5,13 @@
     "updateMccConfirm": "升级 MCC 到 {version}？升级期间服务会重启、页面会短暂断线。",
     "updateMccFailed": "MCC 升级失败：{error}",
     "updating": "更新中...",
-    "viewLog": "查看 log"
+    "viewLog": "查看 log",
+    "updateSystem": "系统更新 {count}",
+    "updateSystemSecurity": "其中 {count} 个是安全更新",
+    "updateSystemConfirm": "要更新 {count} 个系统软件包吗？这会执行 apt upgrade，过程中服务可能短暂中断。",
+    "rebootRequired": "需要重新启动",
+    "rebooting": "重新启动中…",
+    "rebootConfirm": "确定要重新启动吗？整台机器会重启，所有服务与连接都会中断数分钟。"
   },
   "notifications": {
     "title": "通知",

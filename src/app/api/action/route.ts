@@ -105,6 +105,15 @@ const actions: Record<string, ActionHandler> = {
     return { success: true, jobId: meta.id, message: 'Upgrade job started' }
   },
 
+  'reboot-system': async () => {
+    const { buildRebootCommand } = await import('@/lib/system-update/apt')
+    // Not a job: the reboot takes the server down with it, so there would be
+    // nothing left to write the job's result. Detach it instead and let this
+    // response get out first.
+    exec(buildRebootCommand())
+    return { success: true, message: 'Reboot scheduled' }
+  },
+
   'update-mcc': async ({ triggeredBy }) => {
     const { getInstallInfo, fetchManifest, getConfiguredManifestUrl, pickArtifact, downloadArtifact, applyUpgrade, scheduleServiceRestart } = await import('@/lib/upgrade/manager')
     const { getVersionInfo } = await import('@/lib/version')
@@ -192,14 +201,15 @@ const actions: Record<string, ActionHandler> = {
   },
 
   'sys-update': async ({ triggeredBy }) => {
+    // Phases come from buildSystemUpdatePhases: a job has no tty, so apt must
+    // run noninteractive with --force-confold or a package shipping a changed
+    // config file stops the upgrade on a prompt nobody can answer.
+    const { buildSystemUpdatePhases } = await import('@/lib/system-update/apt')
     const meta = startJob({
       kind: 'sys-update',
       label: 'apt update + upgrade',
       triggeredBy,
-      phases: [
-        { name: 'apt update', shell: 'sudo apt update 2>&1' },
-        { name: 'apt upgrade', shell: 'sudo apt upgrade -y 2>&1' },
-      ],
+      phases: buildSystemUpdatePhases(),
     })
     return { success: true, jobId: meta.id }
   },

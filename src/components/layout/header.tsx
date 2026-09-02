@@ -1,6 +1,6 @@
 'use client'
 
-import { Globe, Menu, RefreshCw, ArrowUpCircle, Loader2, ScrollText } from 'lucide-react'
+import { Globe, Menu, RefreshCw, ArrowUpCircle, Loader2, ScrollText, Package, Power } from 'lucide-react'
 import { useState } from 'react'
 import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
@@ -29,6 +29,9 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   const [updatingMcc, setUpdatingMcc] = useState(false)
   const [ocJobId, setOcJobId] = useState<string | null>(null)
   const [mccJobId, setMccJobId] = useState<string | null>(null)
+  const [updatingSys, setUpdatingSys] = useState(false)
+  const [sysJobId, setSysJobId] = useState<string | null>(null)
+  const [rebooting, setRebooting] = useState(false)
   const t = useTranslations('header')
   const queryClient = useQueryClient()
 
@@ -50,6 +53,21 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
     retry: false,
   })
   const mccHasUpdate = !!mccCheck?.hasUpdate
+
+  const { data: sys } = useQuery<{
+    manager: string | null
+    updates: number
+    security: number
+    rebootRequired: boolean
+    rebootPackages: string[]
+  }>({
+    queryKey: ['system-update-check'],
+    queryFn: () => fetch('/api/upgrade/system-check').then(r => r.json()),
+    refetchInterval: 300000,
+    retry: false,
+  })
+  // `manager: null` is "we could not tell", not "up to date" — show nothing.
+  const sysHasUpdate = sys?.manager === 'apt' && sys.updates > 0
 
   async function handleUpdate() {
     setUpdating(true)
@@ -91,6 +109,39 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
       }
     } finally {
       setUpdatingMcc(false)
+    }
+  }
+
+  async function handleUpdateSystem() {
+    if (!confirm(t('updateSystemConfirm', { count: sys?.updates ?? 0 }))) return
+    setUpdatingSys(true)
+    try {
+      const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sys-update', triggeredBy: 'header-button' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (data?.jobId) setSysJobId(data.jobId)
+      queryClient.invalidateQueries({ queryKey: ['system-log-jobs'] })
+    } finally {
+      setUpdatingSys(false)
+    }
+  }
+
+  async function handleReboot() {
+    // Rebooting drops every session on the box, so make them mean it.
+    if (!confirm(t('rebootConfirm'))) return
+    setRebooting(true)
+    try {
+      await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reboot-system', triggeredBy: 'header-button' }),
+      })
+    } finally {
+      // Deliberately left true: the box is going down, and re-enabling the
+      // button would invite a second reboot into the shutdown.
     }
   }
 
@@ -192,6 +243,50 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
             <ScrollText className="w-3 h-3" />
             {t('viewLog')}
           </Link>
+        )}
+
+        {sysHasUpdate && (
+          <button
+            onClick={handleUpdateSystem}
+            disabled={updatingSys}
+            title={sys?.security ? t('updateSystemSecurity', { count: sys.security }) : undefined}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-medium
+              bg-sky-500/15 text-sky-300 border border-sky-500/30
+              hover:bg-sky-500/25 transition-colors
+              disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {updatingSys
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Package className="w-3.5 h-3.5" />}
+            {updatingSys ? t('updating') : t('updateSystem', { count: sys?.updates ?? 0 })}
+          </button>
+        )}
+        {sysJobId && (
+          <Link
+            href={`/system-log?job=${sysJobId}`}
+            className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-mono
+              text-sky-300/80 hover:text-sky-200 hover:bg-sky-500/10 border border-sky-500/20 transition-colors"
+          >
+            <ScrollText className="w-3 h-3" />
+            {t('viewLog')}
+          </Link>
+        )}
+
+        {sys?.rebootRequired && (
+          <button
+            onClick={handleReboot}
+            disabled={rebooting}
+            title={sys.rebootPackages.length ? sys.rebootPackages.join(', ') : undefined}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-medium
+              bg-red-500/15 text-red-300 border border-red-500/30
+              hover:bg-red-500/25 transition-colors
+              disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {rebooting
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Power className="w-3.5 h-3.5" />}
+            {rebooting ? t('rebooting') : t('rebootRequired')}
+          </button>
         )}
       </div>
 
