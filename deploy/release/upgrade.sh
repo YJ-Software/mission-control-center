@@ -115,8 +115,25 @@ fi
 ensure_user_bus
 
 NEW_DIR="$PREFIX/versions/v$VERSION"
+# Reuse the existing tree ONLY when it is actually this tarball. Reusing on
+# directory-existence alone silently ships stale code whenever a version number
+# is reused with different content — during a rebuild, or a re-cut release. That
+# bit us on 2026-09-02: a release candidate "passed" the full E2E while the box
+# was still serving an older build, because versions/v0.3.84 already existed
+# from an earlier test build and was reused. The deploy logged success and
+# /api/health reported the OLD commit.
+TARBALL_STAMP="$(tar xzOf "$TARBALL" ./version.json 2>/dev/null || true)"
 if [[ -d "$NEW_DIR" ]]; then
-  log "reusing existing $NEW_DIR (already extracted)"
+  EXISTING_STAMP="$(cat "$NEW_DIR/version.json" 2>/dev/null || true)"
+  if [[ -n "$TARBALL_STAMP" && "$EXISTING_STAMP" == "$TARBALL_STAMP" ]]; then
+    log "reusing existing $NEW_DIR (already extracted, matches tarball)"
+  else
+    log "replacing $NEW_DIR — existing tree does not match this tarball"
+    rm -rf "$NEW_DIR"
+    mkdir -p "$NEW_DIR"
+    log "extracting → $NEW_DIR"
+    tar xzf "$TARBALL" -C "$NEW_DIR"
+  fi
 else
   mkdir -p "$NEW_DIR"
   log "extracting → $NEW_DIR"
