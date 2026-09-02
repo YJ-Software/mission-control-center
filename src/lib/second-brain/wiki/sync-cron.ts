@@ -2,6 +2,8 @@
  *  Mirrors morning-report's sync-cron pattern but with a single job. */
 
 import { cronList, cronAdd, cronRemove } from '@/lib/morning-report/cron-cli'
+import { deriveInternalToken } from '@/lib/internal-token'
+import { injectCronAuth } from '@/lib/morning-report/cron-auth'
 import { db } from '@/lib/db'
 import { settings, morningReportConfig } from '@/lib/schema'
 import { eq } from 'drizzle-orm'
@@ -23,13 +25,14 @@ function normalizeCron(expr: string): string {
 export async function syncWikiCronJob(): Promise<{ ok: boolean; created?: boolean; error?: string }> {
   const cronExpr = normalizeCron(getSetting('wiki.synthesisCron'))
   const baseUrl = getMrConfig('missionControlUrl') || 'http://localhost:3737'
+  const internalToken = deriveInternalToken(process.env.AUTH_SECRET || '')
 
   // Job message: tell the agent to fire the async endpoint and report back.
-  const message = `使用 exec 工具執行以下指令觸發 Wiki synthesis：
-curl -fsS -X POST '${baseUrl}/api/second-brain/wiki?action=synthesize-now'
+  const message = injectCronAuth(`使用 exec 工具執行以下指令觸發 Wiki synthesis：
+curl -fsS -X POST '\${BASE_URL}/api/second-brain/wiki?action=synthesize-now'
 
 回應應該是 \`{"ok":true,"message":"synthesis started in background"}\`，HTTP 202。
-回報已啟動。實際 synthesis 完成（10-30 分鐘）後 dashboard 會自動 announce report URL。`
+回報已啟動。實際 synthesis 完成（10-30 分鐘）後 dashboard 會自動 announce report URL。`, baseUrl, internalToken)
 
   // Find & remove existing wiki synthesis job
   let existing

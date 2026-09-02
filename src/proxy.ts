@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'crypto'
+import { verifyInternalToken, INTERNAL_TOKEN_HEADER } from '@/lib/internal-token'
 
 const SESSION_COOKIE = 'mc_session'
 
@@ -49,13 +50,14 @@ export function proxy(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Allow internal API calls from localhost (cron jobs use curl from local machine)
+  // Allow internal API calls (cron jobs curl the API from the local machine).
+  // This used to trust `Host: localhost` + a loopback `X-Forwarded-For`, but
+  // both are client-set: a remote request could forge them and reach every
+  // /api route — including the privileged /api/action — with no session
+  // (verified exploitable 2026-09-02). The cron curls now carry a token derived
+  // from AUTH_SECRET, which an outsider cannot compute.
   if (pathname.startsWith('/api/')) {
-    const host = req.headers.get('host') || ''
-    const forwardedFor = req.headers.get('x-forwarded-for') || ''
-    const isLocalhost = host.startsWith('localhost') || host.startsWith('127.0.0.1')
-    const notProxied = !forwardedFor || forwardedFor === '127.0.0.1' || forwardedFor === '::1'
-    if (isLocalhost && notProxied) {
+    if (verifyInternalToken(req.headers.get(INTERNAL_TOKEN_HEADER), process.env.AUTH_SECRET || '')) {
       return NextResponse.next()
     }
   }

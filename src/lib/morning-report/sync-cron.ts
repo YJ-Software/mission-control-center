@@ -10,6 +10,8 @@ import {
 import { join } from 'path'
 import { cronList, cronAdd, cronRemove, type CronJobInfo } from './cron-cli'
 import { getTemplate } from './template-helpers'
+import { deriveInternalToken } from '@/lib/internal-token'
+import { injectCronAuth } from './cron-auth'
 import { listFeeds } from './news-feeds'
 
 function getConfigValue(key: string): string {
@@ -37,6 +39,7 @@ export async function syncCronJobs() {
   const allowedModels = getOpenClawAllowedModels()
   const tgChatId = getConfigValue('tgChatId')
   const baseUrl = getConfigValue('missionControlUrl') || 'http://localhost:3737'
+  const internalToken = deriveInternalToken(process.env.AUTH_SECRET || '')
   const generatedDir = getGeneratedDir()
 
   // Fetch existing jobs from Gateway
@@ -116,7 +119,7 @@ export async function syncCronJobs() {
       '🌅 晨報 抓取新聞來源',
       `5 */${feedHours} * * *`,
       masterEnabled,
-      `使用 exec 工具執行以下指令來抓取已註冊的新聞來源：\ncurl -s -X POST '${baseUrl}/api/morning-report?action=fetch-feeds'\n回報各來源抓到幾則。`,
+      injectCronAuth(`使用 exec 工具執行以下指令來抓取已註冊的新聞來源：\ncurl -s -X POST '\${BASE_URL}/api/morning-report?action=fetch-feeds'\n回報各來源抓到幾則。`, baseUrl, internalToken),
       180,
       getConfigValue('feedFetchModel') || undefined,
       { announce: true, noDeliver: true },
@@ -128,7 +131,7 @@ export async function syncCronJobs() {
     const gpInterval = parseInt(getConfigValue('interval') || '5', 10) || 5
     const gpModel = getConfigValue('generatePromptsModel') || undefined
     const gpMessageTemplate = getConfigValue('generatePromptsMessageTemplate')
-    const gpMessage = gpMessageTemplate || `使用 exec 工具執行以下指令來生成晨報 prompts：\ncurl -s -X POST '${baseUrl}/api/morning-report?action=generate-prompts'\n回報產生了幾個 prompt 檔案。`
+    const gpMessage = injectCronAuth(gpMessageTemplate || `使用 exec 工具執行以下指令來生成晨報 prompts：\ncurl -s -X POST '\${BASE_URL}/api/morning-report?action=generate-prompts'\n回報產生了幾個 prompt 檔案。`, baseUrl, internalToken)
 
     const enabledTopics = topics.filter(t => t.enabled)
     const firstCron = (enabledTopics.length > 0 ? enabledTopics[0].cronTime : topics[0].cronTime) ?? '0 8'
@@ -192,7 +195,7 @@ export async function syncCronJobs() {
       '🌅 晨報 finalize',
       `${finMin} ${finHour} * * *`,
       masterEnabled && finalizeEnabled,
-      getTemplate('finalizeMessageTemplate').replace(/\$\{BASE_URL\}/g, baseUrl),
+      injectCronAuth(getTemplate('finalizeMessageTemplate'), baseUrl, internalToken),
       600,
       finalizeModel,
       baseDelivery,
@@ -212,7 +215,7 @@ export async function syncCronJobs() {
       '🌅 晨報 podcast',
       `${podMin} ${podHour} * * *`,
       masterEnabled && podcastEnabled,
-      getTemplate('podcastMessageTemplate').replace(/\$\{BASE_URL\}/g, baseUrl),
+      injectCronAuth(getTemplate('podcastMessageTemplate'), baseUrl, internalToken),
       // Trigger-only agent finishes in seconds. Keep timeout modest so a
       // hung agent doesn't sit around — the harvest job picks up the URL.
       120,
@@ -232,8 +235,7 @@ export async function syncCronJobs() {
     while (harvestMin >= 60) { harvestMin -= 60; harvestHour++ }
     if (harvestHour >= 24) harvestHour = 0
     const podcastHarvestEnabled = getConfigValue('podcastHarvestEnabled') !== 'false'
-    const harvestTemplate = getTemplate('podcastHarvestMessageTemplate')
-      .replace(/\$\{BASE_URL\}/g, baseUrl)
+    const harvestTemplate = injectCronAuth(getTemplate('podcastHarvestMessageTemplate'), baseUrl, internalToken)
 
     // Harvest is its own curl-wrapper agent — separate model knob lets the
     // operator pick a cheap model without affecting the podcast trigger or
