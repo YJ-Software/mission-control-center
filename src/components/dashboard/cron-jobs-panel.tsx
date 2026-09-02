@@ -62,9 +62,16 @@ export function CronJobsPanel() {
   const [runningId, setRunningId] = useState<string | null>(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
 
-  const { data: cronData } = useQuery({
+  const { data: cronData, isError: cronError } = useQuery({
     queryKey: ['cron-summary'],
-    queryFn: () => fetch('/api/cron').then(r => r.json()),
+    // Reject on a failed response — otherwise the empty `jobs` in the error
+    // body renders as "no cron jobs" and hides that the gateway is unreachable.
+    queryFn: async () => {
+      const res = await fetch('/api/cron')
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.error || `cron list failed (${res.status})`)
+      return body
+    },
     refetchInterval: 30000,
   })
 
@@ -107,7 +114,11 @@ export function CronJobsPanel() {
         </span>
       </div>
       <div className="max-h-80 overflow-y-auto">
-        {jobs.length === 0 ? (
+        {cronError ? (
+          <div className="p-4 text-center">
+            <span className="font-mono text-[10px] text-amber-400/70 tracking-widest">{t('cronJobsUnavailable')}</span>
+          </div>
+        ) : jobs.length === 0 ? (
           <div className="p-4 text-center">
             <span className="font-mono text-[10px] text-white/20 tracking-widest">{t('noCronJobs')}</span>
           </div>

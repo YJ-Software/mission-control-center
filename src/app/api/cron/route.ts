@@ -13,7 +13,14 @@ export async function GET() {
     const jobs = await cronList()
     return NextResponse.json({ jobs })
   } catch (err) {
-    return NextResponse.json({ jobs: [], error: String(err) })
+    // 503, not 200-with-an-error-field: the dashboard renders whatever `jobs`
+    // holds, so a 200 carrying [] is displayed as "no cron jobs" and reads as a
+    // genuinely empty schedule. Failing the request is what lets the UI tell
+    // "couldn't reach the gateway" apart from "you have none".
+    return NextResponse.json(
+      { jobs: [], error: err instanceof Error ? err.message : String(err) },
+      { status: 503 },
+    )
   }
 }
 

@@ -9,7 +9,7 @@
  * when the gateway connection is unavailable.
  */
 
-import { readFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 
@@ -179,19 +179,35 @@ function mapJob(j: any): CronJobInfo {
 // List
 // ---------------------------------------------------------------------------
 
-/** Read jobs.json directly as a fallback when gateway RPC is unavailable. */
-function readJobsFile(): any[] {
+/** Legacy on-disk cron store, for OpenClaw builds predating the SQLite move.
+ *  Returns null when there is no such file — which is the normal case on
+ *  2026.5+ (the directory keeps only jobs.json.migrated / .bak). Callers must
+ *  treat null as "no fallback available", NOT as "no jobs configured". */
+function readJobsFile(): any[] | null {
+    const jobsPath = join(homedir(), '.openclaw', 'cron', 'jobs.json')
+    if (!existsSync(jobsPath)) return null
     try {
-        const jobsPath = join(homedir(), '.openclaw', 'cron', 'jobs.json')
-        const raw = readFileSync(jobsPath, 'utf-8')
-        const data = JSON.parse(raw)
+        const data = JSON.parse(readFileSync(jobsPath, 'utf-8'))
         return Array.isArray(data) ? data : (data.jobs ?? data.entries ?? [])
-    } catch { return [] }
+    } catch {
+        // Present but unreadable/corrupt — no better information than the RPC error.
+        return null
+    }
 }
 
 /**
- * List all cron jobs (including disabled ones).
- * Uses gateway RPC (same as official UI), falls back to jobs.json.
+ * List all cron jobs (including disabled ones), via gateway RPC.
+ *
+ * The jobs.json fallback only applies to OpenClaw versions that still keep
+ * that file. Since the move to SQLite it can never return anything, and
+ * swallowing the RPC error to return [] rendered the dashboard as "no cron
+ * jobs" — indistinguishable from a genuinely empty schedule.
+ *
+ * That is worse than an error: on 2026-09-01 an OpenClaw upgrade made every
+ * cron.list fail with AgentSelectionRequiredError for ~18h, and the cron page
+ * showed an empty list the whole time, inviting the operator to recreate jobs
+ * that already existed. So when there is no fallback, the RPC error is
+ * rethrown and the route reports it.
  */
 export async function cronList(): Promise<CronJobInfo[]> {
     let jobs: any[]
@@ -202,9 +218,10 @@ export async function cronList(): Promise<CronJobInfo[]> {
             offset: 0,
         }) as any
         jobs = result?.jobs ?? []
-    } catch {
-        // Gateway RPC unavailable — read jobs.json directly (read-only fallback)
-        jobs = readJobsFile()
+    } catch (err) {
+        const fallback = readJobsFile()
+        if (fallback === null) throw err
+        jobs = fallback
     }
     return jobs.map(mapJob)
 }

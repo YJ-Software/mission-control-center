@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Clock, Plus } from 'lucide-react'
+import { Clock, Plus, AlertTriangle } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -17,9 +17,17 @@ export function CronJobsManager() {
   const [newJob, setNewJob] = useState<CronJobFormData>(defaultFormData)
 
   // Fetch jobs
-  const { data, isLoading } = useQuery<{ jobs: CronJobInfo[] }>({
+  const { data, isLoading, isError, error } = useQuery<{ jobs: CronJobInfo[] }>({
     queryKey: ['cron-jobs'],
-    queryFn: () => fetch('/api/cron').then(r => r.json()),
+    // Must reject on a failed response. Resolving with the body would render
+    // its empty `jobs` as "no cron jobs" — the schedule looking wiped when the
+    // gateway is merely unreachable.
+    queryFn: async () => {
+      const res = await fetch('/api/cron')
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body?.error || `cron list failed (${res.status})`)
+      return body
+    },
     refetchInterval: 30000,
   })
 
@@ -94,6 +102,25 @@ export function CronJobsManager() {
     return (
       <div className="flex items-center justify-center h-48">
         <span className="font-mono text-white/20 tracking-[0.3em] text-xs typewriter">{t('loadingJobs')}</span>
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="p-6">
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-sm text-white/90">{t('loadFailed')}</div>
+              <div className="text-xs text-white/50 mt-1">{t('loadFailedHint')}</div>
+              <pre className="text-[11px] text-white/40 mt-2 whitespace-pre-wrap break-words">
+                {error instanceof Error ? error.message : String(error)}
+              </pre>
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
