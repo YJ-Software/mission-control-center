@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.8.2-v0.3.83",
-    "mccVersion": "0.3.83",
+    "version": "2026.8.2-v0.3.84",
+    "mccVersion": "0.3.84",
     "openclawVersion": "2026.8.2",
-    "releaseDate": "2026-09-01T19:55:23.513Z",
-    "notes": "- fix(cs): 安裝自製客服 plugin 時通過 2026.8.2 的信任閘\n- feat(setup): 新增「憑證加固」分頁。openclaw.json 裡的明文憑證可一鍵搬進獨立機密檔案，設定檔只留參照。要搬哪些欄位由 OpenClaw 的 secrets audit 決定而非寫死清單；可重複執行，已是參照的欄位會跳過；動作前自動備份設定檔。注意機密檔案本身仍是明文、靠 600 權限保護，用途是讓憑證離開 agent 讀得到的設定檔，不是加密\n- fix(config): 修正 file SecretRef 的解析。路徑在 secrets.providers 的 provider 上，ref 的 id 是它內部的識別子（singleValue 模式為 \"value\"，否則為 JSON pointer）—— 先前誤把 id 當檔案路徑，導致 file ref 一律解不出來\n- fix(install): install.sh 種入 OPENCLAW_TOKEN 時會解析 SecretRef，否則在已加固的機器上重裝會寫出空 token",
+    "releaseDate": "2026-09-02T17:44:05.097Z",
+    "notes": "- fix(security): 修補 proxy.ts 的認證繞過漏洞。原本「本機 cron 免登入」的判斷是看 Host 與 X-Forwarded-For 這兩個由請求方自己給的 header，遠端偽造 Host: localhost 加 X-Forwarded-For: 127.0.0.1 就能在沒有任何 session 的情況下打進所有 /api 路由，包含 /api/action（重開機、系統更新、重啟服務、備份還原）。實測確認可利用後修復：改為要求 X-Internal-Token，值由既有的 AUTH_SECRET 以 HMAC 推導，外部無法計算；Host/XFF 判斷完全移除\n- 內部 cron 的 curl（晨報的 fetch-feeds / generate-prompts / finalize / podcast / harvest，以及 wiki synthesize）改為攜帶該 token。token 在「產生 cron 指令的當下」注入，而非埋在模板裡當 placeholder —— 這樣預設模板、客戶自訂模板、內建指令都會帶上，自訂過模板的機器不會因為少了 placeholder 而靜默 401。備份 cron 不受影響，它本來就走 X-Backup-Token\n- 影響範圍：能連到 :3737 的人都可利用。正常部署的機器 :3737 只開放 loopback 與客戶自己的 tailnet，不對公網開放，但客戶 tailnet 上的任何裝置都在攻擊面內，且此漏洞讓 MCC 登入在直連路徑上形同虛設\n- 升級後晨報／wiki 的 cron 指令會在下次同步時自動帶上 token（同步發生於變更相關設定或升級部署時）",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.8.2-v0.3.83/mission-control-v0.3.83-linux-x64.tar.gz",
-        "sha256": "0463f5531fde20e9e43cc0a8edbe88c767f68878fd106c7c9efebcab2e84f687",
-        "size": 26860248
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.8.2-v0.3.84/mission-control-v0.3.84-linux-x64.tar.gz",
+        "sha256": "d4b3dde8c355fc86cbe67dbde6f33d22e07f67c15c15d5a9091deec48301ff69",
+        "size": 26880114
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.8.2-v0.3.83",
+      "mccVersion": "0.3.83",
+      "openclawVersion": "2026.8.2",
+      "releaseDate": "2026-09-01T19:55:23.513Z"
+    },
     {
       "version": "2026.8.2-v0.3.82",
       "mccVersion": "0.3.82",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.74",
       "openclawVersion": "2026.7.1-2",
       "releaseDate": "2026-07-29T11:21:24.098Z"
-    },
-    {
-      "version": "2026.7.1-2-v0.3.73",
-      "mccVersion": "0.3.73",
-      "openclawVersion": "2026.7.1-2",
-      "releaseDate": "2026-07-29T08:18:31.895Z"
     }
   ]
 }
