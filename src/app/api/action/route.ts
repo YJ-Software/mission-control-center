@@ -105,13 +105,29 @@ const actions: Record<string, ActionHandler> = {
     return { success: true, jobId: meta.id, message: 'Upgrade job started' }
   },
 
-  'reboot-system': async () => {
+  'reboot-system': async ({ triggeredBy }) => {
     const { buildRebootCommand } = await import('@/lib/system-update/apt')
-    // Not a job: the reboot takes the server down with it, so there would be
-    // nothing left to write the job's result. Detach it instead and let this
-    // response get out first.
-    exec(buildRebootCommand())
-    return { success: true, message: 'Reboot scheduled' }
+    // Record the request before issuing it. The reboot takes the server down,
+    // so a job that waited on the command could never write its own result —
+    // this job's work IS the request, and it finishes as soon as the reboot is
+    // scheduled. Without it a reboot leaves no trace in the system log at all:
+    // nobody can tell afterwards who restarted the host, or when.
+    const meta = startJob({
+      kind: 'reboot-host',
+      label: 'Reboot host',
+      triggeredBy,
+      phases: [
+        {
+          name: 'schedule reboot',
+          inline: async (log) => {
+            log('system', 'reboot scheduled; the host goes down in a few seconds')
+            exec(buildRebootCommand())
+            return 0
+          },
+        },
+      ],
+    })
+    return { success: true, jobId: meta.id, message: 'Reboot scheduled' }
   },
 
   'update-mcc': async ({ triggeredBy }) => {

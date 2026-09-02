@@ -32,6 +32,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   const [updatingSys, setUpdatingSys] = useState(false)
   const [sysJobId, setSysJobId] = useState<string | null>(null)
   const [rebooting, setRebooting] = useState(false)
+  const [rebootJobId, setRebootJobId] = useState<string | null>(null)
   const t = useTranslations('header')
   const queryClient = useQueryClient()
 
@@ -134,11 +135,14 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
     if (!confirm(t('rebootConfirm'))) return
     setRebooting(true)
     try {
-      await fetch('/api/action', {
+      const res = await fetch('/api/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'reboot-system', triggeredBy: 'header-button' }),
       })
+      const data = await res.json().catch(() => ({}))
+      if (data?.jobId) setRebootJobId(data.jobId)
+      queryClient.invalidateQueries({ queryKey: ['system-log-jobs'] })
     } finally {
       // Deliberately left true: the box is going down, and re-enabling the
       // button would invite a second reboot into the shutdown.
@@ -287,6 +291,16 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
               : <Power className="w-3.5 h-3.5" />}
             {rebooting ? t('rebooting') : t('rebootRequired')}
           </button>
+        )}
+        {rebootJobId && (
+          <Link
+            href={`/system-log?job=${rebootJobId}`}
+            className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-mono
+              text-red-300/80 hover:text-red-200 hover:bg-red-500/10 border border-red-500/20 transition-colors"
+          >
+            <ScrollText className="w-3 h-3" />
+            {t('viewLog')}
+          </Link>
         )}
       </div>
 
