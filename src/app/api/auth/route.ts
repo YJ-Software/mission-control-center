@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { eq } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { settings } from '@/lib/schema'
+import { resolveLandingPath, LANDING_KEY } from '@/lib/landing'
 import {
   verifyPassword, createSessionToken, validateRequest,
   isAuthEnabled, getClientIp, SESSION_COOKIE, SESSION_MAX_AGE
@@ -27,7 +31,10 @@ export async function POST(req: NextRequest) {
 
   console.log(`[mc-auth] login ok from ${ip}`)
   const token = createSessionToken()
-  const res = NextResponse.json({ ok: true })
+  // Hand the landing path back with the session so the login page does not need
+  // a second round trip to find out where a chat-first box should go.
+  const landingRow = db.select().from(settings).where(eq(settings.key, LANDING_KEY)).all()[0]
+  const res = NextResponse.json({ ok: true, landing: resolveLandingPath(landingRow?.value) })
 
   // Detect whether this request came in over HTTPS. In production behind a
   // Cloudflare tunnel / reverse proxy, the cookie must be Secure so the

@@ -25,7 +25,8 @@ export default function LoginPage() {
       })
 
       if (res.ok) {
-        router.push('/dashboard')
+        const body = await res.json().catch(() => ({}))
+        router.push(typeof body?.landing === 'string' ? body.landing : '/dashboard')
         router.refresh()
       } else {
         setError(t('invalidPassword'))

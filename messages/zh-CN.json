@@ -2558,5 +2558,10 @@
     "cancel": "取消",
     "switching": "切换中…",
     "restartNote": "切换会改写 openclaw.json 并重启 gateway，约需数秒。"
+  },
+  "talk": {
+    "title": "AI 助理",
+    "subtitle": "与您的 AI 助理对话",
+    "openFullMcc": "完整控制台"
   }
 }

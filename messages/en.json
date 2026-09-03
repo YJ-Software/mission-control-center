@@ -2558,5 +2558,10 @@
     "cancel": "Cancel",
     "switching": "Switching…",
     "restartNote": "Switching rewrites openclaw.json and restarts the gateway; takes a few seconds."
+  },
+  "talk": {
+    "title": "AI Assistant",
+    "subtitle": "Chat with your AI assistant",
+    "openFullMcc": "Full console"
   }
 }
