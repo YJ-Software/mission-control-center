@@ -9,8 +9,11 @@ Control at all. That is the barrier this removes — the feature is not a nicety
 it is the difference between "the customer can use what they bought" and "the
 customer must know SSH".
 
-**Nothing changes on the Mission Control side.** No new MCC version is required
-for this; the items below are all deployer-side. `HOST=0.0.0.0` stays as-is.
+**Almost nothing changes on the Mission Control side.** `HOST=0.0.0.0` stays
+as-is. There is exactly one MCC-side item, §10 below: a one-line setting that
+makes the customer land in a chat window instead of the operator console. It
+needs Mission Control **2026.8.2-v0.3.85 or newer**; everything else here is
+deployer-side.
 
 ---
 
@@ -185,7 +188,28 @@ spread customers across more than one registered domain, or use a wildcard
 certificate issued via DNS-01. Caddy also falls back to ZeroSSL when Let's
 Encrypt refuses, which gives some headroom but is not a plan.
 
-### 9. Suggested: a fail2ban jail on Caddy's access log
+### 9. Set the landing page to the chat window
+
+Mission Control now ships a customer-facing chat window at `/talk`: the
+conversation, and one button through to the full console. Nothing else — no
+sidebar, no terminal, no backups panel.
+
+It is **off by default**, so an operator install is unaffected. Turn it on at
+deploy time with one settings write:
+
+```
+PUT /api/settings   {"ui.landingPage":"chat"}
+```
+
+After that, `/` redirects to `/talk` and logging in lands there. The customer
+still reaches everything via the "完整控制台" button — this changes what they
+see *first*, not what they may see.
+
+Requires Mission Control 2026.8.2-v0.3.85 or newer. On an older build the
+setting is simply ignored and the customer lands on the dashboard as today, so
+writing it unconditionally is safe.
+
+### 10. Suggested: a fail2ban jail on Caddy's access log
 
 fail2ban is already installed (Mission Control has a tab for it). A jail
 matching Caddy 401s gives basic-auth some brute-force protection, which it
@@ -229,10 +253,12 @@ them:
    real SSO is required later, Caddy's `forward_auth` can replace `basicauth`
    with **no change to Mission Control**, so this is a clean upgrade path rather
    than a rewrite.
-2. **Should the customer see all of Mission Control?** Today one password opens
-   everything, including the terminal, backups, system updates and reboot. The
-   customer owns the VPS, so that is arguable — but if we want chat-only access
-   for this entry point, that is a Mission Control change and we should scope it
-   before promising it.
+2. **Should the customer see all of Mission Control?** Partly answered: §9
+   makes chat the *first* thing they see. But it is a landing page, not a
+   permission boundary — one password still opens everything behind it,
+   including the terminal, backups, system updates and reboot. The customer owns
+   the VPS, so that is arguable. Genuine chat-*only* access would be a real
+   Mission Control change (a role, not a redirect) and should be scoped before
+   being promised.
 3. Basic auth has no logout and no session expiry (it clears when the browser
    closes). Acceptable for an MVP; worth knowing.
