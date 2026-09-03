@@ -116,7 +116,56 @@ Control 已經支援，只是在 Caddy 前置的情況下需要打開。
 - 終止：移除 DNS 記錄即可，Caddy 可順手停掉。
 - 更換或撤銷存取：透過 SSH 改寫 Caddyfile 裡的 hash，再 `systemctl reload caddy`。
 
-### 7. 建議：對 Caddy 的 access log 加一條 fail2ban jail
+### 7. 憑證自動續約 —— 需要持續成立的條件
+
+Caddy 會自己申請與續約憑證，沒有東西要另外寫排程。但續約是**在 Caddy 行程內
+排程的，不是 cron、也不是 systemd timer** —— 已在 throwaway 上確認：
+`systemctl list-timers` 裡沒有任何 Caddy 項目。請不要去找續約的 unit，也不要
+把 Caddy 當成可以長期停著的服務。Caddy 會在憑證壽命剩下約三分之一時續約，
+也就是 90 天的 Let's Encrypt 憑證大約在到期前 30 天。
+
+以下四件事必須**持續成立**，不是部署當下成立就好：
+
+- `caddy.service` 保持 enabled 且執行中。已確認：Ubuntu 的套件預設就會
+  enable，我們測試機上也是 `enabled`。這點很重要，因為 Mission Control 現在
+  有重新開機按鈕，客戶是會重開機器的。
+- **80 與 443 必須長期開著**，不是只在第一次簽發時開。續約會重跑 ACME 挑戰。
+  請不要在拿到第一張憑證後「順手」把 80 關掉：Caddy 用它做 HTTP-01 挑戰，也用
+  它做 HTTP→HTTPS 轉址。
+- DNS 記錄仍然解析到那台 VPS。如果服務還在但記錄被移除，續約會失敗，然後憑證
+  在大約 30 天後過期。
+- `/var/lib/caddy` 要保留。帳戶金鑰與憑證存放在
+  `/var/lib/caddy/.local/share/caddy`（屬主 `caddy:caddy`，權限 700）。清空或
+  重灌而沒有保留它，就得重新簽發，而重新簽發會計入下面的用量限制。
+
+**失效是無聲的。** 上述任何一項壞掉，當下都看不出異狀，要等一個月後憑證過期、
+那台機器上的客戶全部看到瀏覽器安全警告才會發現。建議從外部定期檢查到期日，
+例如：
+
+```
+echo | openssl s_client -connect chat-<slug>.<vendor-domain>:443 2>/dev/null | openssl x509 -noout -enddate
+```
+
+剩餘天數低於約 14 天就告警。Caddy 本身也會把續約的嘗試與失敗寫進它的 journal。
+
+### 8. Let's Encrypt 的用量限制 —— 這是開通速度的實際上限
+
+所有客戶都是**同一個註冊網域**底下的子網域，所以「每個註冊網域」的限制是
+全部客戶共用的。依 Let's Encrypt 公布的限制：
+
+- **New Certificates per Registered Domain：每 7 天 50 張。** 這直接限制了
+  每週能開通多少新客戶 —— 滾動 7 天內的第 51 次部署會拿不到憑證。
+- New Certificates per Exact Set of Identifiers：每 7 天 5 張。對同一個主機名
+  重複測試時撞到的就是這條。
+- Authorization Failures per Identifier per Account：每小時 5 次。設定錯誤又
+  一直重試的部署，會讓該主機名被鎖一小時。
+
+如果預期開通量會超過每週約 50 個，這件事必須事先解決，不要等撞到才處理。
+可行方向：向 Let's Encrypt 申請提高限制、把客戶分散到一個以上的註冊網域，
+或改用 DNS-01 簽發萬用憑證。另外 Caddy 在 Let's Encrypt 拒絕時會自動改用
+ZeroSSL，這能提供一些緩衝，但不能當成計畫。
+
+### 9. 建議：對 Caddy 的 access log 加一條 fail2ban jail
 
 fail2ban 已經安裝（Mission Control 裡就有它的分頁）。針對 Caddy 的 401 加一條
 jail，可以給 basic auth 一些暴力破解防護 —— 它本身完全沒有這層保護。

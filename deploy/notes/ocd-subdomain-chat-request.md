@@ -126,7 +126,66 @@ something the customer picks.
 - Rotate or revoke access: rewrite the Caddyfile hash over SSH and
   `systemctl reload caddy`.
 
-### 7. Suggested: a fail2ban jail on Caddy's access log
+### 7. Certificate renewal — what has to keep being true
+
+Caddy obtains and renews the certificate itself; there is nothing to script.
+But the renewal is **in-process, not a cron job or systemd timer** — verified on
+the throwaway: `systemctl list-timers` shows no Caddy entry. Do not go looking
+for a renewal unit, and do not treat Caddy as something that can be left
+stopped. Caddy renews when about a third of the lifetime remains, i.e. roughly
+30 days before a 90-day Let's Encrypt certificate expires.
+
+Four things must hold **continuously**, not just at deploy time:
+
+- `caddy.service` enabled and running. Verified: the Ubuntu package enables it
+  by default, and it is `enabled` on our test box — which matters because
+  Mission Control now has a reboot button, so the box will be restarted by
+  customers.
+- **Ports 80 and 443 open** — permanently, not just for the first issuance.
+  Renewal re-runs the ACME challenge. Please do not "tidy up" by closing 80
+  after the first certificate: Caddy uses it for HTTP-01 and for the
+  HTTP→HTTPS redirect.
+- The DNS record still resolving to that VPS. If a record is removed while the
+  service is still live, renewal fails and the certificate expires ~30 days
+  later.
+- `/var/lib/caddy` preserved. Account key and certificates live in
+  `/var/lib/caddy/.local/share/caddy` (owned `caddy:caddy`, mode 700). Wiping or
+  re-imaging without preserving it forces a fresh issuance, which counts against
+  the rate limits below.
+
+**Failure is silent.** If any of the above breaks, nothing is visibly wrong
+until the certificate expires a month later and every customer on that box gets
+a browser security warning. Worth having something that checks expiry
+externally, e.g. periodically running:
+
+```
+echo | openssl s_client -connect chat-<slug>.<vendor-domain>:443 2>/dev/null | openssl x509 -noout -enddate
+```
+
+and alerting under ~14 days remaining. Caddy also logs renewal attempts and
+failures to its service journal.
+
+### 8. Let's Encrypt rate limits — a real ceiling on onboarding
+
+Every customer gets a subdomain of the **same registered domain**, so the
+per-domain limit applies to all of them collectively. From Let's Encrypt's
+published limits:
+
+- **New Certificates per Registered Domain: 50 per 7 days.** This caps how many
+  new customers can be brought online per week — the 51st deploy in a rolling
+  7-day window will fail to get a certificate.
+- New Certificates per Exact Set of Identifiers: 5 per 7 days. This is the one
+  repeated *testing* against a single hostname will hit.
+- Authorization Failures per Identifier per Account: 5 per hour. A misconfigured
+  deploy that retries will lock that hostname out for the hour.
+
+If onboarding is ever expected to exceed ~50/week, this needs solving before it
+bites, not after. Options: request a rate-limit increase from Let's Encrypt,
+spread customers across more than one registered domain, or use a wildcard
+certificate issued via DNS-01. Caddy also falls back to ZeroSSL when Let's
+Encrypt refuses, which gives some headroom but is not a plan.
+
+### 9. Suggested: a fail2ban jail on Caddy's access log
 
 fail2ban is already installed (Mission Control has a tab for it). A jail
 matching Caddy 401s gives basic-auth some brute-force protection, which it
