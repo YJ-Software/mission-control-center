@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Loader2 } from 'lucide-react'
+import { resolveBrowserView } from './view-state'
 import { InstallPanel } from './install-panel'
 import { ServiceStatusPanel } from './service-status-panel'
 import { VncViewer } from './vnc-viewer'
@@ -29,7 +31,7 @@ interface BrowserConfig {
 export function BrowserDashboard() {
   const [forceView, setForceView] = useState<'dashboard' | 'install' | null>(null)
 
-  const { data: config, refetch } = useQuery<BrowserConfig>({
+  const { data: config, refetch, isPending } = useQuery<BrowserConfig>({
     queryKey: ['browser-config'],
     queryFn: () => fetch('/api/browser').then(r => r.json()),
   })
@@ -42,12 +44,25 @@ export function BrowserDashboard() {
   const websockifyPort = parseInt(config?.websockify_port || '6081')
   const vncPassword = config?.vnc_password || ''
 
-  // Show install panel when:
-  // - forced to install view, OR
-  // - not installed and Chrome service not set up (even if Chrome binary exists, services may not be configured)
-  const showInstall = forceView === 'install' || (!isInstalled && !chromeServiceRunning && forceView !== 'dashboard')
+  // Decided in view-state.ts. The key rule: render nothing until the config has
+  // actually loaded — reading `installed` off an undefined `config` used to make
+  // an installed box flash the installer before the dashboard replaced it.
+  const view = resolveBrowserView({
+    loaded: !isPending,
+    installed: isInstalled,
+    chromeServiceRunning,
+    forceView,
+  })
 
-  if (showInstall) {
+  if (view === 'loading') {
+    return (
+      <div className="flex items-center justify-center gap-2 p-12 text-sm text-white/50">
+        <Loader2 className="w-4 h-4 animate-spin" />
+      </div>
+    )
+  }
+
+  if (view === 'install') {
     return <InstallPanel onInstallCompleteAction={async () => { await refetch(); setForceView(null) }} />
   }
 
