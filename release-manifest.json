@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.8.2-v0.3.84",
-    "mccVersion": "0.3.84",
+    "version": "2026.8.2-v0.3.85",
+    "mccVersion": "0.3.85",
     "openclawVersion": "2026.8.2",
-    "releaseDate": "2026-09-02T17:44:05.097Z",
-    "notes": "- fix(security): 修補 proxy.ts 的認證繞過漏洞。原本「本機 cron 免登入」的判斷是看 Host 與 X-Forwarded-For 這兩個由請求方自己給的 header，遠端偽造 Host: localhost 加 X-Forwarded-For: 127.0.0.1 就能在沒有任何 session 的情況下打進所有 /api 路由，包含 /api/action（重開機、系統更新、重啟服務、備份還原）。實測確認可利用後修復：改為要求 X-Internal-Token，值由既有的 AUTH_SECRET 以 HMAC 推導，外部無法計算；Host/XFF 判斷完全移除\n- 內部 cron 的 curl（晨報的 fetch-feeds / generate-prompts / finalize / podcast / harvest，以及 wiki synthesize）改為攜帶該 token。token 在「產生 cron 指令的當下」注入，而非埋在模板裡當 placeholder —— 這樣預設模板、客戶自訂模板、內建指令都會帶上，自訂過模板的機器不會因為少了 placeholder 而靜默 401。備份 cron 不受影響，它本來就走 X-Backup-Token\n- 影響範圍：能連到 :3737 的人都可利用。正常部署的機器 :3737 只開放 loopback 與客戶自己的 tailnet，不對公網開放，但客戶 tailnet 上的任何裝置都在攻擊面內，且此漏洞讓 MCC 登入在直連路徑上形同虛設\n- 升級後晨報／wiki 的 cron 指令會在下次同步時自動帶上 token（同步發生於變更相關設定或升級部署時）",
+    "releaseDate": "2026-09-03T10:26:29.482Z",
+    "notes": "- feat(chat): 新增給客戶用的對話視窗 `/talk` —— 只有對話與一顆通往完整主控台的按鈕,沒有側邊欄、終端機或備份面板\n- feat(chat): 首頁落點改由 `ui.landingPage` 設定決定,預設 `dashboard`,既有安裝不受影響;部署端寫入 `{\"ui.landingPage\":\"chat\"}` 即可讓客戶連入先看到對話\n- fix(browser): 瀏覽器頁在設定載入前不再閃現安裝畫面\n- fix(deploy): 升級時若 `versions/vX` 已存在但內容為不同 build,改為重新解壓,避免升級到舊版程式碼\n- test(e2e): 新增 `/talk` 端對端測試;修正憑證強化測試的冪等性",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.8.2-v0.3.84/mission-control-v0.3.84-linux-x64.tar.gz",
-        "sha256": "d4b3dde8c355fc86cbe67dbde6f33d22e07f67c15c15d5a9091deec48301ff69",
-        "size": 26880114
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.8.2-v0.3.85/mission-control-v0.3.85-linux-x64.tar.gz",
+        "sha256": "5a591f3c24217e693d386d7349c46c90035349d84751dbdbc725315798b7b3bb",
+        "size": 27225494
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.8.2-v0.3.84",
+      "mccVersion": "0.3.84",
+      "openclawVersion": "2026.8.2",
+      "releaseDate": "2026-09-02T17:44:05.097Z"
+    },
     {
       "version": "2026.8.2-v0.3.83",
       "mccVersion": "0.3.83",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.75",
       "openclawVersion": "2026.7.1-2",
       "releaseDate": "2026-08-02T17:35:57.952Z"
-    },
-    {
-      "version": "2026.7.1-2-v0.3.74",
-      "mccVersion": "0.3.74",
-      "openclawVersion": "2026.7.1-2",
-      "releaseDate": "2026-07-29T11:21:24.098Z"
     }
   ]
 }
