@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.8.2-v0.3.85",
-    "mccVersion": "0.3.85",
-    "openclawVersion": "2026.8.2",
-    "releaseDate": "2026-09-03T10:26:29.482Z",
-    "notes": "- feat(chat): 新增給客戶用的對話視窗 `/talk` —— 只有對話與一顆通往完整主控台的按鈕,沒有側邊欄、終端機或備份面板\n- feat(chat): 首頁落點改由 `ui.landingPage` 設定決定,預設 `dashboard`,既有安裝不受影響;部署端寫入 `{\"ui.landingPage\":\"chat\"}` 即可讓客戶連入先看到對話\n- fix(browser): 瀏覽器頁在設定載入前不再閃現安裝畫面\n- fix(deploy): 升級時若 `versions/vX` 已存在但內容為不同 build,改為重新解壓,避免升級到舊版程式碼\n- test(e2e): 新增 `/talk` 端對端測試;修正憑證強化測試的冪等性",
+    "version": "2026.9.2-v0.3.86",
+    "mccVersion": "0.3.86",
+    "openclawVersion": "2026.9.2",
+    "releaseDate": "2026-09-06T19:13:48.720Z",
+    "notes": "- chore(compat): 驗證相容 OpenClaw 2026.9.2 —— 配對前綴由 2026.8.2 升至 2026.9.2\n- 本版**沒有程式碼變動**,只有版本配對:0.3.85 的程式碼在 throwaway 上以 OpenClaw 2026.9.2 跑過完整 E2E(20/20),0.3.86 重新建置後再驗一次同樣 20/20\n- OpenClaw 2026.9.2 對 Mission Control 沒有破壞性變更:auth profile 位置、cron CLI、plugin consent、gateway 連線協定皆維持相容,升級不需要調整設定",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.8.2-v0.3.85/mission-control-v0.3.85-linux-x64.tar.gz",
-        "sha256": "5a591f3c24217e693d386d7349c46c90035349d84751dbdbc725315798b7b3bb",
-        "size": 27225494
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.9.2-v0.3.86/mission-control-v0.3.86-linux-x64.tar.gz",
+        "sha256": "f38c1ef6e43a149d73cc1d57a2d5ed4dcecd3171efb9506a3ac40c5cba34e074",
+        "size": 27241598
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.8.2-v0.3.85",
+      "mccVersion": "0.3.85",
+      "openclawVersion": "2026.8.2",
+      "releaseDate": "2026-09-03T10:26:29.482Z"
+    },
     {
       "version": "2026.8.2-v0.3.84",
       "mccVersion": "0.3.84",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.76",
       "openclawVersion": "2026.7.1-2",
       "releaseDate": "2026-08-03T15:38:56.664Z"
-    },
-    {
-      "version": "2026.7.1-2-v0.3.75",
-      "mccVersion": "0.3.75",
-      "openclawVersion": "2026.7.1-2",
-      "releaseDate": "2026-08-02T17:35:57.952Z"
     }
   ]
 }
