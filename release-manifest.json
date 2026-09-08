@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.9.2-v0.3.86",
-    "mccVersion": "0.3.86",
+    "version": "2026.9.2-v0.3.87",
+    "mccVersion": "0.3.87",
     "openclawVersion": "2026.9.2",
-    "releaseDate": "2026-09-06T19:13:48.720Z",
-    "notes": "- chore(compat): 驗證相容 OpenClaw 2026.9.2 —— 配對前綴由 2026.8.2 升至 2026.9.2\n- 本版**沒有程式碼變動**,只有版本配對:0.3.85 的程式碼在 throwaway 上以 OpenClaw 2026.9.2 跑過完整 E2E(20/20),0.3.86 重新建置後再驗一次同樣 20/20\n- OpenClaw 2026.9.2 對 Mission Control 沒有破壞性變更:auth profile 位置、cron CLI、plugin consent、gateway 連線協定皆維持相容,升級不需要調整設定",
+    "releaseDate": "2026-09-08T09:12:02.448Z",
+    "notes": "- fix(cs): 兩個客服 plugin(business-hours-gate、customer-id-injector)補上 `activation.onStartup`。OpenClaw 2026.8.x 起,純 hook plugin 若不宣告這個欄位,Gateway 開機時就不會 import 它,`register()` 從未執行、所有 hook 靜默失效——LINE 客服變成 24 小時自動回覆(營業時段閘門完全沒作用),對話紀錄也停止寫入。而且完全無跡可循:不是載入失敗,所以 Gateway log 沒有錯誤,`openclaw plugins doctor` 沒有診斷,`openclaw plugins list/inspect` 還是顯示 \"Status: loaded\"(那些指令自己會 import 模組)\n- fix(release): release tarball 補回 `deploy/plugins`。先前打包在 strip `deploy` 之後只複製回 `deploy/mcp`,這兩個 plugin 從未進過任何一版 tarball,全新部署在客服設定頁按「安裝」必定失敗(Plugin source not found),連帶 LINE 對話紀錄與營業時段閘門都起不來\n- 升級後若客服 plugin 之前就裝過,請重啟 Gateway(`systemctl --user restart openclaw-gateway`)讓新 manifest 生效;Gateway 啟動 log 的 plugin 清單應該要出現 business-hours-gate 與 customer-id-injector",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.9.2-v0.3.86/mission-control-v0.3.86-linux-x64.tar.gz",
-        "sha256": "f38c1ef6e43a149d73cc1d57a2d5ed4dcecd3171efb9506a3ac40c5cba34e074",
-        "size": 27241598
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.9.2-v0.3.87/mission-control-v0.3.87-linux-x64.tar.gz",
+        "sha256": "200224988557bf8b4bbe058bbf21d4775034692a2bbe05a8a36477d550b579bc",
+        "size": 26477816
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.9.2-v0.3.86",
+      "mccVersion": "0.3.86",
+      "openclawVersion": "2026.9.2",
+      "releaseDate": "2026-09-06T19:13:48.720Z"
+    },
     {
       "version": "2026.8.2-v0.3.85",
       "mccVersion": "0.3.85",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.77",
       "openclawVersion": "2026.7.1-2",
       "releaseDate": "2026-08-04T08:38:29.694Z"
-    },
-    {
-      "version": "2026.7.1-2-v0.3.76",
-      "mccVersion": "0.3.76",
-      "openclawVersion": "2026.7.1-2",
-      "releaseDate": "2026-08-03T15:38:56.664Z"
     }
   ]
 }
