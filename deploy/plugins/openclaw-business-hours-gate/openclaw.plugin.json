@@ -1,5 +1,8 @@
 {
   "id": "business-hours-gate",
+  "activation": {
+    "onStartup": true
+  },
   "name": "Business Hours Gate",
   "description": "Silently drops or canned-replies inbound messages during configured business hours so human staff handle them.",
   "configSchema": {
