@@ -336,6 +336,22 @@ async function main() {
     })
   }
 
+  // Ship the customer-service OpenClaw plugins at ./deploy/plugins/ — the CS
+  // dashboard installs them with `openclaw plugins install -l <dir>` and
+  // resolves that dir relative to process.cwd() (see PLUGIN_SOURCE_DIR in
+  // src/lib/customer-service/business-hours-gate.ts). Without this copy the
+  // Install button fails on every fresh deployment, and with it the LINE
+  // conversation log and the business-hours gate never run at all. Copied
+  // AFTER the strip step for the same reason as deploy/mcp above.
+  const PLUGIN_LOCAL_ONLY = new Set(['node_modules', '.git'])
+  const pluginSourceDir = join(ROOT, 'deploy', 'plugins')
+  if (existsSync(pluginSourceDir)) {
+    cpSync(pluginSourceDir, join(STANDALONE, 'deploy', 'plugins'), {
+      recursive: true,
+      filter: (src) => !PLUGIN_LOCAL_ONLY.has(basename(src)),
+    })
+  }
+
   // Bundled default templates: copy under `assets/` (not `data/`) so that
   // install.sh / upgrade.sh's `ln -sf $STATE/data $VERSION_DIR/data` swap
   // does not delete them. default-templates.ts checks `assets/` first then
