@@ -27,8 +27,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `invalid agent: ${a}` }, { status: 400 })
     }
   }
-  for (const a of targets) {
-    await removeProfile(a, profileId)
+  // removeProfile shells out to the openclaw CLI. Without this catch a refused
+  // removal or a CLI timeout reached the dashboard as an empty 500 — the delete
+  // button just failed, with nothing in the response saying why.
+  try {
+    for (const a of targets) {
+      await removeProfile(a, profileId)
+    }
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    )
   }
   return NextResponse.json({ removed: { profileId, agents: targets } })
 }

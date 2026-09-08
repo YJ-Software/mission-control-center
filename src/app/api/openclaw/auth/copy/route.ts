@@ -30,6 +30,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `invalid toAgents entry: ${a}` }, { status: 400 })
     }
   }
-  await copyProfile(profileId, fromAgent, toAgents)
+  // Same gap as the remove route: copyProfile throws on a missing source
+  // profile, and unguarded that surfaced as an empty 500.
+  try {
+    await copyProfile(profileId, fromAgent, toAgents)
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
+    )
+  }
   return NextResponse.json({ copied: { profileId, fromAgent, toAgents } })
 }

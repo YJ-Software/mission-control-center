@@ -340,25 +340,70 @@ function pickExpiry(entry: AuthProfileEntry): number | undefined {
   return undefined
 }
 
-/** Run an openclaw subcommand, resolving its exit code. */
-export type OpenclawRunner = (args: string[]) => Promise<number>
+/** How long a single openclaw subcommand may run before we SIGTERM it. A
+ * `models auth logout` measures ~5s on a healthy box, so this is generous —
+ * but a busy box does blow through it, and the timeout has to be
+ * distinguishable from a real non-zero exit or the caller cannot say why. */
+export const CLI_TIMEOUT_MS = 30_000
+
+/** Cap on the child output we keep. Bounded so a chatty or runaway command
+ * cannot push an unbounded string into an error message and out to the UI. */
+const MAX_CLI_OUTPUT = 2_000
+
+/** What an openclaw subcommand actually did. This used to be a bare exit
+ * code with `stdio: 'ignore'`, which meant every failure — a refused removal,
+ * a missing profile, a SIGTERM at the timeout — reached the dashboard as an
+ * indistinguishable empty 500 with nothing to act on. */
+export interface CliOutcome {
+  code: number
+  /** Tail of the child's combined stdout+stderr, trimmed and capped. */
+  output: string
+  /** True when we killed the child at CLI_TIMEOUT_MS instead of it exiting. */
+  timedOut: boolean
+}
+
+export type OpenclawRunner = (args: string[]) => Promise<CliOutcome>
 
 const cliRunner: OpenclawRunner = (args) =>
   new Promise((resolve) => {
     const child = spawn('openclaw', ['--log-level', 'silent', '--no-color', ...args], {
       env: { ...process.env, PATH: augmentedPath() },
-      stdio: ['ignore', 'ignore', 'ignore'],
+      stdio: ['ignore', 'pipe', 'pipe'],
     })
-    const timer = setTimeout(() => child.kill('SIGTERM'), 30_000)
-    child.on('error', () => {
+    let output = ''
+    const collect = (chunk: Buffer) => {
+      output = (output + chunk.toString()).slice(-MAX_CLI_OUTPUT)
+    }
+    child.stdout?.on('data', collect)
+    child.stderr?.on('data', collect)
+
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      child.kill('SIGTERM')
+    }, CLI_TIMEOUT_MS)
+
+    child.on('error', (err: Error) => {
       clearTimeout(timer)
-      resolve(127)
+      resolve({ code: 127, output: err.message, timedOut: false })
     })
     child.on('close', (code: number | null) => {
       clearTimeout(timer)
-      resolve(code ?? 0)
+      // A SIGTERM'd child reports code null; without `timedOut` that is
+      // indistinguishable from a clean exit 0.
+      resolve({ code: timedOut ? 124 : (code ?? 0), output: output.trim(), timedOut })
     })
   })
+
+/** Turn a failed invocation into a message an operator can act on: what ran,
+ * why it stopped, and whatever the command itself said about it. */
+export function describeCliFailure(args: string[], outcome: CliOutcome): string {
+  const why = outcome.timedOut
+    ? `timed out after ${CLI_TIMEOUT_MS / 1000}s`
+    : `exit ${outcome.code}`
+  const cmd = `openclaw ${args.join(' ')}`
+  return outcome.output ? `${cmd} failed (${why}): ${outcome.output}` : `${cmd} failed (${why})`
+}
 
 export interface RemoveProfileOptions {
   run?: OpenclawRunner
@@ -377,9 +422,10 @@ export async function removeProfile(
   // report success while leaving the profile exactly where it was, so removal
   // has to go through the CLI.
   if (readAuthProfilesFromConfig(configPath)) {
-    const code = await run(buildLogoutArgs(agentId, profileId))
-    if (code !== 0) {
-      throw new Error(`openclaw models auth logout ${profileId} failed (exit ${code})`)
+    const args = buildLogoutArgs(agentId, profileId)
+    const outcome = await run(args)
+    if (outcome.code !== 0) {
+      throw new Error(describeCliFailure(args, outcome))
     }
     return
   }

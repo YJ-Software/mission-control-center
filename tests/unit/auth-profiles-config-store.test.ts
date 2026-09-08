@@ -7,6 +7,8 @@ import {
   chooseProfiles,
   buildLogoutArgs,
   removeProfile,
+  describeCliFailure,
+  CLI_TIMEOUT_MS,
   type ProfilesFile,
 } from '@/lib/openclaw/auth-profiles'
 
@@ -156,7 +158,7 @@ describe('removeProfile on a config-backed store', () => {
       configPath,
       run: async (args) => {
         calls.push(args)
-        return 0
+        return { code: 0, output: '', timedOut: false }
       },
     })
     expect(calls).toEqual([buildLogoutArgs('main', 'kimi:manual')])
@@ -169,8 +171,11 @@ describe('removeProfile on a config-backed store', () => {
       auth: { profiles: { 'kimi:manual': { provider: 'kimi', mode: 'api_key' } } },
     })
     await expect(
-      removeProfile('main', 'kimi:manual', { configPath, run: async () => 1 }),
-    ).rejects.toThrow(/logout kimi:manual failed \(exit 1\)/)
+      removeProfile('main', 'kimi:manual', {
+        configPath,
+        run: async () => ({ code: 1, output: 'no such profile', timedOut: false }),
+      }),
+    ).rejects.toThrow(/logout kimi:manual --yes failed \(exit 1\): no such profile/)
   })
 
   it('does not touch the CLI on pre-2026.8.1 stores', async () => {
@@ -182,9 +187,62 @@ describe('removeProfile on a config-backed store', () => {
       configPath,
       run: async () => {
         called = true
-        return 0
+        return { code: 0, output: '', timedOut: false }
       },
     }).catch(() => {})
     expect(called).toBe(false)
+  })
+})
+
+// The dashboard's "delete profile" button used to fail as a bare 500 with an
+// empty body: cliRunner ran with `stdio: 'ignore'` and returned only an exit
+// code, so neither the API nor the operator could tell a refused removal from
+// a CLI that had been SIGTERM'd at the timeout. These lock in that a failure
+// carries what ran, why it stopped, and what the command said.
+describe('describeCliFailure', () => {
+  const args = buildLogoutArgs('main', 'kimi:manual')
+
+  it('reports the command, the exit code, and the CLI output', () => {
+    const msg = describeCliFailure(args, {
+      code: 1,
+      output: 'Refusing to remove auth profile kimi:manual without confirmation.',
+      timedOut: false,
+    })
+    expect(msg).toContain('openclaw models auth --agent main logout kimi:manual --yes')
+    expect(msg).toContain('exit 1')
+    expect(msg).toContain('Refusing to remove auth profile')
+  })
+
+  // A timeout is the failure that actually bit us on a busy box, and it is the
+  // one a bare exit code hides best: SIGTERM makes the child report code null,
+  // which is indistinguishable from a clean exit.
+  it('names a timeout as a timeout rather than an exit code', () => {
+    const msg = describeCliFailure(args, { code: 124, output: '', timedOut: true })
+    expect(msg).toContain(`timed out after ${CLI_TIMEOUT_MS / 1000}s`)
+    expect(msg).not.toContain('exit 124')
+  })
+
+  it('stays readable when the command printed nothing', () => {
+    const msg = describeCliFailure(args, { code: 3, output: '', timedOut: false })
+    expect(msg).toBe('openclaw models auth --agent main logout kimi:manual --yes failed (exit 3)')
+  })
+})
+
+describe('removeProfile surfaces a CLI timeout', () => {
+  it('throws a timeout message, not a bare exit code', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'authrm-timeout-'))
+    try {
+      const configPath = writeConfig(dir, 'cfg-timeout.json', {
+        auth: { profiles: { 'kimi:manual': { provider: 'kimi', mode: 'api_key' } } },
+      })
+      await expect(
+        removeProfile('main', 'kimi:manual', {
+          configPath,
+          run: async () => ({ code: 124, output: '', timedOut: true }),
+        }),
+      ).rejects.toThrow(new RegExp(`timed out after ${CLI_TIMEOUT_MS / 1000}s`))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
