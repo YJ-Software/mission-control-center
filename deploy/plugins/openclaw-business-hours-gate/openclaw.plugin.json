@@ -63,6 +63,11 @@
         "description": "Master kill switch. When true, claim every inbound message regardless of schedule (always silent / canned). When false (default), schedule controls when to claim.",
         "default": false
       },
+      "mccEnvFile": {
+        "type": "string",
+        "description": "Path to Mission Control's env file, read for AUTH_SECRET so the plugin can send the X-Internal-Token that MCC's /api/* guard has required since v0.3.84. Defaults to ~/.mission-control/.env.local.",
+        "default": "/home/openclaw/.mission-control/.env.local"
+      },
       "allowSlashCommands": {
         "type": "array",
         "description": "Slash commands allowed through the customer-side block (e.g. [\"/reset\"]). Matched on the first whitespace-delimited token, case-insensitive.",

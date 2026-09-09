@@ -1,4 +1,53 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { readFileSync } from "node:fs";
+import { createHmac } from "node:crypto";
+
+/** Mission Control stopped trusting `Host: localhost` for /api/* in v0.3.84
+ *  (the forged-header bypass, closed 2026-09-02) and now requires an
+ *  `X-Internal-Token` derived from its AUTH_SECRET. That change listed the
+ *  in-process cron curls as the only callers of the old bypass — this plugin
+ *  used it too, so from v0.3.84 on both the cs-event mirror and the operator
+ *  pause check silently 401'd: no conversation log, and a paused customer kept
+ *  getting AI replies.
+ *
+ *  The secret is read from MCC's own env file (0600, same owner as the
+ *  Gateway) rather than copied into openclaw.json — the CS agent can read
+ *  files, so a token sitting in its config is one prompt injection away from
+ *  leaking. Derivation matches src/lib/internal-token.ts. */
+const MCC_ENV_FILE_DEFAULT = "/home/openclaw/.mission-control/.env.local";
+const INTERNAL_TOKEN_HEADER = "x-internal-token";
+const INTERNAL_TOKEN_LABEL = "mcc-internal-api";
+
+/** undefined = not resolved yet, null = no secret available (auth disabled). */
+let cachedInternalToken;
+
+function readAuthSecret(envFile) {
+  try {
+    for (const line of readFileSync(envFile, "utf8").split("\n")) {
+      const m = line.match(/^\s*AUTH_SECRET\s*=\s*(.*)$/);
+      if (!m) continue;
+      return m[1].trim().replace(/^["']|["']$/g, "") || null;
+    }
+  } catch { /* absent or unreadable — MCC may have auth disabled */ }
+  return null;
+}
+
+/** Empty when no secret is available: MCC skips the check entirely when
+ *  AUTH_PASSWORD is unset, so an unauthenticated call still works there. */
+function internalAuthHeaders(envFile) {
+  if (cachedInternalToken === undefined) {
+    const secret = readAuthSecret(envFile ?? MCC_ENV_FILE_DEFAULT);
+    cachedInternalToken = secret
+      ? createHmac("sha256", secret).update(INTERNAL_TOKEN_LABEL).digest("hex")
+      : null;
+  }
+  return cachedInternalToken ? { [INTERNAL_TOKEN_HEADER]: cachedInternalToken } : {};
+}
+
+/** Re-read on 401 so a rotated AUTH_SECRET recovers without a Gateway restart. */
+function invalidateInternalToken() {
+  cachedInternalToken = undefined;
+}
 
 const DAY_INDEX = {
   sun: 0,
@@ -123,14 +172,15 @@ async function fetchWithTimeout(url, init, timeoutMs) {
 }
 
 /** Fail-open: any error means we let the agent reply as if no pause was set. */
-async function checkPause(mccBaseUrl, userId) {
+async function checkPause(mccBaseUrl, userId, mccEnvFile) {
   if (!mccBaseUrl || !userId) return false;
   try {
     const res = await fetchWithTimeout(
       `${mccBaseUrl}/api/customer-service/cs-pause-check?userId=${encodeURIComponent(userId)}`,
-      {},
+      { headers: internalAuthHeaders(mccEnvFile) },
       300,
     );
+    if (res.status === 401) invalidateInternalToken();
     if (!res.ok) return false;
     const data = await res.json();
     return data?.paused === true;
@@ -140,17 +190,18 @@ async function checkPause(mccBaseUrl, userId) {
 }
 
 /** Best-effort mirror; never blocks dispatch. */
-function mirrorInbound(mccBaseUrl, payload) {
+function mirrorInbound(mccBaseUrl, payload, mccEnvFile) {
   if (!mccBaseUrl) return;
   fetchWithTimeout(
     `${mccBaseUrl}/api/customer-service/cs-event`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...internalAuthHeaders(mccEnvFile) },
       body: JSON.stringify(payload),
     },
     1000,
   ).then((res) => {
+    if (res.status === 401) invalidateInternalToken();
     if (!res.ok) console.warn(`[business-hours-gate] cs-event mirror returned ${res.status}`);
   }).catch((err) => {
     console.warn(`[business-hours-gate] cs-event mirror error: ${err?.message ?? err}`);
@@ -208,6 +259,9 @@ export default definePluginEntry({
       // and per-user pause check are skipped — plugin behaves like the
       // legacy hours-only gate.
       mccBaseUrl: { type: "string" },
+      // Where to read MCC's AUTH_SECRET from, to derive the X-Internal-Token
+      // its /api/* guard requires since v0.3.84.
+      mccEnvFile: { type: "string" },
     },
   },
   register(api) {
@@ -220,6 +274,7 @@ export default definePluginEntry({
       try {
         const cfg = api.pluginConfig ?? {};
         const mccBaseUrl = cfg.mccBaseUrl ?? "http://127.0.0.1:3737";
+        const mccEnvFile = cfg.mccEnvFile ?? MCC_ENV_FILE_DEFAULT;
         const userId = extractUserId(event, ctx);
         if (!userId || !mccBaseUrl) return;
         mirrorInbound(mccBaseUrl, {
@@ -230,7 +285,7 @@ export default definePluginEntry({
           lineMessageId: extractMessageId(event, ctx),
           channelId: ctx?.channelId ?? event?.channel ?? null,
           rawEvent: event,
-        });
+        }, mccEnvFile);
       } catch { /* best-effort, never block */ }
     });
 
@@ -241,6 +296,7 @@ export default definePluginEntry({
       try {
         const cfg = api.pluginConfig ?? {};
         const mccBaseUrl = cfg.mccBaseUrl ?? "http://127.0.0.1:3737";
+        const mccEnvFile = cfg.mccEnvFile ?? MCC_ENV_FILE_DEFAULT;
         const userId = extractUserId(event, ctx);
         if (!userId || !mccBaseUrl) return;
         mirrorInbound(mccBaseUrl, {
@@ -250,7 +306,7 @@ export default definePluginEntry({
           text: extractText(event),
           lineMessageId: extractMessageId(event),
           channelId: ctx?.channelId ?? event?.channel ?? null,
-        });
+        }, mccEnvFile);
       } catch {
         // best-effort — never block the send
       }
@@ -260,6 +316,7 @@ export default definePluginEntry({
       try {
         const cfg = api.pluginConfig ?? {};
         const mccBaseUrl = cfg.mccBaseUrl ?? "http://127.0.0.1:3737";
+        const mccEnvFile = cfg.mccEnvFile ?? MCC_ENV_FILE_DEFAULT;
         const channelId = ctx?.channelId ?? event?.channel ?? null;
         const userId = extractUserId(event, ctx);
 
@@ -299,7 +356,7 @@ export default definePluginEntry({
         // Per-user operator pause — silences the agent on this turn. MCC
         // owns the resume schedule; we just consult it here. Runs regardless
         // of channel filter so a paused user is always honoured.
-        if (userId && (await checkPause(mccBaseUrl, userId))) {
+        if (userId && (await checkPause(mccBaseUrl, userId, mccEnvFile))) {
           return { handled: true };
         }
 
