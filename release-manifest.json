@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.9.2-v0.3.87",
-    "mccVersion": "0.3.87",
-    "openclawVersion": "2026.9.2",
-    "releaseDate": "2026-09-08T09:12:02.448Z",
-    "notes": "- fix(cs): 兩個客服 plugin(business-hours-gate、customer-id-injector)補上 `activation.onStartup`。OpenClaw 2026.8.x 起,純 hook plugin 若不宣告這個欄位,Gateway 開機時就不會 import 它,`register()` 從未執行、所有 hook 靜默失效——LINE 客服變成 24 小時自動回覆(營業時段閘門完全沒作用),對話紀錄也停止寫入。而且完全無跡可循:不是載入失敗,所以 Gateway log 沒有錯誤,`openclaw plugins doctor` 沒有診斷,`openclaw plugins list/inspect` 還是顯示 \"Status: loaded\"(那些指令自己會 import 模組)\n- fix(release): release tarball 補回 `deploy/plugins`。先前打包在 strip `deploy` 之後只複製回 `deploy/mcp`,這兩個 plugin 從未進過任何一版 tarball,全新部署在客服設定頁按「安裝」必定失敗(Plugin source not found),連帶 LINE 對話紀錄與營業時段閘門都起不來\n- 升級後若客服 plugin 之前就裝過,請重啟 Gateway(`systemctl --user restart openclaw-gateway`)讓新 manifest 生效;Gateway 啟動 log 的 plugin 清單應該要出現 business-hours-gate 與 customer-id-injector",
+    "version": "2026.9.3-v0.3.88",
+    "mccVersion": "0.3.88",
+    "openclawVersion": "2026.9.3",
+    "releaseDate": "2026-09-09T07:50:18.419Z",
+    "notes": "- **相容性**:驗證相容 OpenClaw 2026.9.3 —— 配對前綴由 2026.9.2 升至 2026.9.3。在全新部署的 throwaway 上(Node 26.8.1 / npm 11.19 / openclaw 2026.9.3)跑完整 E2E 20/20,MCC **零程式碼修改**即相容;0.3.88 建置後再驗一次同樣 20/20。gateway 與 MCC 皆零重啟,60 個 stock plugin 完整\n- **注意**:OpenClaw 2026.9.3 起 `engines.node` 收緊為 `>=24.16.0 <25 || >=26.1.0`,**Node 25 已被排除**。openclaw 的 preinstall 會硬失敗,不是警告。既有機器升級前請先把 Node 升到 26.x,否則 `npm install -g openclaw@latest` 會直接中斷\n- fix(llm-auth): 移除/複製憑證失敗時回傳失敗原因,不再是一個空的 500。先前 `removeProfile` / `copyProfile` 的例外沒被接住,CLI 逾時或拒絕執行時,前端只看得到刪除按鈕失敗、沒有任何線索。現在會帶回實際執行的指令、結束原因(exit code 或逾時秒數)與 CLI 自己的輸出,且逾時與真正的非零結束碼可以區分",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.9.2-v0.3.87/mission-control-v0.3.87-linux-x64.tar.gz",
-        "sha256": "200224988557bf8b4bbe058bbf21d4775034692a2bbe05a8a36477d550b579bc",
-        "size": 26477816
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.9.3-v0.3.88/mission-control-v0.3.88-linux-x64.tar.gz",
+        "sha256": "9340b3f24880a8d42e8ea4ded026f45a532420e4049701cf9b6a4a7ca687128c",
+        "size": 27237564
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.9.2-v0.3.87",
+      "mccVersion": "0.3.87",
+      "openclawVersion": "2026.9.2",
+      "releaseDate": "2026-09-08T09:12:02.448Z"
+    },
     {
       "version": "2026.9.2-v0.3.86",
       "mccVersion": "0.3.86",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.78",
       "openclawVersion": "2026.7.1-2",
       "releaseDate": "2026-08-13T09:59:43.584Z"
-    },
-    {
-      "version": "2026.7.1-2-v0.3.77",
-      "mccVersion": "0.3.77",
-      "openclawVersion": "2026.7.1-2",
-      "releaseDate": "2026-08-04T08:38:29.694Z"
     }
   ]
 }
