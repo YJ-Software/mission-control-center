@@ -2521,6 +2521,8 @@
     "noProfiles": "No auth profiles yet",
     "expiresIn": "expires in",
     "noExpiry": "no expiry",
+    "storeOnly": "Removed from config",
+    "storeOnlyHint": "Still in OpenClaw's auth store and may still be in use — remove it again",
     "remove": "Remove",
     "loginTitle": "Add Model → {agent}",
     "provider": "Provider",

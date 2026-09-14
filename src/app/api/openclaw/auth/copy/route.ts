@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { copyProfile, listAgents } from '@/lib/openclaw/auth-profiles'
+import { copyProfile, invalidateStoredProfiles, listAgents } from '@/lib/openclaw/auth-profiles'
 
 const SAFE_ID = /^[a-zA-Z0-9_.-]+$/
 const SAFE_PROFILE_ID = /^[a-zA-Z0-9_.:@-]+$/
@@ -39,6 +39,8 @@ export async function POST(req: NextRequest) {
       { error: err instanceof Error ? err.message : String(err) },
       { status: 500 },
     )
+  } finally {
+    invalidateStoredProfiles()
   }
   return NextResponse.json({ copied: { profileId, fromAgent, toAgents } })
 }

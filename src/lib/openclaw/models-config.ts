@@ -33,13 +33,13 @@ export function augmentedPath(): string {
   return cachedPath
 }
 
-interface RunResult {
+export interface RunResult {
   code: number
   stdout: string
   stderr: string
 }
 
-function runOpenclaw(args: string[], timeoutMs = 15000): Promise<RunResult> {
+export function runOpenclaw(args: string[], timeoutMs = 15000): Promise<RunResult> {
   return new Promise((resolve) => {
     // `--log-level silent` + `--no-color` suppress most banners, but openclaw
     // 2026.6.1+ still prints the clack "Doctor warnings" box to stdout for
@@ -69,7 +69,7 @@ function runOpenclaw(args: string[], timeoutMs = 15000): Promise<RunResult> {
 /** Extract the first balanced JSON object/array from `s`, skipping any
  *  preceding noise (e.g. openclaw 2026.6.1's clack Doctor-warnings box).
  *  Throws if no top-level JSON value is found. */
-function extractJson(s: string): unknown {
+export function extractJson(s: string): unknown {
   const start = s.search(/[{[]/)
   if (start < 0) throw new Error(`no JSON value in output: ${s.slice(0, 80)}`)
   const open = s[start]

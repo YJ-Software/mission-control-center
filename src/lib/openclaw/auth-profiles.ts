@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto'
 import os from 'node:os'
 import { spawn } from 'node:child_process'
 import Database from 'better-sqlite3'
-import { augmentedPath } from './models-config'
+import { augmentedPath, extractJson, runOpenclaw } from './models-config'
 
 const AGENTS_ROOT = join(os.homedir(), '.openclaw', 'agents')
 const CONFIG_PATH = join(os.homedir(), '.openclaw', 'openclaw.json')
@@ -304,6 +304,9 @@ export interface ProfileSummary {
   expiresAt?: number
   cooldownUntil?: number
   status: 'active' | 'expired' | 'expiring' | 'cooldown'
+  /** Held by OpenClaw's auth store but absent from openclaw.json — what a
+   * half-finished logout leaves behind. See listStoredProfiles. */
+  storeOnly?: boolean
 }
 
 const EXPIRING_WINDOW_MS = 24 * 60 * 60 * 1000
@@ -472,3 +475,100 @@ export async function copyProfile(
 }
 
 export const AGENTS_ROOT_FOR_TESTS = AGENTS_ROOT
+
+export interface StoredProfile {
+  id: string
+  provider?: string
+  type?: string
+}
+
+type JsonRunner = (args: string[]) => Promise<{ code: number; stdout: string }>
+
+/** How long a stored-profile listing is reused. The LLM page polls every 10s
+ * and `models auth list` costs ~2s per agent, so listing on every poll would
+ * keep an openclaw process running almost continuously. */
+const STORED_PROFILES_TTL_MS = 60_000
+
+const storedProfilesCache = new Map<string, { at: number; value: Promise<StoredProfile[] | null> }>()
+
+/** Drop cached listings — call after anything that changes the auth store. */
+export function invalidateStoredProfiles(): void {
+  storedProfilesCache.clear()
+}
+
+function parseStoredProfiles(raw: unknown): StoredProfile[] | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const profiles = (raw as { profiles?: unknown }).profiles
+  if (!Array.isArray(profiles)) return null
+  const out: StoredProfile[] = []
+  for (const p of profiles) {
+    if (typeof p !== 'object' || p === null) continue
+    const { id, provider, type } = p as Record<string, unknown>
+    if (typeof id !== 'string' || !id) continue
+    out.push({
+      id,
+      ...(typeof provider === 'string' ? { provider } : {}),
+      ...(typeof type === 'string' ? { type } : {}),
+    })
+  }
+  return out
+}
+
+export interface ListStoredProfilesOptions {
+  run?: JsonRunner
+  configPath?: string
+  now?: number
+}
+
+/**
+ * The profiles OpenClaw's own auth store holds for an agent, as `models auth
+ * list --json` reports them — or null when there is nothing to reconcile or
+ * the CLI cannot answer.
+ *
+ * openclaw.json's `auth.profiles` is not the whole truth. `models auth logout`
+ * drops the config entry before it touches the store, so a logout that fails
+ * half way (every api_key profile on OpenClaw 2026.9.4) leaves a credential
+ * that is still live — and a config-only listing hid it: the dashboard reported
+ * the delete as failed, then showed the profile gone, with no way to retry.
+ */
+export async function listStoredProfiles(
+  agentId: string,
+  opts: ListStoredProfilesOptions = {},
+): Promise<StoredProfile[] | null> {
+  const { run = runOpenclaw, configPath = CONFIG_PATH, now = Date.now() } = opts
+  // Before 2026.8.1 the store is exactly what readProfiles already reads.
+  if (!readAuthProfilesFromConfig(configPath)) return null
+  const cached = storedProfilesCache.get(agentId)
+  if (cached && now - cached.at < STORED_PROFILES_TTL_MS) return cached.value
+  const value = (async () => {
+    const r = await run(['models', 'auth', 'list', '--agent', agentId, '--json'])
+    if (r.code !== 0) return null
+    try {
+      return parseStoredProfiles(extractJson(r.stdout))
+    } catch {
+      return null
+    }
+  })()
+  storedProfilesCache.set(agentId, { at: now, value })
+  return value
+}
+
+/** Append stored profiles that openclaw.json no longer lists, flagged so the
+ * dashboard can say why they are there and still offer to remove them. */
+export function withStoreOnlyProfiles(
+  summaries: ProfileSummary[],
+  stored: StoredProfile[] | null,
+): ProfileSummary[] {
+  if (!stored) return summaries
+  const known = new Set(summaries.map((s) => s.profileId))
+  const extra = stored
+    .filter((p) => !known.has(p.id))
+    .map((p): ProfileSummary => ({
+      profileId: p.id,
+      provider: p.provider ?? p.id.split(':')[0],
+      type: p.type ?? 'unknown',
+      status: 'active',
+      storeOnly: true,
+    }))
+  return extra.length > 0 ? [...summaries, ...extra] : summaries
+}

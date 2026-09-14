@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { listAgents, removeProfile } from '@/lib/openclaw/auth-profiles'
+import { invalidateStoredProfiles, listAgents, removeProfile } from '@/lib/openclaw/auth-profiles'
 
 const SAFE_ID = /^[a-zA-Z0-9_.-]+$/
 const SAFE_PROFILE_ID = /^[a-zA-Z0-9_.:@-]+$/
@@ -39,6 +39,10 @@ export async function POST(req: NextRequest) {
       { error: err instanceof Error ? err.message : String(err) },
       { status: 500 },
     )
+  } finally {
+    // A removal that failed half way is exactly what the stored-profile listing
+    // exists to show, so it must not keep serving a copy from before the attempt.
+    invalidateStoredProfiles()
   }
   return NextResponse.json({ removed: { profileId, agents: targets } })
 }

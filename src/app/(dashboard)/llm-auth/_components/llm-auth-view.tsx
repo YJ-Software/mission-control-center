@@ -127,10 +127,23 @@ export function LlmAuthView() {
                     {p.status}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-white font-mono truncate">{p.profileId}</div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm text-white font-mono truncate">{p.profileId}</span>
+                      {p.storeOnly && (
+                        <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded border font-mono text-amber-300 bg-amber-500/10 border-amber-500/30">
+                          {t('storeOnly')}
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-white/40 truncate">
-                      {p.type} · {p.identity ?? '—'} ·{' '}
-                      {p.expiresAt ? `${t('expiresIn')} ${formatExpiry(p.expiresAt)}` : t('noExpiry')}
+                      {p.storeOnly ? (
+                        t('storeOnlyHint')
+                      ) : (
+                        <>
+                          {p.type} · {p.identity ?? '—'} ·{' '}
+                          {p.expiresAt ? `${t('expiresIn')} ${formatExpiry(p.expiresAt)}` : t('noExpiry')}
+                        </>
+                      )}
                     </div>
                   </div>
                   <button

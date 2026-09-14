@@ -2521,6 +2521,8 @@
     "noProfiles": "目前无任何登录凭证",
     "expiresIn": "剩余",
     "noExpiry": "无到期日",
+    "storeOnly": "配置文件已移除",
+    "storeOnlyHint": "凭证仍留在 OpenClaw 凭证库中，可能仍在使用 — 请再移除一次",
     "remove": "移除",
     "loginTitle": "新增模型 → {agent}",
     "provider": "Provider",
