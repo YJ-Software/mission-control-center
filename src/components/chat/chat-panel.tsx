@@ -8,6 +8,7 @@ import { useWebSocket } from '@/store/websocket'
 import { usePinnedMessages } from '@/hooks/use-pinned-messages'
 import { ChatMessage } from './chat-message'
 import { ChatInput } from './chat-input'
+import { ChatInteractionPanel } from './chat-interaction-panel'
 import { ChatSearch } from './chat-search'
 import { ChatPinned } from './chat-pinned'
 import { exportChatAsMarkdown } from './chat-export'
@@ -284,6 +285,7 @@ export function ChatPanel({
 
       {/* Input area */}
       <div className="w-full">
+        <ChatInteractionPanel sessionKey={sessionKey} />
         <ChatInput
           isStreaming={isStreaming}
           connected={connected}

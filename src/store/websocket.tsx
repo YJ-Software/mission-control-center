@@ -42,6 +42,8 @@ export interface ToolStreamPayload {
 
 type ChatListener = (payload: ChatEventPayload) => void
 type ToolStreamListener = (payload: ToolStreamPayload) => void
+/** Any other Gateway broadcast (question.*, exec.approval.*, plugin.approval.*, …). */
+export type GatewayEventListener = (event: string, payload: unknown) => void
 
 interface PendingRpc {
   resolve: (payload: unknown) => void
@@ -57,6 +59,7 @@ interface WebSocketContextValue {
   sendRpc: (method: string, params?: Record<string, unknown>) => Promise<unknown>
   addChatListener: (callback: ChatListener) => () => void
   addToolStreamListener: (callback: ToolStreamListener) => () => void
+  addGatewayEventListener: (callback: GatewayEventListener) => () => void
 }
 
 const WebSocketContext = createContext<WebSocketContextValue>({
@@ -67,6 +70,7 @@ const WebSocketContext = createContext<WebSocketContextValue>({
   sendRpc: () => Promise.reject(new Error('WebSocket not connected')),
   addChatListener: () => () => {},
   addToolStreamListener: () => () => {},
+  addGatewayEventListener: () => () => {},
 })
 
 export function useWebSocket() {
@@ -84,6 +88,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const pendingRpcsRef = useRef<Map<string, PendingRpc>>(new Map())
   const chatListenersRef = useRef<Set<ChatListener>>(new Set())
   const toolStreamListenersRef = useRef<Set<ToolStreamListener>>(new Set())
+  const gatewayEventListenersRef = useRef<Set<GatewayEventListener>>(new Set())
 
   const addEvent = useCallback((event: Omit<ActivityEvent, 'id' | 'timestamp'>) => {
     const newEvent: ActivityEvent = {
@@ -192,6 +197,14 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
+    // Every other Gateway event goes to generic listeners first; the legacy
+    // activity handling below still sees it.
+    if (msg.type === 'event' && typeof msg.event === 'string') {
+      for (const listener of gatewayEventListenersRef.current) {
+        try { listener(msg.event, msg.payload) } catch {}
+      }
+    }
+
     // Existing message handling
     const kind = msg.kind as string || msg.type as string
 
@@ -254,6 +267,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const addGatewayEventListener = useCallback((callback: GatewayEventListener): (() => void) => {
+    gatewayEventListenersRef.current.add(callback)
+    return () => {
+      gatewayEventListenersRef.current.delete(callback)
+    }
+  }, [])
+
   useEffect(() => {
     connect()
     return () => {
@@ -269,7 +289,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [connect])
 
   return (
-    <WebSocketContext.Provider value={{ connected, events, sendMessage, agentStatuses, sendRpc, addChatListener, addToolStreamListener }}>
+    <WebSocketContext.Provider value={{ connected, events, sendMessage, agentStatuses, sendRpc, addChatListener, addToolStreamListener, addGatewayEventListener }}>
       {children}
     </WebSocketContext.Provider>
   )

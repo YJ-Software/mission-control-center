@@ -365,7 +365,12 @@ function connectGateway(wss: WebSocketServer) {
               },
               role,
               scopes,
-              caps: [],
+              // Advertise as an approval surface. The Gateway only routes
+              // exec/plugin approvals to clients that claim this cap (or are
+              // the Control UI / native apps); without it an agent's exec on
+              // ask=always is denied at once as a "headless run", and the chat
+              // never gets the approval card to answer.
+              caps: ['approvals'],
               auth: { token: token },
               device: {
                 id: DEVICE_IDENTITY.deviceId,
