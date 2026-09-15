@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { DollarSign } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { CostInfoHint } from '@/components/costs/cost-info-hint'
 
 interface CostData {
   total: number
@@ -32,6 +33,7 @@ export function DailySpend() {
         <div className="flex items-center gap-2">
           <DollarSign className="w-4 h-4 text-cyan-400" />
           <span className="text-sm font-semibold text-white/80">{t('dailySpend')}</span>
+          <CostInfoHint />
           {data?.estimated && (
             <span className="font-mono text-[9px] text-white/30 tracking-wider">{t('costEstimated')}</span>
           )}

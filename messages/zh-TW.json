@@ -225,6 +225,18 @@
     }
   },
   "costs": {
+    "info": {
+      "ariaLabel": "費用計算說明",
+      "title": "費用如何計算",
+      "source": "依 OpenClaw gateway 記錄的每一次模型呼叫 token 用量計算。",
+      "openclaw": "已在 OpenClaw 設定單價的模型（例如 OpenAI）：直接採用 OpenClaw 算出的費用。",
+      "estimate": "其他模型：以公開 API 牌價估算——輸入、輸出、快取讀寫 token 各自乘上每百萬 token 單價後加總。",
+      "unknown": "不在牌價表內的模型不估價，顯示 OpenClaw 回報的數字（通常為 $0）。",
+      "zeroTokens": "模型供應商若未回報 token 用量，該筆費用會是 $0。",
+      "models": "已收錄牌價（{date} 查核）：{models}",
+      "listSeparator": "、",
+      "disclaimer": "僅供參考，實際金額以供應商帳單為準；訂閱方案、折扣與離峰價未納入。"
+    },
     "costEstimated": "依公開 API 牌價估算",
     "title": "花費分析",
     "subtitle": "支出明細與趨勢",

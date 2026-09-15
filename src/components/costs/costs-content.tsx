@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
+import { CostInfoHint } from './cost-info-hint'
 
 interface CostData {
   total: number
@@ -119,6 +120,7 @@ export function CostsContent() {
       <div className="cyber-card animate-slide-in">
         <div className="p-4 border-b border-white/[0.06]">
           <span className="text-sm font-semibold text-white/80">{t('spendTrend')}</span>
+          <CostInfoHint />
           {data?.estimated && <span className="font-mono text-[9px] text-white/30 tracking-wider">{t('costEstimated')}</span>}
         </div>
         <div className="p-4" style={{ minHeight: 240 }}>

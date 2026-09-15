@@ -225,6 +225,18 @@
     }
   },
   "costs": {
+    "info": {
+      "ariaLabel": "How costs are calculated",
+      "title": "How costs are calculated",
+      "source": "Computed from the token usage the OpenClaw gateway records for every model call.",
+      "openclaw": "Models with a price configured in OpenClaw (e.g. OpenAI): OpenClaw's own cost is used as-is.",
+      "estimate": "Other models: estimated from public API list prices — input, output and cache read/write tokens are each multiplied by the per-million-token rate and summed.",
+      "unknown": "Models not in the price table are not estimated; OpenClaw's figure (usually $0) is shown.",
+      "zeroTokens": "If a model provider does not report token usage, that usage costs $0 here.",
+      "models": "List prices included (checked {date}): {models}",
+      "listSeparator": ", ",
+      "disclaimer": "For reference only — your provider's bill is authoritative; subscriptions, discounts and off-peak rates are not reflected."
+    },
     "costEstimated": "Estimated from public API list prices",
     "title": "Costs",
     "subtitle": "Spending breakdown and trends",

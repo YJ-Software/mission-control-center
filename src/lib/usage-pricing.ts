@@ -55,6 +55,9 @@ const RULES: PriceRule[] = [
   { label: 'MiniMax M2.7', match: /minimax-m2\.7$/, price: { input: 0.3, output: 1.2, cacheRead: 0.06, cacheWrite: 0.375 } },
 ]
 
+/** Display names of the models with a list price, in table order. */
+export const PRICED_MODEL_LABELS: readonly string[] = RULES.map((r) => r.label)
+
 /** List price for a model id, matched with and without its provider prefix; null when unknown. */
 export function findModelPrice(provider: string | undefined, model: string): ModelPrice | null {
   const id = model.trim().toLowerCase()
