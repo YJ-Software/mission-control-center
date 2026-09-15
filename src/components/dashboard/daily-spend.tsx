@@ -9,6 +9,7 @@ interface CostData {
   today: number
   week: number
   perDay: Record<string, number>
+  estimated?: boolean
 }
 
 export function DailySpend() {
@@ -31,6 +32,9 @@ export function DailySpend() {
         <div className="flex items-center gap-2">
           <DollarSign className="w-4 h-4 text-cyan-400" />
           <span className="text-sm font-semibold text-white/80">{t('dailySpend')}</span>
+          {data?.estimated && (
+            <span className="font-mono text-[9px] text-white/30 tracking-wider">{t('costEstimated')}</span>
+          )}
         </div>
         {data && (
           <div className="flex items-center gap-3">

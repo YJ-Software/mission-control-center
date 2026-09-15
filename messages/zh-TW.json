@@ -99,6 +99,7 @@
     "connectedToGateway": "✓ 已連接到 OpenClaw Gateway"
   },
   "dashboard": {
+    "costEstimated": "依公開 API 牌價估算",
     "title": "任務管制中心",
     "subtitle": "OpenClaw Mission Control",
     "activeTasks": "進行中任務",
@@ -224,6 +225,7 @@
     }
   },
   "costs": {
+    "costEstimated": "依公開 API 牌價估算",
     "title": "花費分析",
     "subtitle": "支出明細與趨勢",
     "today": "今日",

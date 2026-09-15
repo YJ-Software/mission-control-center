@@ -1,106 +1,153 @@
-/**
- * Session data reading from OpenClaw agent session files.
- */
-import fs from 'fs'
-import path from 'path'
-import os from 'os'
-import { estimateMsgCost, normalizeProvider, normalizeModel } from './model-pricing'
+import { gatewayRequest } from '@/lib/gateway-rpc'
+import {
+  priceDaily,
+  priceModelUsage,
+  type GatewayUsageTotals,
+  type ModelDailyEntry,
+  type ModelTotalsEntry,
+} from '@/lib/usage-pricing'
 
-const agentsDir = path.join(os.homedir(), '.openclaw', 'agents')
+// OpenClaw moved session indexes and transcripts out of
+// ~/.openclaw/agents/*/sessions/{sessions.json,*.jsonl} into SQLite. Reading
+// those files now finds nothing, which left Recent Activity, Daily Spend,
+// /sessions and /costs empty. The Gateway's session and usage RPCs are the
+// supported view of the same data.
 
-/** Get all agent session directories that have sessions.json */
-function getAllSessionsDirs(): { agentId: string; sessDir: string }[] {
-  const result: { agentId: string; sessDir: string }[] = []
+const LIST_LIMIT = 200
+/** Window for usage and spend. The Gateway computes usage from transcripts, so this bounds the work. */
+const USAGE_WINDOW_DAYS = 90
+const DAY_MS = 86_400_000
+/** sessions.usage returns 50 sessions unless asked for more. */
+const USAGE_SESSION_LIMIT = 1000
+
+interface GatewaySessionRow {
+  key: string
+  label?: string
+  displayName?: string
+  derivedTitle?: string
+  lastMessagePreview?: string
+  model?: string
+  modelProvider?: string
+  totalTokens?: number
+  contextTokens?: number
+  kind?: string
+  chatType?: string
+  lastChannel?: string
+  updatedAt?: number
+  startedAt?: number
+  sessionStartedAt?: number
+  abortedLastRun?: boolean
+  sessionId?: string
+  agentId?: string
+}
+
+interface GatewayModelUsage {
+  provider?: string
+  model: string
+  totals: GatewayUsageTotals
+}
+
+interface GatewaySessionUsage extends GatewayUsageTotals {
+  firstActivity?: number
+  modelUsage?: GatewayModelUsage[]
+}
+
+interface GatewayUsagePayload {
+  sessions?: Array<{ key: string; usage: GatewaySessionUsage | null }>
+  aggregates?: {
+    byModel?: ModelTotalsEntry[]
+    modelDaily?: ModelDailyEntry[]
+    daily?: Array<{ date: string }>
+  }
+}
+
+function serverTimeZone(): string {
   try {
-    const agents = fs.readdirSync(agentsDir).filter(d => {
-      try { return fs.statSync(path.join(agentsDir, d)).isDirectory() } catch { return false }
-    })
-    for (const agent of agents) {
-      const sessDir = path.join(agentsDir, agent, 'sessions')
-      if (fs.existsSync(path.join(sessDir, 'sessions.json'))) {
-        result.push({ agentId: agent, sessDir })
-      }
-    }
-  } catch { /* ignore */ }
-  return result
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  } catch {
+    return 'UTC'
+  }
 }
 
-function isSessionFile(f: string): boolean {
-  return f.endsWith('.jsonl') || f.includes('.jsonl.reset.')
+/** Calendar date (YYYY-MM-DD) of `ts` in `timeZone`. */
+export function dateKey(ts: number, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ts)
 }
 
-function extractSessionId(f: string): string {
-  return f.replace(/\.jsonl(?:\.reset\.\d+)?$/, '')
+async function fetchUsage(days: number): Promise<GatewayUsagePayload> {
+  const timeZone = serverTimeZone()
+  const now = Date.now()
+  const range = {
+    startDate: dateKey(now - (days - 1) * DAY_MS, timeZone),
+    endDate: dateKey(now, timeZone),
+    agentScope: 'all',
+    limit: USAGE_SESSION_LIMIT,
+  }
+  try {
+    return (await gatewayRequest('sessions.usage', { ...range, mode: 'specific', timeZone })) as GatewayUsagePayload
+  } catch {
+    // Older Gateways reject the calendar-mode params; their buckets are UTC days.
+    return (await gatewayRequest('sessions.usage', range)) as GatewayUsagePayload
+  }
 }
 
 function resolveName(key: string): string {
-  const parts = key.split(':')
-  if (parts.length >= 3) {
-    const last = parts[parts.length - 1]
-    if (key.includes('cron')) return 'Cron: ' + last.substring(0, 12)
-    if (key.includes('subagent')) return last.substring(0, 12)
-    return last.substring(0, 20)
-  }
-  return key.substring(0, 20)
+  const rest = key.replace(/^agent:[^:]+:/, '')
+  if (rest === 'main') return 'main'
+  if (rest.startsWith('cron:')) return 'Cron'
+  if (rest.includes('subagent')) return 'Subagent'
+  // One-off runs are keyed by a bare hash (`<hex>-<n>-<ts>`) and never appear in
+  // sessions.list, so there is no title to show — keep the name short.
+  if (/^[0-9a-f]{12,}/.test(rest)) return `Session ${rest.slice(0, 8)}`
+  return rest.split(':').slice(0, 2).join(':') || key
 }
 
-function getLastMessage(sessDir: string, sessionId: string): string {
-  try {
-    const filePath = path.join(sessDir, sessionId + '.jsonl')
-    if (!fs.existsSync(filePath)) return ''
-    const data = fs.readFileSync(filePath, 'utf-8')
-    const lines = data.split('\n').filter(l => l.trim())
-    for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
-      try {
-        const d = JSON.parse(lines[i])
-        if (d.type !== 'message') continue
-        const msg = d.message
-        if (!msg) continue
-        if (msg.role !== 'user' && msg.role !== 'assistant') continue
-        let text = ''
-        if (typeof msg.content === 'string') {
-          text = msg.content
-        } else if (Array.isArray(msg.content)) {
-          for (const b of msg.content) {
-            if (b.type === 'text' && b.text) { text = b.text; break }
-          }
-        }
-        if (text) return text.replace(/\n/g, ' ').substring(0, 80)
-      } catch { /* skip bad line */ }
+/** Session spend: OpenClaw's price per model where it has one, a list-price estimate where it does not. */
+export function sessionCost(usage: GatewaySessionUsage | null | undefined): number {
+  if (!usage) return 0
+  if (!usage.modelUsage?.length) return usage.totalCost || 0
+  return usage.modelUsage.reduce((sum, m) => sum + priceModelUsage(m.provider, m.model, m.totals).cost, 0)
+}
+
+const ZERO_TOTALS: GatewayUsageTotals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, totalCost: 0, missingCostEntries: 0 }
+
+function mergeUsage(parts: GatewaySessionUsage[]): GatewaySessionUsage | null {
+  if (parts.length === 0) return null
+  if (parts.length === 1) return parts[0]
+  const merged: GatewaySessionUsage = { ...ZERO_TOTALS, modelUsage: [] }
+  for (const u of parts) {
+    for (const k of ['input', 'output', 'cacheRead', 'cacheWrite', 'totalTokens', 'totalCost', 'missingCostEntries'] as const) {
+      merged[k] = (merged[k] ?? 0) + (u[k] ?? 0)
     }
-    return ''
-  } catch { return '' }
+    if (u.firstActivity && (!merged.firstActivity || u.firstActivity < merged.firstActivity)) merged.firstActivity = u.firstActivity
+    merged.modelUsage!.push(...(u.modelUsage ?? []))
+  }
+  return merged
 }
 
-// Cost cache — recalculated every 60 seconds
-let sessionCostCache: Record<string, number> = {}
-let sessionCostCacheTime = 0
-
-function refreshCostCache() {
-  const now = Date.now()
-  if (now - sessionCostCacheTime < 60000) return
-  sessionCostCache = {}
-  sessionCostCacheTime = now
-  for (const { sessDir } of getAllSessionsDirs()) {
-    try {
-      const files = fs.readdirSync(sessDir).filter(isSessionFile)
-      for (const file of files) {
-        const sid = extractSessionId(file)
-        let total = 0
-        const lines = fs.readFileSync(path.join(sessDir, file), 'utf-8').split('\n')
-        for (const line of lines) {
-          if (!line.trim()) continue
-          try {
-            const d = JSON.parse(line)
-            if (d.type !== 'message') continue
-            const c = estimateMsgCost(d.message || {})
-            if (c > 0) total += c
-          } catch { /* skip */ }
-        }
-        if (total > 0) sessionCostCache[sid] = Math.round(total * 100) / 100
-      }
-    } catch { /* ignore */ }
+/**
+ * Attach usage to session rows. Cron usage is recorded per run under
+ * `agent:<id>:cron:<job>:run:<run>`, while sessions.list shows the job once as
+ * `agent:<id>:cron:<job>` — so a run rolls up into the row its key extends.
+ * Usage with no matching row keeps its own key.
+ */
+export function rollupUsageToRows(
+  rowKeys: string[],
+  usageSessions: Array<{ key: string; usage: GatewaySessionUsage | null }>,
+): Map<string, GatewaySessionUsage> {
+  const rows = [...rowKeys].sort((a, b) => b.length - a.length) // longest prefix wins
+  const grouped = new Map<string, GatewaySessionUsage[]>()
+  for (const s of usageSessions) {
+    if (!s.usage) continue
+    const owner = rows.find((k) => s.key === k || s.key.startsWith(k + ':')) ?? s.key
+    grouped.set(owner, [...(grouped.get(owner) ?? []), s.usage])
   }
+  const out = new Map<string, GatewaySessionUsage>()
+  for (const [key, parts] of grouped) {
+    const merged = mergeUsage(parts)
+    if (merged) out.set(key, merged)
+  }
+  return out
 }
 
 export interface SessionInfo {
@@ -120,35 +167,33 @@ export interface SessionInfo {
   agentId: string
 }
 
-export function getSessions(): SessionInfo[] {
-  refreshCostCache()
-  const all: SessionInfo[] = []
-  for (const { agentId, sessDir } of getAllSessionsDirs()) {
-    try {
-      const sFile = path.join(sessDir, 'sessions.json')
-      if (!fs.existsSync(sFile)) continue
-      const data = JSON.parse(fs.readFileSync(sFile, 'utf-8'))
-      for (const [key, s] of Object.entries(data) as [string, any][]) {
-        all.push({
-          key,
-          label: s.label || resolveName(key),
-          model: s.modelOverride || s.model || '-',
-          totalTokens: s.totalTokens || 0,
-          contextTokens: s.contextTokens || 0,
-          kind: s.kind || (key.includes('group') ? 'group' : 'direct'),
-          updatedAt: s.updatedAt || 0,
-          createdAt: s.createdAt || s.updatedAt || 0,
-          aborted: s.abortedLastRun || false,
-          channel: s.channel || '-',
-          sessionId: s.sessionId || '-',
-          lastMessage: getLastMessage(sessDir, s.sessionId || key),
-          cost: sessionCostCache[s.sessionId || key] || 0,
-          agentId,
-        })
-      }
-    } catch { /* ignore agent */ }
+export function toSessionInfo(row: GatewaySessionRow, usage?: GatewaySessionUsage | null): SessionInfo {
+  return {
+    key: row.key,
+    label: row.label || row.displayName || row.derivedTitle || resolveName(row.key),
+    model: row.model ? (row.modelProvider ? `${row.modelProvider}/${row.model}` : row.model) : '-',
+    totalTokens: usage?.totalTokens || row.totalTokens || 0,
+    contextTokens: row.contextTokens || 0,
+    kind: row.kind || (row.key.includes('group') ? 'group' : 'direct'),
+    updatedAt: row.updatedAt || 0,
+    createdAt: row.sessionStartedAt || row.startedAt || usage?.firstActivity || row.updatedAt || 0,
+    aborted: row.abortedLastRun === true,
+    channel: row.lastChannel || row.chatType || '-',
+    sessionId: row.sessionId || '-',
+    lastMessage: row.lastMessagePreview || '',
+    cost: Math.round(sessionCost(usage) * 100) / 100,
+    agentId: row.agentId || 'main',
   }
-  return all
+}
+
+export async function getSessions(): Promise<SessionInfo[]> {
+  const [list, usage] = await Promise.all([
+    gatewayRequest('sessions.list', { limit: LIST_LIMIT, includeLastMessage: true, includeDerivedTitles: true }) as Promise<{ sessions?: GatewaySessionRow[] }>,
+    fetchUsage(USAGE_WINDOW_DAYS).catch(() => null),
+  ])
+  const rows = list?.sessions ?? []
+  const usageByKey = rollupUsageToRows(rows.map((r) => r.key), usage?.sessions ?? [])
+  return rows.map((row) => toSessionInfo(row, usageByKey.get(row.key)))
 }
 
 export interface SessionMessage {
@@ -157,59 +202,36 @@ export interface SessionMessage {
   timestamp: string
 }
 
-export function getSessionMessages(sessionId: string): SessionMessage[] {
-  const messages: SessionMessage[] = []
-  for (const { sessDir } of getAllSessionsDirs()) {
-    try {
-      const files = fs.readdirSync(sessDir).filter(isSessionFile)
-      let targetFile = files.find(f => f.includes(sessionId))
-      if (!targetFile) {
-        const sFile = path.join(sessDir, 'sessions.json')
-        if (fs.existsSync(sFile)) {
-          const data = JSON.parse(fs.readFileSync(sFile, 'utf-8'))
-          for (const [, v] of Object.entries(data) as [string, any][]) {
-            if (v.sessionId === sessionId) {
-              targetFile = files.find(f => f.includes(v.sessionId))
-              break
-            }
-          }
-        }
-      }
-      if (!targetFile) continue
-      const lines = fs.readFileSync(path.join(sessDir, targetFile), 'utf-8').split('\n').filter(l => l.trim())
-      for (let i = Math.max(0, lines.length - 30); i < lines.length; i++) {
-        try {
-          const d = JSON.parse(lines[i])
-          if (d.type !== 'message') continue
-          const msg = d.message
-          if (!msg) continue
-          let text = ''
-          if (typeof msg.content === 'string') {
-            text = msg.content
-          } else if (Array.isArray(msg.content)) {
-            for (const b of msg.content) {
-              if (b.type === 'text' && b.text) { text = b.text; break }
-              if (b.type === 'tool_use' || b.type === 'toolCall') { text = '🔧 ' + (b.name || b.toolName || 'tool'); break }
-              if (b.type === 'tool_result') { text = b.content?.substring?.(0, 300) || '[tool result]'; break }
-            }
-          }
-          if (text) {
-            messages.push({
-              role: msg.role || 'unknown',
-              content: text.substring(0, 300),
-              timestamp: d.timestamp || '',
-            })
-          }
-        } catch { /* skip */ }
-      }
-      if (messages.length > 0) return messages // Found in this agent
-    } catch { /* ignore */ }
+export function toSessionMessage(raw: unknown): SessionMessage | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const msg = raw as { role?: string; content?: unknown; timestamp?: number | string }
+  let text = ''
+  if (typeof msg.content === 'string') {
+    text = msg.content
+  } else if (Array.isArray(msg.content)) {
+    for (const b of msg.content as Array<Record<string, unknown>>) {
+      if (b?.type === 'text' && typeof b.text === 'string' && b.text) { text = b.text; break }
+      if (['tool_use', 'toolCall', 'toolcall', 'tool_call'].includes(String(b?.type))) { text = '🔧 ' + String(b.name || b.toolName || 'tool'); break }
+      if (b?.type === 'tool_result') { text = typeof b.content === 'string' ? b.content : '[tool result]'; break }
+    }
   }
-  return messages
+  if (!text) return null
+  const ts = msg.timestamp
+  return {
+    role: msg.role || 'unknown',
+    content: text.substring(0, 300),
+    timestamp: typeof ts === 'number' ? new Date(ts).toISOString() : ts || '',
+  }
+}
+
+/** Last messages of a session, by session key. */
+export async function getSessionMessages(sessionKey: string): Promise<SessionMessage[]> {
+  const res = (await gatewayRequest('chat.history', { sessionKey, limit: 30 })) as { messages?: unknown[] } | null
+  return (res?.messages ?? []).map(toSessionMessage).filter((m): m is SessionMessage => m !== null)
 }
 
 /**
- * Cost breakdown data — shared between sessions and future costs page.
+ * Cost breakdown data — shared between the dashboard and the costs page.
  */
 export interface CostData {
   total: number
@@ -218,83 +240,61 @@ export interface CostData {
   perModel: Record<string, number>
   perDay: Record<string, number>
   perSession: Record<string, { cost: number; label: string }>
+  /** True when any figure came from list prices rather than OpenClaw's own pricing. */
+  estimated: boolean
+  windowDays: number
 }
 
-export function getCostData(): CostData {
+export function buildCostData(
+  usage: GatewayUsagePayload,
+  rows: GatewaySessionRow[],
+  opts: { todayKey: string; weekKeys: string[]; windowDays: number },
+): CostData {
+  const byModel = usage.aggregates?.byModel ?? []
   const perModel: Record<string, number> = {}
+  let estimated = false
+  for (const e of byModel) {
+    const priced = priceModelUsage(e.provider, e.model, e.totals)
+    if (priced.estimated) estimated = true
+    if (priced.cost > 0) perModel[e.provider ? `${e.provider}/${e.model}` : e.model] = priced.cost
+  }
+
+  const daily = priceDaily(usage.aggregates?.modelDaily ?? [], byModel)
+  if (daily.estimated) estimated = true
   const perDay: Record<string, number> = {}
-  const perSession: Record<string, number> = {}
-  const sessionLabels: Record<string, string> = {}
-  let total = 0
+  for (const d of usage.aggregates?.daily ?? []) perDay[d.date] = 0
+  for (const [date, cost] of Object.entries(daily.perDay)) perDay[date] = (perDay[date] ?? 0) + cost
 
-  for (const { sessDir } of getAllSessionsDirs()) {
-    // Load session labels from sessions.json
-    try {
-      const sFile = path.join(sessDir, 'sessions.json')
-      if (fs.existsSync(sFile)) {
-        const data = JSON.parse(fs.readFileSync(sFile, 'utf-8'))
-        for (const [key, s] of Object.entries(data)) {
-          const info = s as { label?: string; sessionId?: string }
-          const sid = info.sessionId || key
-          sessionLabels[sid] = info.label || resolveName(key)
-        }
-      }
-    } catch { /* ignore */ }
-
-    try {
-      const files = fs.readdirSync(sessDir).filter(isSessionFile)
-      for (const file of files) {
-        const sid = extractSessionId(file)
-        const lines = fs.readFileSync(path.join(sessDir, file), 'utf-8').split('\n')
-        for (const line of lines) {
-          if (!line.trim()) continue
-          try {
-            const d = JSON.parse(line)
-            if (d.type !== 'message') continue
-            const msg = d.message
-            if (!msg?.usage) continue
-            const c = estimateMsgCost(msg)
-            if (c <= 0) continue
-            const provider = normalizeProvider(msg.provider)
-            const model = normalizeModel(provider, msg.model)
-            const ts: string = d.timestamp || ''
-            const day = ts.substring(0, 10)
-            const modelKey = `${provider}/${model}`
-            perModel[modelKey] = (perModel[modelKey] || 0) + c
-            if (day) perDay[day] = (perDay[day] || 0) + c
-            perSession[sid] = (perSession[sid] || 0) + c
-            total += c
-          } catch { /* skip */ }
-        }
-      }
-    } catch { /* ignore */ }
+  const labels = new Map(rows.map((r) => [r.key, r.label || r.displayName || r.derivedTitle || resolveName(r.key)]))
+  const perSession: Record<string, { cost: number; label: string }> = {}
+  for (const [key, merged] of rollupUsageToRows(rows.map((r) => r.key), usage.sessions ?? [])) {
+    const cost = sessionCost(merged)
+    if (cost > 0) perSession[key] = { cost: Math.round(cost * 100) / 100, label: labels.get(key) || resolveName(key) }
   }
 
-  const todayKey = new Date().toISOString().substring(0, 10)
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().substring(0, 10)
-  let weekCost = 0
-  for (const [d, c] of Object.entries(perDay)) {
-    if (d >= weekAgo) weekCost += c
-  }
-
-  const perSessionWithLabels: Record<string, { cost: number; label: string }> = {}
-  for (const [sid, cost] of Object.entries(perSession)) {
-    if (cost > 0) {
-      perSessionWithLabels[sid] = {
-        cost: Math.round(cost * 100) / 100,
-        label: sessionLabels[sid] || sid.substring(0, 12),
-      }
-    }
-  }
-
+  const total = Object.values(perModel).reduce((a, b) => a + b, 0)
   return {
-    total: Math.round(total * 100) / 100,
-    today: Math.round((perDay[todayKey] || 0) * 100) / 100,
-    week: Math.round(weekCost * 100) / 100,
+    total,
+    today: perDay[opts.todayKey] ?? 0,
+    week: opts.weekKeys.reduce((sum, k) => sum + (perDay[k] ?? 0), 0),
     perModel,
-    perDay: Object.fromEntries(
-      Object.entries(perDay).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 14)
-    ),
-    perSession: perSessionWithLabels,
+    perDay,
+    perSession,
+    estimated,
+    windowDays: opts.windowDays,
   }
+}
+
+export async function getCostData(): Promise<CostData> {
+  const timeZone = serverTimeZone()
+  const now = Date.now()
+  const [usage, list] = await Promise.all([
+    fetchUsage(USAGE_WINDOW_DAYS),
+    (gatewayRequest('sessions.list', { limit: LIST_LIMIT, includeDerivedTitles: true }) as Promise<{ sessions?: GatewaySessionRow[] }>).catch(() => null),
+  ])
+  return buildCostData(usage, list?.sessions ?? [], {
+    todayKey: dateKey(now, timeZone),
+    weekKeys: Array.from({ length: 7 }, (_, i) => dateKey(now - i * DAY_MS, timeZone)),
+    windowDays: USAGE_WINDOW_DAYS,
+  })
 }

@@ -85,8 +85,8 @@ interface SessionMessage {
 
 function SessionDetail({ session, onFullView }: { session: SessionInfo; onFullView: () => void }) {
   const { data } = useQuery<{ messages: SessionMessage[] }>({
-    queryKey: ['session-messages', session.sessionId],
-    queryFn: () => fetch(`/api/sessions?messages=${encodeURIComponent(session.sessionId)}`).then(r => r.json()),
+    queryKey: ['session-messages', session.key],
+    queryFn: () => fetch(`/api/sessions?messages=${encodeURIComponent(session.key)}`).then(r => r.json()),
   })
   const messages = data?.messages ?? []
 
@@ -152,8 +152,8 @@ function SessionDetail({ session, onFullView }: { session: SessionInfo; onFullVi
 
 function SessionModal({ session, onClose }: { session: SessionInfo; onClose: () => void }) {
   const { data } = useQuery<{ messages: SessionMessage[] }>({
-    queryKey: ['session-messages-full', session.sessionId],
-    queryFn: () => fetch(`/api/sessions?messages=${encodeURIComponent(session.sessionId)}`).then(r => r.json()),
+    queryKey: ['session-messages-full', session.key],
+    queryFn: () => fetch(`/api/sessions?messages=${encodeURIComponent(session.key)}`).then(r => r.json()),
   })
   const messages = data?.messages ?? []
   const isActive = Date.now() - session.updatedAt < 300_000

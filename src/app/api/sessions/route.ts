@@ -6,13 +6,18 @@ export async function GET(req: NextRequest) {
   const messagesFor = searchParams.get('messages')
 
   if (messagesFor) {
-    const id = messagesFor.replace(/[^a-zA-Z0-9\-_:.]/g, '')
-    const messages = getSessionMessages(id)
-    return NextResponse.json({ messages })
+    // A session key, e.g. agent:main:cron:<id>.
+    const key = messagesFor.replace(/[^a-zA-Z0-9\-_:.@+]/g, '')
+    try {
+      const messages = await getSessionMessages(key)
+      return NextResponse.json({ messages })
+    } catch (err) {
+      return NextResponse.json({ messages: [], error: String(err) })
+    }
   }
 
   try {
-    const sessions = getSessions()
+    const sessions = await getSessions()
     return NextResponse.json({ sessions })
   } catch (err) {
     return NextResponse.json({ sessions: [], error: String(err) })

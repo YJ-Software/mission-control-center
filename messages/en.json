@@ -99,6 +99,7 @@
     "connectedToGateway": "✓ Connected to OpenClaw Gateway"
   },
   "dashboard": {
+    "costEstimated": "Estimated from public API list prices",
     "title": "Mission Control",
     "subtitle": "OpenClaw Mission Control",
     "activeTasks": "Active Tasks",
@@ -224,6 +225,7 @@
     }
   },
   "costs": {
+    "costEstimated": "Estimated from public API list prices",
     "title": "Costs",
     "subtitle": "Spending breakdown and trends",
     "today": "Today",
