@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.9.3-v0.3.89",
-    "mccVersion": "0.3.89",
+    "version": "2026.9.3-v0.3.90",
+    "mccVersion": "0.3.90",
     "openclawVersion": "2026.9.3",
-    "releaseDate": "2026-09-14T09:30:22.557Z",
-    "notes": "- feat(chat): 對話中可以直接回應 agent 的互動請求 —— 對話輸入框上方(/talk 與 /chat 都有)會出現「待回應面板」\n  - ask_user 問題:一次一題,可單選/複選、自填「其他」、略過,附剩餘時間\n  - secrets 憑證請求:遮罩輸入,可編輯允許使用的主機;值直接存入 OpenClaw secret store,不會出現在對話或模型中\n  - 指令與 plugin 權限審核:顯示要執行的指令或 plugin 說明,只提供 OpenClaw 允許的決定(允許一次/永遠允許/拒絕)\n  - 重新整理或斷線重連後會補回尚未回答的項目。先前這些請求在 MCC 完全沒有畫面,agent 會一直卡到逾時(ask_user 預設 15 分鐘)\n- **行為變更**:Mission Control 現在向 Gateway 宣告自己是審核端(caps: approvals)。之前 agent 在需要審核時會被當成無人值守而立刻拒絕;現在會把審核送到 MCC 等待回應。cron 等自動化 run 若遇到需要審核的指令,也會等到逾時才依 askFallback 處理,而不是立刻拒絕(預設 security=full、ask=on-miss 時很少發生)\n- fix(llm-auth): LLM 管理頁會顯示「只剩在 OpenClaw 憑證庫裡」的殘留憑證,標示「設定檔已移除」並保留刪除鍵。OpenClaw 2026.9.4 的 `models auth logout` 會先刪 openclaw.json 再在憑證庫那步失敗,之前刪除失敗後憑證就從畫面消失,實際上仍可使用、也無法再刪\n- 已在 OpenClaw 2026.9.4 throwaway 上實機驗證:真實 agent 的 ask_user 與 exec 審核在 /talk 完整走通;新增 chat-interactions E2E spec 與單元測試",
+    "releaseDate": "2026-09-15T11:07:29.493Z",
+    "notes": "- fix(dashboard): 首頁 Recent Activity、Daily Spend 與 Sessions、花費頁恢復顯示資料。先前 MCC 讀的是 openclaw 舊版的 session 檔案(sessions.json / *.jsonl)，openclaw 改存 SQLite 後這些畫面全部變空；現改用 gateway 正式的 sessions.list / sessions.usage / chat.history\n  - cron 排程的用量按每次執行記錄，現在會正確加總回對應的排程\n  - 修正用量只統計前 50 個 session 的問題\n- feat(costs): **費用估算**。openclaw 只替有設定單價的模型計費(例如 OpenAI)，Kimi 與自訂 provider 一律顯示 $0；現依公開 API 牌價(2026-09-15)× token 用量估算，openclaw 已完整計價的模型沿用其數字，未知模型不猜價。估算值會標註「依公開 API 牌價估算」\n  - 注意：若模型 provider 回應時不附 token 用量(例如 OCD 預設的 yuanjhen/deepseek-v4-flash)，openclaw 記錄的 token 為 0，Daily Spend 仍會是 $0\n- feat(talk): /talk 的「完整控制台」按鈕移到「AI 助理」標題右邊，改為醒目的亮青色\n- feat(header): 完整控制台頂部新增「AI 助理」按鈕，可直接回到 /talk\n- test(e2e): 部署 E2E 新增「OCD 部署頁 → 開啟任務管制中心 → /talk → 完成對話」流程，talk-window E2E 改為雙向驗證",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.9.3-v0.3.89/mission-control-v0.3.89-linux-x64.tar.gz",
-        "sha256": "6ac2c7d19dfb955adaa96733713943eae80ffb2c7fe016af23d743e11ef87e87",
-        "size": 27317555
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.9.3-v0.3.90/mission-control-v0.3.90-linux-x64.tar.gz",
+        "sha256": "1ab0886cc1dd3e8a1ee4a351b2e4b7370743f3fa9fc70210ef2f831ee66d3a90",
+        "size": 27318316
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.9.3-v0.3.89",
+      "mccVersion": "0.3.89",
+      "openclawVersion": "2026.9.3",
+      "releaseDate": "2026-09-14T09:30:22.557Z"
+    },
     {
       "version": "2026.9.3-v0.3.88",
       "mccVersion": "0.3.88",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.80",
       "openclawVersion": "2026.8.1",
       "releaseDate": "2026-09-01T14:00:11.695Z"
-    },
-    {
-      "version": "2026.7.1-2-v0.3.79",
-      "mccVersion": "0.3.79",
-      "openclawVersion": "2026.7.1-2",
-      "releaseDate": "2026-08-28T08:51:00.344Z"
     }
   ]
 }
