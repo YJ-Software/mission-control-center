@@ -5,7 +5,7 @@ import { test, expect } from './fixtures/login'
  * full console, and the chat itself actually works. Landing behaviour is driven
  * by the `ui.landingPage` setting so an operator install is unaffected.
  */
-test('/talk is a chat window without the operator shell, with a way into the full MCC', async ({
+test('/talk is a chat window without the operator shell, with a way into the full MCC and back', async ({
   loggedInPage: page, baseURL,
 }) => {
   await page.goto(`${baseURL}/talk`)
@@ -39,4 +39,13 @@ test('/talk is a chat window without the operator shell, with a way into the ful
   await out.click()
   await expect(page).toHaveURL(/\/dashboard$/)
   await expect(page.getByRole('link', { name: /終端機|Terminal/ }).first()).toBeVisible({ timeout: 30_000 })
+
+  // …and the full console has a way back: the header's /talk button returns to
+  // the chat window, so an operator who stepped out is not stranded.
+  const back = page.locator('header a[href="/talk"]')
+  await expect(back).toBeVisible({ timeout: 30_000 })
+  await back.click()
+  await expect(page).toHaveURL(/\/talk$/)
+  await expect(page.locator('textarea').first()).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('link', { name: /終端機|Terminal/ })).toHaveCount(0)
 })

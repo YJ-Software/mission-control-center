@@ -1,6 +1,6 @@
 'use client'
 
-import { Globe, Menu, RefreshCw, ArrowUpCircle, Loader2, ScrollText, Package, Power } from 'lucide-react'
+import { Globe, Menu, RefreshCw, ArrowUpCircle, Loader2, ScrollText, Package, Power, MessageSquare } from 'lucide-react'
 import { useState } from 'react'
 import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import type { OpenClawVersionInfo } from '@/lib/services-status'
 import { NotificationCenter } from './notification-center'
+import { CHAT_PATH } from '@/lib/landing'
 
 const locales = [
   { code: 'zh-TW', label: '繁' },
@@ -196,6 +197,19 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
             </p>
           )}
         </div>
+
+        {/* The way back to the chat window. /talk links out to the full console
+            beside its title; this mirrors it so neither view is a dead end. */}
+        <Link
+          href={CHAT_PATH}
+          title={t('openTalk')}
+          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold
+            bg-cyan-500 text-[#0a0e14] shadow-[0_0_12px_rgba(34,211,238,0.35)]
+            hover:bg-cyan-400 transition-colors shrink-0"
+        >
+          <MessageSquare className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">{t('openTalk')}</span>
+        </Link>
 
         {mccHasUpdate && (
           <button

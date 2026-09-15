@@ -11,7 +11,8 @@
     "updateSystemConfirm": "Update {count} system packages? This runs apt upgrade and services may be briefly interrupted.",
     "rebootRequired": "Reboot required",
     "rebooting": "Rebooting…",
-    "rebootConfirm": "Reboot now? The whole machine restarts — every service and connection drops for a few minutes."
+    "rebootConfirm": "Reboot now? The whole machine restarts — every service and connection drops for a few minutes.",
+    "openTalk": "AI assistant"
   },
   "notifications": {
     "title": "Notifications",

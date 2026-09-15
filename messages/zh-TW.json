@@ -11,7 +11,8 @@
     "updateSystemConfirm": "要更新 {count} 個系統套件嗎？這會執行 apt upgrade，過程中服務可能短暫中斷。",
     "rebootRequired": "需要重新開機",
     "rebooting": "重新開機中…",
-    "rebootConfirm": "確定要重新開機嗎？整台機器會重啟，所有服務與連線都會中斷數分鐘。"
+    "rebootConfirm": "確定要重新開機嗎？整台機器會重啟，所有服務與連線都會中斷數分鐘。",
+    "openTalk": "AI 助理"
   },
   "notifications": {
     "title": "通知",
