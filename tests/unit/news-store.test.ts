@@ -89,7 +89,12 @@ describe('recordCitedUrls', () => {
   it('records every link a report cited', () => {
     const p = report('- [A](https://example.com/a)\n- [B](https://example.com/b)\n')
 
-    expect(recordCitedUrls(p, '2026-07-26')).toEqual({ scanned: 2, recorded: 2 })
+    // Must be relative: this is the one case in this block that then queries a
+    // ROLLING window, so a fixed date silently expires. It did — cited on
+    // 2026-07-26 and read back with a 30-day window, this test went red on
+    // 2026-08-25 and stayed red. Every other date in this describe is fine
+    // fixed, because none of them asks "what was cited recently?".
+    expect(recordCitedUrls(p, daysAgo(1))).toEqual({ scanned: 2, recorded: 2 })
     expect(getRecentlyCitedUrls(30).sort()).toEqual([
       'https://example.com/a',
       'https://example.com/b',
