@@ -1,21 +1,27 @@
 {
   "latest": {
-    "version": "2026.9.3-v0.3.91",
-    "mccVersion": "0.3.91",
+    "version": "2026.9.3-v0.3.92",
+    "mccVersion": "0.3.92",
     "openclawVersion": "2026.9.3",
-    "releaseDate": "2026-09-15T11:30:03.587Z",
-    "notes": "- feat(costs): 首頁 Daily Spend 與花費頁「每日支出趨勢」標題旁新增「？」說明按鈕，滑鼠移上去（手機點一下）即可查看費用如何計算\n  - 資料來源：OpenClaw gateway 記錄的每次模型呼叫 token 用量\n  - 已在 OpenClaw 設定單價的模型直接採用 OpenClaw 計算的費用；其他模型依公開 API 牌價估算\n  - 未收錄牌價的模型不估價；供應商未回報 token 用量時費用為 $0\n  - 列出已收錄牌價的模型與查核日期（直接讀取程式內的價目表）\n  - 僅供參考，實際金額以供應商帳單為準",
+    "releaseDate": "2026-09-16T09:57:11.590Z",
+    "notes": "- fix(browser): **自動修復 OpenCLI 擴充功能的自動載入**。Google Chrome 每次重啟都會忘記以 CDP 載入的擴充功能，因此瀏覽器服務設定需帶有自動重新載入（0.3.82 起）；但服務設定只在安裝當下寫入，升級不會重寫，**瀏覽器堆疊安裝於 0.3.82 之前的機器永遠不會取得這一行**，Chrome 一重啟，opencli 的瀏覽器指令即全數失敗，而畫面上一切正常\n  - 升級到本版後，Mission Control 會在啟動時自動補上（以 systemd drop-in，不重寫整份設定，不會更動 VNC 連接埠），並立即重新載入一次，不必等下次重啟\n  - 修復完成會寫入通知中心；/api/browser/opencli 新增 autoloadConfigured 欄位，瀏覽器安裝 E2E 亦已加上對應斷言\n  - 實際後果案例：晨報「社群熱點」整段連續四天未產出，直到有人察覺\n- fix(morning-report): 缺段告警改用實際存在的投遞指令。先前呼叫的 `openclaw announce` 在 OpenClaw 並不存在，推播每次失敗，通知只留在儀表板鈴鐺；改用晨報設定的頻道與聊天 ID 送出\n  - 同時修正一個隱患：告警函式內直接讀取資料庫且未受保護，讀取失敗會連帶中斷 finalize",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.9.3-v0.3.91/mission-control-v0.3.91-linux-x64.tar.gz",
-        "sha256": "9452d84e995b0bf75f5c63a7e0c4d750089faf0acf25e74fb7f957e21403eb45",
-        "size": 27344697
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.9.3-v0.3.92/mission-control-v0.3.92-linux-x64.tar.gz",
+        "sha256": "20eaaf72baeca0838fb704b2add5489afb14344c32cbb591672fc5a3a3ce44d7",
+        "size": 27366701
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.9.3-v0.3.91",
+      "mccVersion": "0.3.91",
+      "openclawVersion": "2026.9.3",
+      "releaseDate": "2026-09-15T11:30:03.587Z"
+    },
     {
       "version": "2026.9.3-v0.3.90",
       "mccVersion": "0.3.90",
@@ -69,12 +75,6 @@
       "mccVersion": "0.3.82",
       "openclawVersion": "2026.8.2",
       "releaseDate": "2026-09-01T18:19:10.296Z"
-    },
-    {
-      "version": "2026.8.1-v0.3.81",
-      "mccVersion": "0.3.81",
-      "openclawVersion": "2026.8.1",
-      "releaseDate": "2026-09-01T15:10:32.766Z"
     }
   ]
 }
