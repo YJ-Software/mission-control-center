@@ -68,5 +68,17 @@ test.describe('Browser (headless Chrome + VNC) setup', () => {
     await expect(installBtn).toBeVisible({ timeout: 10_000 })
     await installBtn.click(FORCE)
     await expect(page.getByText(installDone)).toBeVisible({ timeout: INSTALL_TIMEOUT })
+
+    // The install must leave Chrome re-loading the OpenCLI extension on every
+    // start. Without it the browser looks healthy and every opencli browser
+    // command fails after the first restart — the failure mode that cost four
+    // days of morning-report content before anyone noticed.
+    await expect(async () => {
+      const res = await page.request.get(`${baseURL}/api/browser/opencli`)
+      expect(res.ok()).toBe(true)
+      const info = await res.json() as { autoloadConfigured?: boolean; extensionLoaded?: boolean }
+      expect(info.autoloadConfigured).toBe(true)
+      expect(info.extensionLoaded).toBe(true)
+    }).toPass({ timeout: 3 * 60 * 1000, intervals: [2_000, 5_000, 10_000] })
   })
 })

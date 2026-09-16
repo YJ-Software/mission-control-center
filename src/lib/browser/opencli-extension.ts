@@ -30,7 +30,9 @@ export function shouldLoadExtensionViaCdp(
 /** The ExecStartPost loader.
  *
  * Uses the global WebSocket built into Node 22+ (every ABI the release tarball
- * ships for), so it needs nothing on disk but node itself. Always exits 0:
+ * ships for), so it needs nothing on disk but node itself. Idempotent — it
+ * skips when an extension is already loaded, so running it again (boot-time
+ * repair, a second ExecStartPost) cannot register a duplicate. Always exits 0:
  * ExecStartPost failure would mark the browser unit failed, and a browser that
  * started correctly must not be reported as broken because an extension did
  * not load. */
@@ -50,6 +52,15 @@ async function version() {
   } catch { return null }
 }
 
+async function alreadyLoaded() {
+  try {
+    const r = await fetch(CDP + '/json/list', { signal: AbortSignal.timeout(2000) })
+    if (!r.ok) return false
+    const targets = await r.json()
+    return targets.some((t) => String((t && t.url) || '').startsWith('chrome-extension://'))
+  } catch { return false }
+}
+
 async function main() {
   // Chrome's CDP endpoint is not up the moment ExecStart returns.
   let v = null
@@ -59,6 +70,10 @@ async function main() {
     await new Promise((r) => setTimeout(r, 1000))
   }
   if (!v || !v.webSocketDebuggerUrl) return log('CDP never became ready — skipped')
+
+  // Loading twice registers a second copy, and this runs both from the unit's
+  // ExecStartPost and from Mission Control's boot-time repair.
+  if (await alreadyLoaded()) return log('extension already loaded — skipped')
 
   const ws = new WebSocket(v.webSocketDebuggerUrl)
   await new Promise((res, rej) => {

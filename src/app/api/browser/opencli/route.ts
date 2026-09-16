@@ -8,6 +8,7 @@ import { getServerEnv } from '@/lib/server-env'
 import { getBrowserConfig, getChromeBinaryPath } from '@/lib/browser/config'
 import { getOpencliExtensionSymlink } from '@/lib/browser/installer'
 import { hasOpencliDaemonUnit } from '@/lib/browser/service-manager'
+import { isAutoloadConfigured } from '@/lib/browser/opencli-autoload-repair'
 import { startJob, type PhaseSpec } from '@/lib/jobs/runner'
 import type { TriggerSource } from '@/lib/jobs/types'
 
@@ -91,6 +92,9 @@ export async function GET() {
         ? getOpencliExtensionSymlink()
         : join(homedir(), '.opencli', 'extension'),
       needsManualInstall: needsManualInstall(),
+      // False on boxes whose browser unit predates the auto-load: the extension
+      // works until the next Chrome restart and then silently stops.
+      autoloadConfigured: isAutoloadConfigured(),
     })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

@@ -560,6 +560,16 @@ app.prepare().then(() => {
     console.error('[app-bus] failed to attach listener:', err)
   })
 
+  // Browser stacks installed before 0.3.82 have no ExecStartPost to re-load the
+  // OpenCLI extension, so every opencli browser command dies after the first
+  // Chrome restart — silently, taking morning-report sources with it. Repair on
+  // boot so an upgrade is enough to fix an old install.
+  import('./src/lib/browser/opencli-autoload-repair').then(({ ensureOpencliAutoload }) => {
+    ensureOpencliAutoload()
+  }).catch(err => {
+    console.error('[opencli-autoload] init failed:', err)
+  })
+
   // Daily customer-service storage retention + threshold check. First tick
   // ~60s after boot so we don't fight DB init; subsequent ticks every 24h.
   import('./src/lib/customer-service/cs-storage-scheduler').then(({ startCsStorageScheduler }) => {
