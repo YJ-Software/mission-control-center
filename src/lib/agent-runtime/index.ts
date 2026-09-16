@@ -1,0 +1,57 @@
+/**
+ * Which agent backend this install talks to.
+ *
+ * Defaults to OpenClaw, which is what every existing deployment runs — the
+ * second backend is opt-in and must never change behaviour for someone who has
+ * not configured it. Selection is by environment so a single build serves both.
+ *
+ *   MCC_AGENT_RUNTIME=hermes
+ *   HERMES_API_URL=http://127.0.0.1:8642
+ *   HERMES_API_KEY=<bearer token>
+ *
+ * A half-configured Hermes selection throws with the missing variable named,
+ * rather than silently falling back to OpenClaw and reporting another agent's
+ * sessions as if they were this one's.
+ */
+
+import { HermesRuntime } from './hermes'
+import { OpenClawRuntime } from './openclaw'
+import type { AgentRuntime } from './types'
+
+export * from './types'
+export { HermesRuntime } from './hermes'
+export { OpenClawRuntime } from './openclaw'
+
+let cached: AgentRuntime | null = null
+let cachedFor: string | null = null
+
+function build(): AgentRuntime {
+  const kind = (process.env.MCC_AGENT_RUNTIME || 'openclaw').trim().toLowerCase()
+  if (kind === 'openclaw') return new OpenClawRuntime()
+  if (kind === 'hermes') {
+    const baseUrl = (process.env.HERMES_API_URL || '').trim().replace(/\/+$/, '')
+    const apiKey = (process.env.HERMES_API_KEY || '').trim()
+    const missing = [!baseUrl && 'HERMES_API_URL', !apiKey && 'HERMES_API_KEY'].filter(Boolean)
+    if (missing.length) {
+      throw new Error(`MCC_AGENT_RUNTIME=hermes requires ${missing.join(' and ')}`)
+    }
+    return new HermesRuntime({ baseUrl, apiKey })
+  }
+  throw new Error(`Unknown MCC_AGENT_RUNTIME "${kind}" (expected "openclaw" or "hermes")`)
+}
+
+/** The configured runtime. Cached per configuration so tests can re-select. */
+export function getAgentRuntime(): AgentRuntime {
+  const key = `${process.env.MCC_AGENT_RUNTIME || 'openclaw'}|${process.env.HERMES_API_URL || ''}`
+  if (!cached || cachedFor !== key) {
+    cached = build()
+    cachedFor = key
+  }
+  return cached
+}
+
+/** Drop the memoized runtime (tests, and after a config change). */
+export function resetAgentRuntime(): void {
+  cached = null
+  cachedFor = null
+}

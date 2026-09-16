@@ -1,4 +1,4 @@
-import { gatewayRequest } from '@/lib/gateway-rpc'
+import { getAgentRuntime } from '@/lib/agent-runtime'
 import {
   priceDaily,
   priceModelUsage,
@@ -77,18 +77,16 @@ export function dateKey(ts: number, timeZone: string): string {
 async function fetchUsage(days: number): Promise<GatewayUsagePayload> {
   const timeZone = serverTimeZone()
   const now = Date.now()
-  const range = {
+  // Only the window is decided here. Each backend owns its own quirks behind
+  // the runtime: OpenClaw retries without the calendar-mode params on older
+  // Gateways, Hermes has no aggregate endpoint and buckets the rows itself.
+  return getAgentRuntime().getUsage({
     startDate: dateKey(now - (days - 1) * DAY_MS, timeZone),
     endDate: dateKey(now, timeZone),
+    timeZone,
     agentScope: 'all',
-    limit: USAGE_SESSION_LIMIT,
-  }
-  try {
-    return (await gatewayRequest('sessions.usage', { ...range, mode: 'specific', timeZone })) as GatewayUsagePayload
-  } catch {
-    // Older Gateways reject the calendar-mode params; their buckets are UTC days.
-    return (await gatewayRequest('sessions.usage', range)) as GatewayUsagePayload
-  }
+    sessionLimit: USAGE_SESSION_LIMIT,
+  })
 }
 
 function resolveName(key: string): string {
@@ -187,11 +185,10 @@ export function toSessionInfo(row: GatewaySessionRow, usage?: GatewaySessionUsag
 }
 
 export async function getSessions(): Promise<SessionInfo[]> {
-  const [list, usage] = await Promise.all([
-    gatewayRequest('sessions.list', { limit: LIST_LIMIT, includeLastMessage: true, includeDerivedTitles: true }) as Promise<{ sessions?: GatewaySessionRow[] }>,
+  const [rows, usage] = await Promise.all([
+    getAgentRuntime().listSessions({ limit: LIST_LIMIT, includeLastMessage: true, includeDerivedTitles: true }),
     fetchUsage(USAGE_WINDOW_DAYS).catch(() => null),
   ])
-  const rows = list?.sessions ?? []
   const usageByKey = rollupUsageToRows(rows.map((r) => r.key), usage?.sessions ?? [])
   return rows.map((row) => toSessionInfo(row, usageByKey.get(row.key)))
 }
@@ -226,8 +223,8 @@ export function toSessionMessage(raw: unknown): SessionMessage | null {
 
 /** Last messages of a session, by session key. */
 export async function getSessionMessages(sessionKey: string): Promise<SessionMessage[]> {
-  const res = (await gatewayRequest('chat.history', { sessionKey, limit: 30 })) as { messages?: unknown[] } | null
-  return (res?.messages ?? []).map(toSessionMessage).filter((m): m is SessionMessage => m !== null)
+  const messages = await getAgentRuntime().getHistory(sessionKey, { limit: 30 })
+  return messages.map(toSessionMessage).filter((m): m is SessionMessage => m !== null)
 }
 
 /**
@@ -288,11 +285,12 @@ export function buildCostData(
 export async function getCostData(): Promise<CostData> {
   const timeZone = serverTimeZone()
   const now = Date.now()
-  const [usage, list] = await Promise.all([
+  const [usage, rows] = await Promise.all([
     fetchUsage(USAGE_WINDOW_DAYS),
-    (gatewayRequest('sessions.list', { limit: LIST_LIMIT, includeDerivedTitles: true }) as Promise<{ sessions?: GatewaySessionRow[] }>).catch(() => null),
+    // A failed list costs labels, not figures — the spend totals still render.
+    getAgentRuntime().listSessions({ limit: LIST_LIMIT, includeDerivedTitles: true }).catch(() => [] as GatewaySessionRow[]),
   ])
-  return buildCostData(usage, list?.sessions ?? [], {
+  return buildCostData(usage, rows, {
     todayKey: dateKey(now, timeZone),
     weekKeys: Array.from({ length: 7 }, (_, i) => dateKey(now - i * DAY_MS, timeZone)),
     windowDays: USAGE_WINDOW_DAYS,

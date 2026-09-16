@@ -531,13 +531,63 @@ app.prepare().then(() => {
 
   const terminalWss = new WebSocketServer({ noServer: true })
 
+  // Resolved ONCE at boot, not per frame: `MCC_AGENT_RUNTIME=hermes` with a
+  // missing URL or key should be one loud line here, not an exception on every
+  // message the browser sends.
+  type ChatBridgeModule = typeof import('./src/lib/agent-runtime/chat-bridge')
+  let hermesBridge: InstanceType<ChatBridgeModule['HermesChatBridge']> | null = null
+  let hermesRoute: ChatBridgeModule['routeBrowserFrame'] | null = null
+  let hermesRes: ChatBridgeModule['rpcResponseFrame'] | null = null
+  if ((process.env.MCC_AGENT_RUNTIME || '').trim().toLowerCase() === 'hermes') {
+    Promise.all([
+      import('./src/lib/agent-runtime/chat-bridge'),
+      import('./src/lib/agent-runtime/hermes'),
+    ]).then(([{ HermesChatBridge, routeBrowserFrame, rpcResponseFrame }, { HermesRuntime }]) => {
+      const baseUrl = (process.env.HERMES_API_URL || '').trim().replace(/\/+$/, '')
+      const apiKey = (process.env.HERMES_API_KEY || '').trim()
+      if (!baseUrl || !apiKey) {
+        console.error('[hermes] MCC_AGENT_RUNTIME=hermes but HERMES_API_URL/HERMES_API_KEY is missing — chat stays unavailable')
+        return
+      }
+      hermesRoute = routeBrowserFrame
+      hermesRes = rpcResponseFrame
+      hermesBridge = new HermesChatBridge({
+        baseUrl,
+        apiKey,
+        runtime: new HermesRuntime({ baseUrl, apiKey }),
+        // Same delivery path the Gateway's own frames take: every open tab.
+        emit: (frame) => broadcast(wss, JSON.stringify(frame)),
+      })
+      console.log('[hermes] chat bridge active →', baseUrl)
+    }).catch((err) => {
+      console.error('[hermes] chat bridge init failed:', err)
+    })
+  }
+
   wss.on('connection', (ws, req) => {
     console.log('[WS] Client connected from', req.socket.remoteAddress)
 
     ws.on('message', (data) => {
+      const raw = data.toString()
+
+      // Hermes mode: this process answers the chat RPCs itself and pushes back
+      // Gateway-shaped `chat` event frames, so no browser code changes. In
+      // OpenClaw mode `bridge` is null and the frame is forwarded byte-for-byte
+      // exactly as it always was.
+      const bridge = hermesBridge
+      const call = hermesRoute?.(raw, bridge)
+      if (bridge && call && hermesRes) {
+        // Always answer — the browser's sendRpc waits 30s before giving up, so
+        // dropping an unsupported method would stall the UI instead of failing it.
+        void bridge.call(call.method, call.params)
+          .then((payload) => ws.send(JSON.stringify(hermesRes!(call.id, { ok: true, payload }))))
+          .catch((error: unknown) => ws.send(JSON.stringify(hermesRes!(call.id, { ok: false, error }))))
+        return
+      }
+
       // Forward client messages to gateway
       if (gatewayWs?.readyState === WebSocket.OPEN) {
-        gatewayWs.send(data.toString())
+        gatewayWs.send(raw)
       }
     })
 
