@@ -26,12 +26,13 @@ export type ProgressCallback = (step: string, detail: string) => void
  * A topic whose agent never ran leaves a "⚠️ 此段落尚未生成" placeholder and no
  * other trace — the report still publishes and the podcast still records, so
  * the only signal is a human reading the page. Both channels here are
- * best-effort and deliberately independent of the finalize cron job's announce
+ * best-effort and deliberately independent of the finalize cron job's delivery
  * template, which installs are free to customise (and have).
  */
 export function alertMissingTopics(
   missing: { id: string; name: string }[],
   dateHyphen: string,
+  delivery?: { channel?: string; target?: string },
 ): void {
   if (missing.length === 0) return
 
@@ -51,14 +52,50 @@ export function alertMissingTopics(
     console.warn('[morning-report] missing-topic notification failed:', (err as Error).message)
   }
 
+  // `openclaw announce` does not exist — the CLI answers "OpenClaw does not know
+  // the command", so every one of these alerts failed silently for months while
+  // the bell entry above kept recording them. Deliver the same way the report
+  // itself does: the configured channel and chat id.
+  const { channel, target } = delivery ?? readDeliveryConfig()
+  const args = buildMissingTopicMessageArgs(channel, target, `⚠️ ${title}\n\n${body}`)
+  if (!args) {
+    console.warn('[morning-report] missing-topic alert not delivered: no deliveryChannel/tgChatId configured')
+    return
+  }
   try {
-    execFileSync(findOpenclawBin(), ['announce', '--message', `⚠️ ${title}\n\n${body}`], {
+    execFileSync(findOpenclawBin(), args, {
       timeout: 30_000,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
   } catch (err) {
-    console.warn('[morning-report] missing-topic announce failed:', (err as Error).message)
+    console.warn('[morning-report] missing-topic delivery failed:', (err as Error).message)
   }
+}
+
+/** Delivery target from the report config. Never throws: this alert exists to
+ * report a failure, so a config read that fails must not take the bell entry —
+ * or the finalize run calling it — down with it. */
+function readDeliveryConfig(): { channel?: string; target?: string } {
+  try {
+    const config = getConfigMap()
+    return { channel: config.deliveryChannel, target: config.tgChatId }
+  } catch (err) {
+    console.warn('[morning-report] missing-topic config read failed:', (err as Error).message)
+    return {}
+  }
+}
+
+/** The `openclaw message send` invocation for one alert; null when the report
+ * has no delivery target configured, in which case the bell entry is all there is. */
+export function buildMissingTopicMessageArgs(
+  channel: string | undefined,
+  target: string | undefined,
+  text: string,
+): string[] | null {
+  const ch = channel?.trim()
+  const to = target?.trim()
+  if (!ch || !to) return null
+  return ['message', 'send', '--channel', ch, '--target', to, '--message', text]
 }
 
 function getConfigMap(): Record<string, string> {
@@ -143,7 +180,10 @@ export async function finalize(date?: Date, onProgress?: ProgressCallback) {
   if (mergeResult.missingTopics.length > 0) {
     const names = mergeResult.missingTopics.map((t) => t.name).join('、')
     onProgress?.('warning', `${mergeResult.missingTopics.length} 個主題未產出：${names}`)
-    alertMissingTopics(mergeResult.missingTopics, dateHyphen)
+    alertMissingTopics(mergeResult.missingTopics, dateHyphen, {
+      channel: config.deliveryChannel,
+      target: config.tgChatId,
+    })
   }
 
   // Step 6: Clean old files

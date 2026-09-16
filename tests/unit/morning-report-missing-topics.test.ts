@@ -9,7 +9,7 @@ import { execFileSync } from 'child_process'
  *
  * finalize now pushes the gap to the dashboard bell and the operator's
  * channel. Both are deliberately independent of the finalize cron job's
- * announce template, which installs can (and do) override.
+ * delivery template, which installs can (and do) override.
  */
 
 vi.mock('child_process', () => ({ execFileSync: vi.fn(), execSync: vi.fn(), execFile: vi.fn() }))
@@ -24,20 +24,24 @@ vi.mock('@/lib/notifications', () => ({ createNotification: (...a: unknown[]) =>
 
 import { alertMissingTopics } from '@/lib/morning-report/finalize'
 
+// finalize passes the report's configured channel and chat id in; `announce`,
+// the command this used to call, does not exist in OpenClaw at all.
+const DELIVERY = { channel: 'telegram', target: '1005601933' }
+
 const mockExec = vi.mocked(execFileSync)
 
 beforeEach(() => vi.clearAllMocks())
 
 describe('alertMissingTopics', () => {
   it('stays silent when every topic produced output', () => {
-    alertMissingTopics([], '2026-07-26')
+    alertMissingTopics([], '2026-07-26', DELIVERY)
 
     expect(createNotification).not.toHaveBeenCalled()
     expect(mockExec).not.toHaveBeenCalled()
   })
 
   it('names the missing topics on both channels', () => {
-    alertMissingTopics([{ id: 'stocks', name: '科技股/產業脈動' }], '2026-07-26')
+    alertMissingTopics([{ id: 'stocks', name: '科技股/產業脈動' }], '2026-07-26', DELIVERY)
 
     const note = createNotification.mock.calls[0][0]
     expect(note.severity).toBe('warning')
@@ -46,7 +50,8 @@ describe('alertMissingTopics', () => {
     expect(note.body).toContain('2026-07-26')
 
     const [, args] = mockExec.mock.calls[0]
-    expect(args).toContain('announce')
+    expect(args?.slice(0, 6)).toEqual(['message', 'send', '--channel', 'telegram', '--target', '1005601933'])
+    expect(args).not.toContain('announce')
     expect(String(args)).toContain('科技股/產業脈動')
   })
 
@@ -63,24 +68,39 @@ describe('alertMissingTopics', () => {
   })
 
   it('dedups per day so re-running finalize does not stack bell entries', () => {
-    alertMissingTopics([{ id: 'stocks', name: '科技股' }], '2026-07-26')
+    alertMissingTopics([{ id: 'stocks', name: '科技股' }], '2026-07-26', DELIVERY)
 
     expect(createNotification.mock.calls[0][0].dedupKey).toBe('morning-report-missing-2026-07-26')
   })
 
-  it('still rings the bell when the channel announce fails', () => {
+  it('still rings the bell when delivery fails', () => {
     // openclaw may be missing from PATH under systemd; that must not swallow
     // the alert entirely.
     mockExec.mockImplementation(() => { throw new Error('ENOENT') })
 
-    expect(() => alertMissingTopics([{ id: 'stocks', name: '科技股' }], '2026-07-26')).not.toThrow()
+    expect(() => alertMissingTopics([{ id: 'stocks', name: '科技股' }], '2026-07-26', DELIVERY)).not.toThrow()
     expect(createNotification).toHaveBeenCalled()
   })
 
-  it('still announces when the bell write fails', () => {
+  it('still delivers when the bell write fails', () => {
     createNotification.mockImplementation(() => { throw new Error('db locked') })
 
-    expect(() => alertMissingTopics([{ id: 'stocks', name: '科技股' }], '2026-07-26')).not.toThrow()
+    expect(() => alertMissingTopics([{ id: 'stocks', name: '科技股' }], '2026-07-26', DELIVERY)).not.toThrow()
     expect(mockExec).toHaveBeenCalled()
+  })
+})
+
+describe('alertMissingTopics without a delivery target', () => {
+  it('still rings the bell and runs no command', () => {
+    alertMissingTopics([{ id: 'stocks', name: '科技股' }], '2026-07-26', {})
+
+    expect(createNotification).toHaveBeenCalled()
+    expect(mockExec).not.toHaveBeenCalled()
+  })
+
+  it('does not throw when the config read itself fails', () => {
+    // db is mocked as {} here, so the fallback config read throws inside.
+    expect(() => alertMissingTopics([{ id: 'stocks', name: '科技股' }], '2026-07-26')).not.toThrow()
+    expect(createNotification).toHaveBeenCalled()
   })
 })
