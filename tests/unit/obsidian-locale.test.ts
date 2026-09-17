@@ -13,21 +13,38 @@ function unitPath() {
   return path.join(os.homedir(), '.config/systemd/user/obsidian-headless.service')
 }
 
-describe('setObsidianLocale', () => {
-  let originalUnit: string | null = null
+/**
+ * This suite used to operate on the developer's REAL
+ * `~/.config/systemd/user/obsidian-headless.service`: it wrote to it, deleted
+ * it, and relied on `afterEach` to put it back — so a crash or a Ctrl-C
+ * mid-run left the machine's unit file modified or gone. That also made
+ * CLAUDE.md's "npm test is safe in any environment" untrue.
+ *
+ * `setObsidianLocale` resolves `os.homedir()` on every call (installer.ts:374),
+ * not once at import, so pointing HOME at a throwaway directory redirects both
+ * the test and the code under test. No production code needs to change.
+ */
+let home: string
+const realHome = process.env.HOME
 
+describe('setObsidianLocale', () => {
   beforeEach(() => {
-    const p = unitPath()
-    originalUnit = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null
+    // A fresh HOME per test: no backup/restore needed, because nothing outside
+    // this directory is ever read or written.
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'mcc-obsidian-'))
+    process.env.HOME = home
   })
 
   afterEach(() => {
-    const p = unitPath()
-    if (originalUnit !== null) {
-      fs.writeFileSync(p, originalUnit, 'utf8')
-    } else if (fs.existsSync(p)) {
-      fs.unlinkSync(p)
-    }
+    process.env.HOME = realHome
+    fs.rmSync(home, { recursive: true, force: true })
+  })
+
+  it('never touches the real home directory', () => {
+    // The guard for the bug above: if HOME is not redirected, this path is the
+    // developer's own unit file and the rest of this suite would rewrite it.
+    expect(unitPath().startsWith(home)).toBe(true)
+    expect(unitPath().startsWith(realHome!)).toBe(false)
   })
 
   it('returns { updated: false } when no unit file exists', () => {
