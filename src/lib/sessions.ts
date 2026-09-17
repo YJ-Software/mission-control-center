@@ -54,6 +54,8 @@ interface GatewaySessionUsage extends GatewayUsageTotals {
 
 interface GatewayUsagePayload {
   sessions?: Array<{ key: string; usage: GatewaySessionUsage | null }>
+  /** Set by backends whose per-day split is attributed, not measured (see RuntimeUsageReport). */
+  approximateDaily?: boolean
   aggregates?: {
     byModel?: ModelTotalsEntry[]
     modelDaily?: ModelDailyEntry[]
@@ -239,6 +241,12 @@ export interface CostData {
   perSession: Record<string, { cost: number; label: string }>
   /** True when any figure came from list prices rather than OpenClaw's own pricing. */
   estimated: boolean
+  /**
+   * True when the per-day split is attributed rather than measured: the backend
+   * reports only per-session lifetime totals, so a long-lived session's whole
+   * spend lands on one day. The daily chart is then a shape, not a history.
+   */
+  approximateDaily: boolean
   windowDays: number
 }
 
@@ -278,6 +286,7 @@ export function buildCostData(
     perDay,
     perSession,
     estimated,
+    approximateDaily: usage.approximateDaily === true,
     windowDays: opts.windowDays,
   }
 }

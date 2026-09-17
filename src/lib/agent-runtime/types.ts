@@ -75,6 +75,13 @@ export interface RuntimeSessionUsage extends GatewayUsageTotals {
  */
 export interface RuntimeUsageReport {
   sessions?: Array<{ key: string; usage: RuntimeSessionUsage | null }>
+  /**
+   * True when the per-day figures are attributed rather than measured — the
+   * backend reports only per-session totals, so a long-lived session's spend
+   * lands entirely on one day. The cost UI should mark such figures as
+   * estimates instead of showing them as exact history.
+   */
+  approximateDaily?: boolean
   aggregates?: {
     byModel?: ModelTotalsEntry[]
     modelDaily?: ModelDailyEntry[]
@@ -86,6 +93,8 @@ export interface RuntimeMessage {
   role?: string
   content?: unknown
   timestamp?: number | string
+  /** Set on a tool-result row so the reader can pair it with its call. */
+  toolCallId?: string
 }
 
 /**

@@ -36,7 +36,10 @@ function makeBridge(routes: Record<string, () => Response>) {
   const bridge = new HermesChatBridge({
     baseUrl: BASE,
     apiKey: 'k',
-    runtime: new HermesRuntime({ baseUrl: BASE, apiKey: 'k' }),
+    // The runtime MUST get the same stub. It used to keep the global fetch, so
+    // anything delegated to it (chat.history, sessions.list, agents.list) quietly
+    // hit the network and the test asserted on a DNS failure instead of on Hermes.
+    runtime: new HermesRuntime({ baseUrl: BASE, apiKey: 'k', fetchImpl }),
     emit: (f) => frames.push(f),
     fetchImpl,
   })
@@ -137,6 +140,48 @@ describe('HermesChatBridge streaming', () => {
 
     expect(chatPayloads(frames)[0]).toMatchObject({ state: 'error' })
   })
+
+  /**
+   * The spinner bug: the browser sets isStreaming on send and clears it only on
+   * a terminal frame. A stream that just ends — no run.completed, no error —
+   * used to emit nothing at all, leaving the chat window turning forever.
+   */
+  it('closes the turn when the stream ends with no terminal event', async () => {
+    const { bridge, frames } = makeBridge({
+      '/v1/runs/r1/events': () => sseResponse([{ event: 'message.delta', delta: 'partial' }]),
+      '/v1/runs/r1': () => json({ status: 'completed', output: 'partial' }),
+    })
+
+    await bridge.pump('r1', 'sess-1')
+
+    const last = chatPayloads(frames).at(-1)!
+    expect(last.state).toBe('final')
+    expect((last.message as any).content[0].text).toBe('partial')
+  })
+
+  it('reports the run as failed when reconciling finds a failure', async () => {
+    const { bridge, frames } = makeBridge({
+      '/v1/runs/r1/events': () => sseResponse([]),
+      '/v1/runs/r1': () => json({ status: 'failed', error: 'provider down' }),
+    })
+
+    await bridge.pump('r1', 'sess-1')
+
+    expect(chatPayloads(frames).at(-1)).toMatchObject({ state: 'error', errorMessage: 'provider down' })
+  })
+
+  it('still closes the turn when even the reconcile call fails', async () => {
+    const { bridge, frames } = makeBridge({
+      '/v1/runs/r1/events': () => sseResponse([{ event: 'message.delta', delta: 'half' }]),
+      // no route for GET /v1/runs/r1 -> 404
+    })
+
+    await bridge.pump('r1', 'sess-1')
+
+    const last = chatPayloads(frames).at(-1)!
+    expect(last.state).toBe('error')
+    expect(String(last.errorMessage)).toMatch(/stream ended without a result/)
+  })
 })
 
 describe('HermesChatBridge RPC surface', () => {
@@ -166,9 +211,41 @@ describe('HermesChatBridge RPC surface', () => {
     await expect(bridge.call('sessions.patch', { key: 's1', model: 'glm-5' })).rejects.toThrow(UnsupportedOnHermes)
   })
 
-  it('treats an unknown session as an empty transcript, not an error', async () => {
+  it('treats an unknown session (404) as an empty transcript', async () => {
+    // The stub answers 404 for unrouted paths — the real "no such session" case.
     const { bridge } = makeBridge({})
     await expect(bridge.call('chat.history', { sessionKey: 'nope' })).resolves.toEqual({ messages: [] })
+  })
+
+  it('does NOT report a dead backend as an empty transcript', async () => {
+    // The bug this replaces: every error became `{messages: []}`, so an outage
+    // looked exactly like a fresh chat.
+    const { bridge } = makeBridge({
+      '/api/sessions': () => new Response('boom', { status: 500 }),
+    })
+    await expect(bridge.call('chat.history', { sessionKey: 's1' })).rejects.toThrow(/500/)
+  })
+
+  it('refuses attachments instead of dropping them silently', async () => {
+    const { bridge } = makeBridge({ '/v1/runs': () => json({ run_id: 'r1' }) })
+    await expect(
+      bridge.call('chat.send', { sessionKey: 's1', message: 'look', attachments: [{ dataUrl: 'data:image/png;base64,AA' }] }),
+    ).rejects.toThrow(UnsupportedOnHermes)
+  })
+
+  it('stops a run the browser has no runId for yet', async () => {
+    const stopped: string[] = []
+    const { bridge } = makeBridge({
+      '/v1/runs/r7/stop': () => { stopped.push('r7'); return json({ ok: true }) },
+      '/v1/runs/r7/events': () => sseResponse([]),
+      '/v1/runs/r7': () => json({ status: 'completed', output: '' }),
+      '/v1/runs': () => json({ run_id: 'r7' }),
+    })
+
+    await bridge.call('chat.send', { sessionKey: 's1', message: 'long one' })
+    // Stop pressed before the first delta: no runId, only the session.
+    await expect(bridge.call('chat.abort', { sessionKey: 's1' })).resolves.toEqual({ ok: true })
+    expect(stopped).toEqual(['r7'])
   })
 
   it('starts a run and returns immediately with its id', async () => {

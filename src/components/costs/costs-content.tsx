@@ -12,6 +12,8 @@ interface CostData {
   perDay: Record<string, number>
   perSession: Record<string, { cost: number; label: string }>
   estimated?: boolean
+  /** Per-day split is attributed, not measured — see CostData in sessions.ts. */
+  approximateDaily?: boolean
 }
 
 function MetricCard({ value, label, accent }: { value: string; label: string; accent?: boolean }) {
@@ -122,6 +124,7 @@ export function CostsContent() {
           <span className="text-sm font-semibold text-white/80">{t('spendTrend')}</span>
           <CostInfoHint />
           {data?.estimated && <span className="font-mono text-[9px] text-white/30 tracking-wider">{t('costEstimated')}</span>}
+          {data?.approximateDaily && <span className="font-mono text-[9px] text-amber-400/50 tracking-wider">{t('costApproximateDaily')}</span>}
         </div>
         <div className="p-4" style={{ minHeight: 240 }}>
           <SpendTrendChart perDay={perDay} />

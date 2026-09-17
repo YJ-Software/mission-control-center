@@ -100,6 +100,7 @@
   },
   "dashboard": {
     "costEstimated": "依公開 API 牌價估算",
+    "costApproximateDaily": "每日分布為近似值（後端僅提供整段工作階段總量）",
     "title": "任務管制中心",
     "subtitle": "OpenClaw Mission Control",
     "activeTasks": "進行中任務",
@@ -238,6 +239,7 @@
       "disclaimer": "僅供參考，實際金額以供應商帳單為準；訂閱方案、折扣與離峰價未納入。"
     },
     "costEstimated": "依公開 API 牌價估算",
+    "costApproximateDaily": "每日分布為近似值（後端僅提供整段工作階段總量）",
     "title": "花費分析",
     "subtitle": "支出明細與趨勢",
     "today": "今日",

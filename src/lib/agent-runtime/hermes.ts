@@ -64,6 +64,13 @@ export interface HermesRuntimeOptions {
   apiKey: string
   /** Bounds a hung backend; the dashboard would otherwise wait on it. */
   timeoutMs?: number
+  /**
+   * Injectable for tests. Without it a test that stubs the bridge's fetch still
+   * let this half reach the real network — which is how a test asserting
+   * "unknown session yields an empty transcript" passed for the wrong reason:
+   * the old code swallowed the resulting DNS failure as "no messages".
+   */
+  fetchImpl?: typeof fetch
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000
@@ -92,6 +99,52 @@ function emptyTotals(): ModelTotalsEntry['totals'] {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, totalCost: 0, missingCostEntries: 0 }
 }
 
+/** One row of `/api/sessions/{id}/messages`. */
+interface HermesMessage {
+  role?: string
+  content?: unknown
+  timestamp?: number | string
+  tool_call_id?: string | null
+  tool_name?: string | null
+  tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> | null
+}
+
+/**
+ * Reshape one transcript row into what MCC's readers expect.
+ *
+ * Measured against the real container: Hermes keeps `content` as a STRING and
+ * puts tool calls in a separate `tool_calls` array, while a tool result is its
+ * own `role: "tool"` row carrying `tool_call_id`. MCC's readers
+ * (`use-chat-session.ts`, `toSessionMessage`) only look for tool calls INSIDE a
+ * content array and pair results by `toolCallId` — so passing Hermes' shape
+ * through renders every tool call invisible and drops every tool result.
+ * Timestamps are epoch seconds here and milliseconds everywhere downstream.
+ */
+function normalizeMessage(m: HermesMessage): RuntimeMessage {
+  const timestamp = typeof m.timestamp === 'number' ? toMs(m.timestamp) : m.timestamp
+  const text = typeof m.content === 'string' ? m.content : ''
+
+  if (m.tool_call_id) {
+    return { role: 'tool', content: text, timestamp, toolCallId: m.tool_call_id }
+  }
+
+  const calls = m.tool_calls ?? []
+  if (calls.length > 0) {
+    const blocks: Array<Record<string, unknown>> = text ? [{ type: 'text', text }] : []
+    for (const c of calls) {
+      blocks.push({
+        type: 'tool_use',
+        id: c.id,
+        name: c.function?.name || 'tool',
+        input: c.function?.arguments,
+      })
+    }
+    return { role: m.role, content: blocks, timestamp }
+  }
+
+  return { role: m.role, content: m.content, timestamp }
+}
+
 /** Fold one session's counters into an accumulator. */
 function addSession(acc: ModelTotalsEntry['totals'], s: HermesSession): void {
   const input = s.input_tokens ?? 0
@@ -113,11 +166,17 @@ export class HermesRuntime implements AgentRuntime {
   constructor(private readonly opts: HermesRuntimeOptions) {}
 
   private async get<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.opts.baseUrl}${path}`, {
+    const res = await (this.opts.fetchImpl ?? fetch)(`${this.opts.baseUrl}${path}`, {
       headers: { Authorization: `Bearer ${this.opts.apiKey}` },
       signal: AbortSignal.timeout(this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
     })
-    if (!res.ok) throw new Error(`Hermes ${path} failed: HTTP ${res.status}`)
+    if (!res.ok) {
+      // Carry the status so callers can tell "no such session" (404) from a
+      // backend that is down — swallowing both alike hides real outages.
+      const err = new Error(`Hermes ${path} failed: HTTP ${res.status}`) as Error & { status?: number }
+      err.status = res.status
+      throw err
+    }
     return (await res.json()) as T
   }
 
@@ -158,14 +217,10 @@ export class HermesRuntime implements AgentRuntime {
   }
 
   async getHistory(sessionKey: string, opts?: { limit?: number }): Promise<RuntimeMessage[]> {
-    const res = await this.get<{ data?: RuntimeMessage[] }>(
+    const res = await this.get<{ data?: HermesMessage[] }>(
       `/api/sessions/${encodeURIComponent(sessionKey)}/messages`,
     )
-    // Same seconds->milliseconds normalization as the session rows: callers feed
-    // `timestamp` straight into `new Date(...)`.
-    const msgs = (res.data ?? []).map((m) =>
-      typeof m.timestamp === 'number' ? { ...m, timestamp: toMs(m.timestamp) } : m,
-    )
+    const msgs = (res.data ?? []).map((m) => normalizeMessage(m))
     const limit = opts?.limit
     return limit && msgs.length > limit ? msgs.slice(-limit) : msgs
   }
@@ -211,6 +266,12 @@ export class HermesRuntime implements AgentRuntime {
 
     return {
       sessions,
+      // APPROXIMATE by construction: Hermes reports only per-session lifetime
+      // totals, with no per-day breakdown. A session that ran for a week has
+      // all of its spend attributed to its last-active day. Nothing downstream
+      // can recover the true distribution, so say so rather than present it as
+      // exact — see `approximateDaily` on RuntimeUsageReport.
+      approximateDaily: true,
       aggregates: {
         byModel: [...byModel].map(([model, totals]) => ({ model, totals })),
         modelDaily: [...modelDaily.values()],

@@ -28,8 +28,12 @@ export interface ChatBridgeOptions {
   apiKey: string
   runtime: HermesRuntime
   emit: EmitFrame
+  /** Bounds every non-streaming request; the SSE body is exempt. */
+  timeoutMs?: number
   fetchImpl?: typeof fetch
 }
+
+const DEFAULT_TIMEOUT_MS = 15_000
 
 /** Methods the browser sends that Hermes must answer instead of the Gateway. */
 const HANDLED = new Set([
@@ -98,16 +102,28 @@ export class HermesChatBridge {
     }
   }
 
-  private async http(path: string, init?: RequestInit): Promise<Response> {
+  /**
+   * `timeoutMs` bounds the request; pass `stream: true` for the SSE endpoint,
+   * whose body is meant to stay open for the length of a turn. Without the
+   * bound a hung Hermes left `chat.send` / `chat.abort` waiting forever, with
+   * nothing to cancel them.
+   */
+  private async http(path: string, init?: RequestInit & { stream?: boolean }): Promise<Response> {
+    const { stream, ...rest } = init ?? {}
     const res = await this.fetchImpl(`${this.opts.baseUrl}${path}`, {
-      ...init,
+      ...rest,
+      ...(stream ? {} : { signal: AbortSignal.timeout(this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS) }),
       headers: {
         Authorization: `Bearer ${this.opts.apiKey}`,
         'Content-Type': 'application/json',
-        ...(init?.headers as Record<string, string> | undefined),
+        ...(rest.headers as Record<string, string> | undefined),
       },
     })
-    if (!res.ok) throw new Error(`Hermes ${path}: HTTP ${res.status}`)
+    if (!res.ok) {
+      const err = new Error(`Hermes ${path}: HTTP ${res.status}`) as Error & { status?: number }
+      err.status = res.status
+      throw err
+    }
     return res
   }
 
@@ -140,21 +156,37 @@ export class HermesChatBridge {
     const key = String(params.sessionKey ?? '')
     if (!key) return { messages: [] }
     const limit = typeof params.limit === 'number' ? params.limit : 200
-    // A session that does not exist yet is an empty transcript, not an error:
-    // the chat panel opens on a key before the first turn creates it.
+    // A session that does not exist yet is an empty transcript (the chat panel
+    // opens on a key before the first turn creates it) — but ONLY a 404 means
+    // that. Swallowing every error would render a dead backend as "no messages",
+    // the same failure the cron contract exists to prevent.
     try {
       const messages = await this.opts.runtime.getHistory(key, { limit })
       return { messages }
-    } catch {
-      return { messages: [] }
+    } catch (err) {
+      if ((err as { status?: number }).status === 404) return { messages: [] }
+      throw err
     }
   }
 
   private async chatAbort(params: Record<string, unknown>): Promise<unknown> {
-    const runId = String(params.runId ?? '')
+    // The browser only learns the runId from the first delta, so Stop pressed
+    // during a long tool call arrives with none. Fall back to this session's
+    // active run — otherwise the button silently does nothing exactly when the
+    // user most wants it.
+    const sessionKey = String(params.sessionKey ?? '')
+    const runId = String(params.runId ?? '') || this.activeRunFor(sessionKey)
     if (!runId) return { ok: false }
     await this.http(`/v1/runs/${encodeURIComponent(runId)}/stop`, { method: 'POST', body: '{}' })
     return { ok: true }
+  }
+
+  /** Newest still-running run for a session, if any. */
+  private activeRunFor(sessionKey: string): string {
+    for (const [runId, key] of [...this.runSessions].reverse()) {
+      if (key === sessionKey) return runId
+    }
+    return ''
   }
 
   /**
@@ -164,6 +196,12 @@ export class HermesChatBridge {
   private async chatSend(params: Record<string, unknown>): Promise<unknown> {
     const sessionKey = String(params.sessionKey ?? '')
     const message = String(params.message ?? '')
+    // The composer can attach images. `/v1/runs` takes text only, so accepting
+    // them silently would drop the attachment with no error and leave the user
+    // wondering why the agent ignored their screenshot.
+    if (Array.isArray(params.attachments) && params.attachments.length > 0) {
+      throw new UnsupportedOnHermes('chat.send attachments')
+    }
     const res = await this.http('/v1/runs', {
       method: 'POST',
       body: JSON.stringify({ input: message, ...(sessionKey ? { session_id: sessionKey } : {}) }),
@@ -184,9 +222,10 @@ export class HermesChatBridge {
   /** Consume one run's SSE stream and translate it into chat frames. */
   async pump(runId: string, sessionKey: string): Promise<void> {
     let text = ''
+    let terminal = false
     const toolIds = new Map<string, string>()
     try {
-      const res = await this.http(`/v1/runs/${encodeURIComponent(runId)}/events`)
+      const res = await this.http(`/v1/runs/${encodeURIComponent(runId)}/events`, { stream: true })
       for await (const evt of readSse(res)) {
         const kind = String(evt.event ?? '')
         if (kind === 'message.delta') {
@@ -211,26 +250,59 @@ export class HermesChatBridge {
             },
           })
         } else if (kind === 'run.completed') {
+          terminal = true
           this.emitChat(this.chatPayload(runId, sessionKey, 'final', String(evt.output ?? text)))
           return
         } else if (kind === 'run.failed') {
+          terminal = true
           this.emitChat({
             ...this.chatPayload(runId, sessionKey, 'error', ''),
             errorMessage: String(evt.error ?? 'run failed'),
           })
           return
         } else if (kind === 'run.cancelled') {
+          terminal = true
           this.emitChat(this.chatPayload(runId, sessionKey, 'aborted', text))
           return
         }
       }
+      // The stream ended without saying how the run finished. The browser sets
+      // isStreaming on send and only clears it on a terminal frame, so emitting
+      // nothing here spins the chat window forever. Ask the run itself.
+      if (!terminal) await this.reconcile(runId, sessionKey, text)
     } catch (err) {
+      terminal = true
       this.emitChat({
         ...this.chatPayload(runId, sessionKey, 'error', ''),
         errorMessage: err instanceof Error ? err.message : String(err),
       })
     } finally {
       this.runSessions.delete(runId)
+    }
+  }
+
+  /** Close out a run whose stream ended without a terminal event. */
+  private async reconcile(runId: string, sessionKey: string, text: string): Promise<void> {
+    try {
+      const res = await this.http(`/v1/runs/${encodeURIComponent(runId)}`)
+      const run = (await res.json()) as { status?: string; output?: string; error?: string }
+      const status = String(run.status ?? '')
+      if (status === 'failed') {
+        this.emitChat({
+          ...this.chatPayload(runId, sessionKey, 'error', ''),
+          errorMessage: String(run.error ?? 'run failed'),
+        })
+      } else if (status === 'cancelled') {
+        this.emitChat(this.chatPayload(runId, sessionKey, 'aborted', text))
+      } else {
+        this.emitChat(this.chatPayload(runId, sessionKey, 'final', String(run.output ?? text)))
+      }
+    } catch (err) {
+      // Even the reconcile failed — still close the turn, or the UI hangs.
+      this.emitChat({
+        ...this.chatPayload(runId, sessionKey, 'error', text),
+        errorMessage: `stream ended without a result: ${err instanceof Error ? err.message : String(err)}`,
+      })
     }
   }
 

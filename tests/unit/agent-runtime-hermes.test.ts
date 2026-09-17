@@ -18,6 +18,11 @@ function mockFetch(routes: Record<string, unknown>) {
     if (key === undefined) return new Response('not found', { status: 404 })
     const body = routes[key]
     if (body instanceof Error) throw body
+    // A ready-made Response passes through, so a route can express a status
+    // (500, 404) rather than only a happy-path body. Without this, a test
+    // asserting on an error status silently got a 200 whose body was a
+    // stringified Response — it tested nothing.
+    if (body instanceof Response) return body
     return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -123,6 +128,64 @@ describe('HermesRuntime', () => {
   it('surfaces health and version', async () => {
     mockFetch({ '/health': { status: 'ok', version: '0.21.3' } })
     await expect(runtime().health()).resolves.toEqual({ ok: true, version: '0.21.3' })
+  })
+})
+
+/**
+ * Transcript reshaping. Measured against the real container: `content` is a
+ * STRING, tool calls ride in a separate `tool_calls` array, and a tool result
+ * is its own `role: "tool"` row keyed by `tool_call_id`. MCC's readers only
+ * find tool calls INSIDE a content array (`extractToolCalls` accepts
+ * `tool_use`) and pair results via `toolCallId` — so the raw shape renders
+ * every tool call invisible.
+ */
+describe('HermesRuntime transcript shape', () => {
+  const withTools = [
+    { role: 'user', content: 'run it', timestamp: 1_789_500_000 },
+    {
+      role: 'assistant',
+      content: '',
+      timestamp: 1_789_500_001,
+      tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'terminal', arguments: '{"command":"echo hi"}' } }],
+    },
+    { role: 'tool', content: '{"output":"hi","exit_code":0}', timestamp: 1_789_500_002, tool_call_id: 'call_1', tool_name: 'terminal' },
+    { role: 'assistant', content: 'done', timestamp: 1_789_500_003 },
+  ]
+
+  it('turns tool_calls into content blocks the reader recognises', async () => {
+    mockFetch({ '/api/sessions': { data: withTools } })
+    const msgs = await runtime().getHistory('s1')
+
+    const call = (msgs[1].content as any[])[0]
+    expect(call).toMatchObject({ type: 'tool_use', id: 'call_1', name: 'terminal' })
+    expect(call.input).toContain('echo hi')
+  })
+
+  it('keeps a tool result pairable via toolCallId', async () => {
+    mockFetch({ '/api/sessions': { data: withTools } })
+    const msgs = await runtime().getHistory('s1')
+
+    expect(msgs[2]).toMatchObject({ role: 'tool', toolCallId: 'call_1' })
+    expect(msgs[2].content).toContain('exit_code')
+  })
+
+  it('leaves a plain message untouched apart from the timestamp', async () => {
+    mockFetch({ '/api/sessions': { data: withTools } })
+    const msgs = await runtime().getHistory('s1')
+
+    expect(msgs[3]).toMatchObject({ role: 'assistant', content: 'done', timestamp: 1_789_500_003_000 })
+  })
+
+  it('marks daily usage as approximate — Hermes has no per-day breakdown', async () => {
+    mockFetch({ '/api/sessions': { data: [session()] } })
+    const report = await runtime().getUsage({ startDate: '2000-01-01', endDate: '2100-01-01', timeZone: 'UTC' })
+
+    expect(report.approximateDaily).toBe(true)
+  })
+
+  it('carries the HTTP status so 404 can be told from an outage', async () => {
+    mockFetch({ '/api/sessions': new Response('nope', { status: 500 }) })
+    await expect(runtime().getHistory('s1')).rejects.toMatchObject({ status: 500 })
   })
 })
 

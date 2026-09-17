@@ -100,6 +100,7 @@
   },
   "dashboard": {
     "costEstimated": "Estimated from public API list prices",
+    "costApproximateDaily": "Daily split is approximate (backend reports session totals only)",
     "title": "Mission Control",
     "subtitle": "OpenClaw Mission Control",
     "activeTasks": "Active Tasks",
@@ -238,6 +239,7 @@
       "disclaimer": "For reference only — your provider's bill is authoritative; subscriptions, discounts and off-peak rates are not reflected."
     },
     "costEstimated": "Estimated from public API list prices",
+    "costApproximateDaily": "Daily split is approximate (backend reports session totals only)",
     "title": "Costs",
     "subtitle": "Spending breakdown and trends",
     "today": "Today",

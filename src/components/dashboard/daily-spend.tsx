@@ -11,6 +11,8 @@ interface CostData {
   week: number
   perDay: Record<string, number>
   estimated?: boolean
+  /** Per-day split is attributed, not measured — see CostData in sessions.ts. */
+  approximateDaily?: boolean
 }
 
 export function DailySpend() {
@@ -36,6 +38,9 @@ export function DailySpend() {
           <CostInfoHint />
           {data?.estimated && (
             <span className="font-mono text-[9px] text-white/30 tracking-wider">{t('costEstimated')}</span>
+          )}
+          {data?.approximateDaily && (
+            <span className="font-mono text-[9px] text-amber-400/50 tracking-wider">{t('costApproximateDaily')}</span>
           )}
         </div>
         {data && (
