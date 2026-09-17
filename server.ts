@@ -482,7 +482,7 @@ function verifyWsSession(req: import('http').IncomingMessage): boolean {
   }
 }
 
-app.prepare().then(() => {
+app.prepare().then(async () => {
   // Initialize DB
   initDb()
   console.log('[DB] SQLite initialized')
@@ -534,34 +534,43 @@ app.prepare().then(() => {
   // Resolved ONCE at boot, not per frame: `MCC_AGENT_RUNTIME=hermes` with a
   // missing URL or key should be one loud line here, not an exception on every
   // message the browser sends.
+  // AWAITED before the server listens. Assigning these inside a floating
+  // promise left a window where a browser frame arrived with the bridge still
+  // null: it fell through to the Gateway branch, and in Hermes mode there is no
+  // Gateway, so the frame vanished and the browser's sendRpc sat for its full
+  // 30s timeout. Being ready before we accept connections removes the race
+  // outright, with no queue to size or drain.
   type ChatBridgeModule = typeof import('./src/lib/agent-runtime/chat-bridge')
   let hermesBridge: InstanceType<ChatBridgeModule['HermesChatBridge']> | null = null
   let hermesRoute: ChatBridgeModule['routeBrowserFrame'] | null = null
   let hermesRes: ChatBridgeModule['rpcResponseFrame'] | null = null
-  if ((process.env.MCC_AGENT_RUNTIME || '').trim().toLowerCase() === 'hermes') {
-    Promise.all([
-      import('./src/lib/agent-runtime/chat-bridge'),
-      import('./src/lib/agent-runtime/hermes'),
-    ]).then(([{ HermesChatBridge, routeBrowserFrame, rpcResponseFrame }, { HermesRuntime }]) => {
-      const baseUrl = (process.env.HERMES_API_URL || '').trim().replace(/\/+$/, '')
-      const apiKey = (process.env.HERMES_API_KEY || '').trim()
-      if (!baseUrl || !apiKey) {
-        console.error('[hermes] MCC_AGENT_RUNTIME=hermes but HERMES_API_URL/HERMES_API_KEY is missing — chat stays unavailable')
-        return
+  {
+    const { agentRuntimeKind, resolveHermesConfig } = await import('./src/lib/agent-runtime')
+    if (agentRuntimeKind() === 'hermes') {
+      try {
+        // resolveHermesConfig() is the single source of truth for these vars;
+        // duplicating the parsing here is what drifted last time.
+        const { baseUrl, apiKey } = resolveHermesConfig()
+        const [{ HermesChatBridge, routeBrowserFrame, rpcResponseFrame }, { HermesRuntime }] = await Promise.all([
+          import('./src/lib/agent-runtime/chat-bridge'),
+          import('./src/lib/agent-runtime/hermes'),
+        ])
+        hermesRoute = routeBrowserFrame
+        hermesRes = rpcResponseFrame
+        hermesBridge = new HermesChatBridge({
+          baseUrl,
+          apiKey,
+          runtime: new HermesRuntime({ baseUrl, apiKey }),
+          // Same delivery path the Gateway's own frames take: every open tab.
+          emit: (frame) => broadcast(wss, JSON.stringify(frame)),
+        })
+        console.log('[hermes] chat bridge active →', baseUrl)
+      } catch (err) {
+        // Loud, once, at boot — and chat stays unavailable rather than silently
+        // pretending a Gateway will answer.
+        console.error('[hermes] chat bridge unavailable:', err instanceof Error ? err.message : err)
       }
-      hermesRoute = routeBrowserFrame
-      hermesRes = rpcResponseFrame
-      hermesBridge = new HermesChatBridge({
-        baseUrl,
-        apiKey,
-        runtime: new HermesRuntime({ baseUrl, apiKey }),
-        // Same delivery path the Gateway's own frames take: every open tab.
-        emit: (frame) => broadcast(wss, JSON.stringify(frame)),
-      })
-      console.log('[hermes] chat bridge active →', baseUrl)
-    }).catch((err) => {
-      console.error('[hermes] chat bridge init failed:', err)
-    })
+    }
   }
 
   wss.on('connection', (ws, req) => {
