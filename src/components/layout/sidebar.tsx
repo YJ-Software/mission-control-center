@@ -26,17 +26,13 @@ export function Sidebar() {
   })
   const ocVersion = versionData?.openclawVersion?.installed
 
-  const { data: appVersion } = useQuery<{ version: string; commit: string | null; openclawVersion: string | null }>({
+  const { data: appVersion } = useQuery<{ mccVersion: string; commit: string | null }>({
     queryKey: ['app-version'],
     queryFn: () => fetch('/api/health').then(r => r.json()),
     staleTime: Infinity,
-    select: (data) => ({
-      version: data.version,
-      commit: data.commit,
-      openclawVersion: data.openclawVersion ?? null,
-    }),
+    select: (data) => ({ mccVersion: data.mccVersion, commit: data.commit ?? null }),
   })
-  const mccDisplay = appVersion?.version
+  const mccDisplay = appVersion?.mccVersion ? `v${appVersion.mccVersion}` : undefined
 
   return (
     <aside
@@ -134,10 +130,10 @@ export function Sidebar() {
               {connected ? 'Gateway Linked' : 'Gateway Offline'}
             </span>
           </div>
-          {appVersion?.version && (
+          {mccDisplay && (
             <div className="mt-1 font-mono text-[10px] tracking-wide text-white/25" suppressHydrationWarning>
-              {appVersion.version}
-              {appVersion.commit && <span className="text-white/20"> · {appVersion.commit}</span>}
+              {mccDisplay}
+              {appVersion?.commit && <span className="text-white/20"> · {appVersion.commit}</span>}
             </div>
           )}
         </div>

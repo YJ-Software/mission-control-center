@@ -24,6 +24,7 @@ import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 
 import { getVersionInfo } from '@/lib/version'
+import type { ValidatedBackends } from '@/lib/release-validation'
 
 const execFileP = promisify(execFile)
 
@@ -107,12 +108,14 @@ export interface ReleaseArtifact {
 
 export interface ReleaseManifest {
   latest: {
-    /** Display version: `<openclawVersion>-v<mccVersion>` when paired, else `<mccVersion>`. */
+    /** Bare MCC semver since P1; legacy entries carry `<openclaw>-v<mcc>`. */
     version: string
-    /** MCC semver (e.g. "0.3.52"). Compare on this — `version` contains the openclaw prefix. */
+    /** MCC semver. Compare on this. */
     mccVersion?: string
-    /** OpenClaw version this release was paired with (informational). */
+    /** Legacy pairing; still written for dashboards on pre-P1 code. */
     openclawVersion?: string | null
+    /** Backend versions this release was E2E-validated against. */
+    validated?: ValidatedBackends
     releaseDate?: string
     notes?: string
     artifacts: ReleaseArtifact[]
@@ -121,6 +124,7 @@ export interface ReleaseManifest {
     version: string
     mccVersion?: string
     openclawVersion?: string | null
+    validated?: ValidatedBackends
     releaseDate?: string | null
   }>
 }
@@ -308,7 +312,7 @@ async function sha256File(filePath: string): Promise<string> {
 }
 
 /** Returns { display, mcc } parsed from the tarball's version.json.
- *  - `display`: paired string (`2026.6.1-v0.3.52`) used in user-facing logs.
+ *  - `display`: display string (bare semver since P1) used in user-facing logs.
  *  - `mcc`: bare semver used for `versions/v<x.y.z>/` directory naming and
  *    cross-version comparisons. Falls back to `display` for older tarballs
  *    that didn't bake the `mccVersion` field. */

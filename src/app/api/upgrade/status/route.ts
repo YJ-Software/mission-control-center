@@ -13,7 +13,6 @@ export async function GET() {
     current: {
       version: v.version,
       mccVersion: v.mccVersion,
-      openclawVersion: v.openclawVersion,
       commit: v.commit,
       buildTime: v.buildTime,
     },

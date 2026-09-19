@@ -3,12 +3,10 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 interface VersionInfo {
-  /** Display version: `<openclawVersion>-v<mccVersion>` when paired, else `<mccVersion>`. */
+  /** Display version. Since P1 this is the bare MCC semver; older builds baked `<openclaw>-v<mcc>`. */
   version: string
   /** Raw MCC semver (e.g. "0.3.52"). Use this for ordering / upgrade comparisons. */
   mccVersion: string
-  /** OpenClaw version this build was paired with (e.g. "2026.6.1"). null if unknown. */
-  openclawVersion: string | null
   commit: string | null
   buildTime: string
 }
@@ -16,7 +14,6 @@ interface VersionInfo {
 interface BakedVersion {
   version?: string
   mccVersion?: string
-  openclawVersion?: string | null
   commit?: string
   buildTime?: string
 }
@@ -68,14 +65,8 @@ function loadBakedVersionJson(): BakedVersion | null {
   }
 }
 
-/** Combine semver + openclaw version into the display string we ship on
- *  release tags, manifest entries, and /api/health. */
-export function formatDisplayVersion(mccVersion: string, openclawVersion: string | null): string {
-  return openclawVersion ? `${openclawVersion}-v${mccVersion}` : mccVersion
-}
-
-/** Extract MCC semver from a display version like `2026.6.1-v0.3.52`.
- *  Tolerates the unpaired form `0.3.52`. */
+/** Extract MCC semver from a legacy display version like `2026.6.1-v0.3.52`.
+ *  Returns the input unchanged for the current bare form. */
 export function parseMccVersion(s: string): string {
   const m = s.match(/-v(\d+\.\d+\.\d+(?:[-+][\w.]+)?)$/)
   return m ? m[1] : s
@@ -83,11 +74,9 @@ export function parseMccVersion(s: string): string {
 
 const baked = loadBakedVersionJson()
 const mccVersion = baked?.mccVersion || readPackageVersion()
-const openclawVersion = baked?.openclawVersion ?? null
 const cached: VersionInfo = {
-  version: baked?.version || formatDisplayVersion(mccVersion, openclawVersion),
+  version: baked?.version || mccVersion,
   mccVersion,
-  openclawVersion,
   commit: baked?.commit ?? readGitCommit(),
   buildTime: baked?.buildTime || computeBuildTime(),
 }
