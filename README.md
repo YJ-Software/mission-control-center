@@ -441,7 +441,7 @@ v0.3.92（含）以前的 release 用的是 `<openclawVersion>-v<mccVersion>` �
 { "openclaw": ["2026.9.3"] }
 ```
 
-（也可能同時有 `hermes` list。）`history[]` 裡的每筆歷史紀錄一樣帶 `validated`；v0.3.93 之前的舊紀錄則以當時記錄的 `openclawVersion` 視為驗證結果讀取。
+（也可能同時有 `hermes` list。）`history[]` 裡的每筆紀錄只有在被輪替進去那筆 `latest` 當時就帶 `validated` 才會寫入；v0.3.93 之前的舊紀錄（或當時沒有 `validated` 的紀錄）則在讀取時，以當時記錄的 `openclawVersion` 視為驗證結果現算（`src/lib/release-validation.ts` 的 `validatedOf`）。
 
 驗證是在發版時透過環境變數 `MCC_VALIDATED_OPENCLAW` / `MCC_VALIDATED_HERMES`（逗號分隔，完整版本字串，含 build 後綴，例如 `2026.7.1-2`）寫入 manifest 的。沒設的話，每個 backend 各自沿用上一個 release 記錄的版本 —— 所以 MCC-only patch 不用重跑 E2E。**只有在 throwaway 全綠 E2E 之後才設這兩個環境變數，且要填實際跑過的版本。**
 
@@ -454,7 +454,7 @@ tarball 內烘進去的 `version.json`：
   "buildTime": "..."
 }
 ```
-`version` 必須等於 `manifest.latest.version`，`mccVersion` 要保留 —— 舊版 dashboard 升級時要靠這兩個欄位判斷（`tests/unit/release-meta.test.ts` 有保護）。
+`version` 必須等於 `manifest.latest.version`，`mccVersion` 要保留 —— 升級重啟後，job recovery（`src/lib/jobs/recovery.ts`）是拿 `job.expectedVersion` 跟重啟後烘進 tarball 的 `version.json.version` 比對來判斷升級是否成功；兩者不等，即使升級其實成功，該 job 仍會被判定為 stale 而標記 FAILED（`tests/unit/release-meta.test.ts` 有保護）。
 
 Dashboard 的升級卡片會分別標示這個機器上 MCC 與 openclaw 的升級組合是否驗證過。未驗證只是警告，升級按鈕不會被擋掉。
 

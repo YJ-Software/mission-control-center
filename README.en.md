@@ -435,7 +435,7 @@ Releases up to v0.3.92 used the paired `<openclawVersion>-v<mccVersion>` format 
 { "openclaw": ["2026.9.3"] }
 ```
 
-(a `hermes` list may also appear). Each `history[]` entry carries `validated` too; pre-v0.3.93 entries are read as validated against their old `openclawVersion`.
+(a `hermes` list may also appear). A `history[]` entry only carries `validated` if the `latest` entry rotated into it had one at the time; pre-v0.3.93 entries (or any entry that had none) are derived at read time from that entry's old `openclawVersion` instead (`validatedOf` in `src/lib/release-validation.ts`).
 
 Validation is recorded at publish time via the env vars `MCC_VALIDATED_OPENCLAW` / `MCC_VALIDATED_HERMES` (comma-separated, full version strings including any build suffix, e.g. `2026.7.1-2`). If unset, each backend's list is inherited from the previous release — so an MCC-only patch needs no E2E rerun. **Set those env vars only after a green throwaway E2E, with the versions the run actually used.**
 
@@ -448,7 +448,7 @@ The tarball bakes this `version.json`:
   "buildTime": "..."
 }
 ```
-`version` must equal `manifest.latest.version`, and `mccVersion` must stay — dashboards on older releases depend on both fields to upgrade (guarded by `tests/unit/release-meta.test.ts`).
+`version` must equal `manifest.latest.version`, and `mccVersion` must stay — after an upgrade restarts the process, job recovery (`src/lib/jobs/recovery.ts`) compares `job.expectedVersion` against the restarted `version.json.version` baked into the tarball to decide whether the upgrade succeeded; a mismatch gets a job that actually succeeded marked stale and FAILED (guarded by `tests/unit/release-meta.test.ts`).
 
 The dashboard's upgrade card marks the MCC and openclaw upgrade separately as validated / not validated for the local combination. Not validated is a warning only — the upgrade button is never disabled.
 
