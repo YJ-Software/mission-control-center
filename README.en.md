@@ -425,44 +425,36 @@ Production uses a **tarball + symlink swap** model. Tarballs live on GitHub Rele
 
 ### Version naming convention
 
-Starting with v0.3.52, every release is **paired with an openclaw version**:
+Starting with v0.3.93, the version is plain MCC semver again, e.g. `v0.3.93`. The GitHub release tag / title, `release-manifest.json`'s `latest.version`, `/api/health`'s `version` field, and the dashboard sidebar all show this plain semver; the tarball filename stays `mission-control-v<mccVersion>-linux-x64.tar.gz`.
 
+Releases up to v0.3.92 used the paired `<openclawVersion>-v<mccVersion>` format (e.g. `2026.9.3-v0.3.92`). Dropping the prefix is not a downgrade — it just moves validation tracking into dedicated fields instead of encoding it in the version string itself.
+
+**Where validation is recorded:** `release-manifest.json`'s `latest.validated` lists the backend versions this release's E2E actually ran against, e.g.:
+
+```json
+{ "openclaw": ["2026.9.3"] }
 ```
-<openclawVersion>-v<mccVersion>
-e.g. 2026.6.1-v0.3.53
-```
 
-This combined string appears in the GitHub release tag / title, `release-manifest.json` `latest.version`, `/api/health` `version`, and the dashboard sidebar.
+(a `hermes` list may also appear). Each `history[]` entry carries `validated` too; pre-v0.3.93 entries are read as validated against their old `openclawVersion`.
 
-**The pairing is a fact, not metadata: "this MCC tarball passed the full Playwright E2E on a throwaway box running that openclaw version."**
+Validation is recorded at publish time via the env vars `MCC_VALIDATED_OPENCLAW` / `MCC_VALIDATED_HERMES` (comma-separated, full version strings including any build suffix, e.g. `2026.7.1-2`). If unset, each backend's list is inherited from the previous release — so an MCC-only patch needs no E2E rerun. **Set those env vars only after a green throwaway E2E, with the versions the run actually used.**
 
-**Prefix is sticky, suffix is free:**
-
-| Case | Throwaway E2E required? | How to build |
-|------|-------------------------|--------------|
-| MCC-only change (bug fix / small feature) — prefix unchanged | ❌ No | `npm run build:release` (prefix sticks from manifest) |
-| Openclaw prefix bump — claiming a new pairing | ✅ Yes, must be green | `MCC_OPENCLAW_VERSION=<new> npm run build:release` |
-
-`build-release.mjs` resolution precedence:
-1. `MCC_OPENCLAW_VERSION` env override (operator attestation — fresh E2E pass)
-2. `release-manifest.json`'s `latest.openclawVersion` (sticky — reuse last validated pairing)
-3. Local `openclaw --version` (first-time setup before any manifest exists)
-4. Unpaired — display falls back to `v0.3.53`
-
-`/api/health` exposes the breakdown so clients can pick the right field:
+The tarball bakes this `version.json`:
 ```json
 {
-  "version": "2026.6.1-v0.3.53",   // combined display string
-  "mccVersion": "0.3.53",          // pure semver — use for upgrade comparison
-  "openclawVersion": "2026.6.1"    // paired openclaw
+  "version": "0.3.93",
+  "mccVersion": "0.3.93",
+  "commit": "...",
+  "buildTime": "..."
 }
 ```
+`version` must equal `manifest.latest.version`, and `mccVersion` must stay — dashboards on older releases depend on both fields to upgrade (guarded by `tests/unit/release-meta.test.ts`).
 
-Upgrade comparison uses `mccVersion` only — splitting the combined string with `split('.')` would smash the openclaw prefix.
+The dashboard's upgrade card marks the MCC and openclaw upgrade separately as validated / not validated for the local combination. Not validated is a warning only — the upgrade button is never disabled.
 
 ### Release workflow
 
-#### MCC-only patch (common: bug fix / small feature, prefix unchanged)
+#### MCC-only patch (common: bug fix / small feature, validation inherited)
 
 ```bash
 # 1. Clean main + bump semver
@@ -470,20 +462,18 @@ git status && git branch --show-current
 npm version patch
 git push --follow-tags
 
-# 2. Build (prefix auto-sticks from manifest)
+# 2. Build
 systemctl --user stop mission-control
 npm run build:release
 
-# 3. Publish
+# 3. Publish (validated list inherited from the previous release)
 MCC_NOTES="- fixed X" npm run publish:release
 
 # 4. Restart dev
 systemctl --user start mission-control
 ```
 
-#### Openclaw prefix bump (rare: claiming a new pairing)
-
-Requires a full throwaway E2E pass first — without it, the pairing claim would be a lie.
+#### Recording a newly validated backend version (requires a throwaway E2E pass first)
 
 ```bash
 # 1. Clean main + bump semver
@@ -491,31 +481,29 @@ git status && git branch --show-current
 npm version patch
 git push --follow-tags
 
-# 2. Read the throwaway's openclaw version and build paired
+# 2. Build
 systemctl --user stop mission-control
-source <(grep -v '^#' .env.e2e.local | grep -v '^$')
-OC_VER="$(ssh $E2E_SSH_USER@$E2E_SSH_HOST 'sudo -u openclaw /home/openclaw/.npm-global/bin/openclaw --version' | sed -En 's/OpenClaw ([0-9.]+).*/\1/p')"
-MCC_OPENCLAW_VERSION="$OC_VER" npm run build:release
+npm run build:release
 
 # 3. Push tarball to throwaway + upgrade + full E2E (must be green to proceed)
 scp dist/mission-control-v*.tar.gz $E2E_SSH_USER@$E2E_SSH_HOST:/tmp/
 ssh $E2E_SSH_USER@$E2E_SSH_HOST 'sudo -u openclaw bash /home/openclaw/mission-control/current/install/upgrade.sh /tmp/mission-control-v*.tar.gz'
 PLAYWRIGHT_BASE_URL=http://$E2E_SSH_HOST:3737 AUTH_PASSWORD=$AUTH_PASSWORD npm run test:e2e
 
-# 4. Only after E2E green: publish
-MCC_NOTES="- bumped openclaw to X and validated" npm run publish:release
+# 4. Only after E2E green: record the validated version and publish
+MCC_VALIDATED_OPENCLAW=<version the run used> MCC_NOTES="- validated openclaw X" npm run publish:release
 
 # 5. Restart dev
 systemctl --user start mission-control
 ```
 
 `publish:release` will:
-1. Read `openclawVersion` from the tarball's `version.json` (or env override) and assemble the GitHub release tag (`2026.6.1-v0.3.53`)
-2. Compute sha256 / size and update `release-manifest.json` (combined `latest.version` plus separate `mccVersion` / `openclawVersion`; rotate prior entry into `history[]`)
+1. Assemble the GitHub release tag from `package.json`'s version (`v0.3.93`)
+2. Compute sha256 / size, resolve `MCC_VALIDATED_OPENCLAW` / `MCC_VALIDATED_HERMES` (inherited from the previous entry if unset), and update `release-manifest.json` (plain-semver `latest.version`, `latest.validated` recording the validated backend versions; rotate prior entry into `history[]`)
 3. `gh release create|upload <tag> dist/*.tar.gz` (requires `gh` CLI logged in)
 4. `git add release-manifest.json && git commit && git push origin HEAD`
 
-Environment variables: `MCC_REPO` (defaults to the parsed git remote), `MCC_OPENCLAW_VERSION` (override the paired openclaw version), `MCC_NO_GH=1` to skip the GitHub upload, `MCC_NO_PUSH=1` to skip the git push.
+Environment variables: `MCC_REPO` (defaults to the parsed git remote), `MCC_VALIDATED_OPENCLAW` / `MCC_VALIDATED_HERMES` (record the backend versions validated by this release, comma-separated), `MCC_NOTES` (release notes), `MCC_NO_GH=1` to skip the GitHub upload, `MCC_NO_PUSH=1` to skip the git push.
 
 Public manifest URL: `https://raw.githubusercontent.com/<owner>/<repo>/main/release-manifest.json`.
 

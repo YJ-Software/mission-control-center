@@ -431,44 +431,36 @@ curl http://localhost:3737/api/health
 
 ### 版本命名規則
 
-從 v0.3.52 起，每個 release **與一個 openclaw 版本配對**，顯示形式：
+從 v0.3.93 起，版本號改回純 MCC semver，例如 `v0.3.93`。GitHub release tag / title、`release-manifest.json` 的 `latest.version`、`/api/health` 的 `version` 欄位、dashboard 左側 sidebar 都是這個純 semver；tarball 檔名維持 `mission-control-v<mccVersion>-linux-x64.tar.gz` 不變。
 
+v0.3.92（含）以前的 release 用的是 `<openclawVersion>-v<mccVersion>` 配對格式（例：`2026.9.3-v0.3.92`）。改回純 semver 不是降版，只是拿掉配對前綴 —— 驗證資訊改用獨立欄位記錄，不再靠版本字串本身表達。
+
+**驗證記錄在哪裡：** `release-manifest.json` 的 `latest.validated` 列出這次 release 的 E2E 實際跑過的 backend 版本，例如：
+
+```json
+{ "openclaw": ["2026.9.3"] }
 ```
-<openclawVersion>-v<mccVersion>
-例：2026.6.1-v0.3.53
-```
 
-這個 tag 同時出現在 GitHub release tag / title、`release-manifest.json` 的 `latest.version`、`/api/health` 的 `version` 欄位，以及 dashboard 左側 sidebar。
+（也可能同時有 `hermes` list。）`history[]` 裡的每筆歷史紀錄一樣帶 `validated`；v0.3.93 之前的舊紀錄則以當時記錄的 `openclawVersion` 視為驗證結果讀取。
 
-**配對的語意：「這個 MCC tarball 在 throwaway 環境上跑過完整 Playwright E2E，搭配的 openclaw 版本就是前綴」**，所以前綴是個事實宣告，不只是 metadata。
+驗證是在發版時透過環境變數 `MCC_VALIDATED_OPENCLAW` / `MCC_VALIDATED_HERMES`（逗號分隔，完整版本字串，含 build 後綴，例如 `2026.7.1-2`）寫入 manifest 的。沒設的話，每個 backend 各自沿用上一個 release 記錄的版本 —— 所以 MCC-only patch 不用重跑 E2E。**只有在 throwaway 全綠 E2E 之後才設這兩個環境變數，且要填實際跑過的版本。**
 
-**前綴 sticky / 後綴自由：**
-
-| 情境 | 是否要 throwaway E2E | 怎麼跑 |
-|------|---------------------|--------|
-| 純 MCC 改動（bug fix、小功能） — 前綴不變 | ❌ 不用 | `npm run build:release`（前綴自動沿用 manifest 上一筆） |
-| 升 openclaw 版本 — 前綴改動 | ✅ 必須跑且全綠 | `MCC_OPENCLAW_VERSION=<新版> npm run build:release` |
-
-`build-release.mjs` 解析 openclaw 版本的優先順序：
-1. `MCC_OPENCLAW_VERSION` 環境變數（operator 明確宣告剛驗證過新 openclaw）
-2. `release-manifest.json` 的 `latest.openclawVersion`（sticky — 沿用上一筆驗證過的配對）
-3. 本機 `openclaw --version`（首次部署、manifest 尚未存在）
-4. 都拿不到 → unpaired，display 退回純 `v0.3.53`
-
-`/api/health` 同步暴露三個欄位給 client 區分：
+tarball 內烘進去的 `version.json`：
 ```json
 {
-  "version": "2026.6.1-v0.3.53",   // 顯示用組合字串
-  "mccVersion": "0.3.53",          // 純 semver，升級比對用
-  "openclawVersion": "2026.6.1"    // 配對的 openclaw
+  "version": "0.3.93",
+  "mccVersion": "0.3.93",
+  "commit": "...",
+  "buildTime": "..."
 }
 ```
+`version` 必須等於 `manifest.latest.version`，`mccVersion` 要保留 —— 舊版 dashboard 升級時要靠這兩個欄位判斷（`tests/unit/release-meta.test.ts` 有保護）。
 
-升級比對統一用 `mccVersion` — 直接拿組合字串做 `split('.')` 會把 openclaw 前綴拆爛。
+Dashboard 的升級卡片會分別標示這個機器上 MCC 與 openclaw 的升級組合是否驗證過。未驗證只是警告，升級按鈕不會被擋掉。
 
 ### Release 發版流程
 
-#### MCC-only patch（常見：bug fix、小功能，前綴不變）
+#### MCC-only patch（常見：bug fix、小功能，驗證沿用上一版）
 
 ```bash
 # 1. 乾淨 main + 升 semver
@@ -476,20 +468,18 @@ git status && git branch --show-current
 npm version patch
 git push --follow-tags
 
-# 2. 打包（前綴自動 sticky）
+# 2. 打包
 systemctl --user stop mission-control
 npm run build:release
 
-# 3. 發佈
+# 3. 發佈（validated 沿用上一版）
 MCC_NOTES="- 修了 X" npm run publish:release
 
 # 4. 恢復 dev
 systemctl --user start mission-control
 ```
 
-#### openclaw prefix 升版（rare：要升 openclaw 配對）
-
-需要先在 throwaway 上完整 E2E 過再發版，否則配對宣告就是說謊。
+#### 記錄新驗證過的 backend 版本（要先過 throwaway E2E）
 
 ```bash
 # 1. 乾淨 main + 升 semver
@@ -497,31 +487,29 @@ git status && git branch --show-current
 npm version patch
 git push --follow-tags
 
-# 2. 讀 throwaway 跑的 openclaw 版本，並用它打包
+# 2. 打包
 systemctl --user stop mission-control
-source <(grep -v '^#' .env.e2e.local | grep -v '^$')
-OC_VER="$(ssh $E2E_SSH_USER@$E2E_SSH_HOST 'sudo -u openclaw /home/openclaw/.npm-global/bin/openclaw --version' | sed -En 's/OpenClaw ([0-9.]+).*/\1/p')"
-MCC_OPENCLAW_VERSION="$OC_VER" npm run build:release
+npm run build:release
 
 # 3. 推 tarball 到 throwaway + 升級 + 全套 E2E（必須全綠才能進下一步）
 scp dist/mission-control-v*.tar.gz $E2E_SSH_USER@$E2E_SSH_HOST:/tmp/
 ssh $E2E_SSH_USER@$E2E_SSH_HOST 'sudo -u openclaw bash /home/openclaw/mission-control/current/install/upgrade.sh /tmp/mission-control-v*.tar.gz'
 PLAYWRIGHT_BASE_URL=http://$E2E_SSH_HOST:3737 AUTH_PASSWORD=$AUTH_PASSWORD npm run test:e2e
 
-# 4. E2E 通過才能發版
-MCC_NOTES="- 升 openclaw 至 X 並驗證" npm run publish:release
+# 4. E2E 通過才記錄驗證並發版（填 E2E 實際跑過的版本）
+MCC_VALIDATED_OPENCLAW=<E2E 跑過的版本> MCC_NOTES="- 驗證 openclaw X" npm run publish:release
 
 # 5. 恢復 dev
 systemctl --user start mission-control
 ```
 
 `publish:release` 預設會：
-1. 從 tarball 內 `version.json` 讀 `openclawVersion`（或環境變數覆寫），組合成 GitHub release tag（`2026.6.1-v0.3.53`）
-2. 算 sha256 / size，更新 `release-manifest.json`（`latest.version` 為組合字串，另存 `mccVersion` + `openclawVersion`，舊版進 `history[]`）
+1. 用 `package.json` 的版本號組出 GitHub release tag（`v0.3.93`）
+2. 算 sha256 / size，解析 `MCC_VALIDATED_OPENCLAW` / `MCC_VALIDATED_HERMES`（沒設就沿用上一筆記錄），更新 `release-manifest.json`（`latest.version` 為純 semver，`latest.validated` 記錄驗證過的 backend 版本，舊版進 `history[]`）
 3. `gh release create|upload <tag> dist/*.tar.gz`（需要 `gh` CLI 已登入）
 4. `git add release-manifest.json && git commit && git push origin HEAD`
 
-環境變數：`MCC_REPO`（預設從 git remote 解析）、`MCC_OPENCLAW_VERSION`（覆寫配對的 openclaw 版本）、`MCC_NO_GH=1` skip GitHub upload、`MCC_NO_PUSH=1` skip git push。
+環境變數：`MCC_REPO`（預設從 git remote 解析）、`MCC_VALIDATED_OPENCLAW` / `MCC_VALIDATED_HERMES`（記錄這次發版驗證過的 backend 版本，逗號分隔）、`MCC_NOTES`（發版說明）、`MCC_NO_GH=1` skip GitHub upload、`MCC_NO_PUSH=1` skip git push。
 
 Manifest 公開網址：`https://raw.githubusercontent.com/<owner>/<repo>/main/release-manifest.json`。
 

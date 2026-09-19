@@ -9,24 +9,24 @@ Two layers:
   throwaway environment (VPS / container) — they mutate system state
   (apt installs, dpkg, systemd units).
 
-## E2E is the gate for openclaw-prefix bumps
+## E2E is the gate for recording a validated backend version
 
-The E2E suite **validates the openclaw-MCC pairing** stamped on every release tag (`2026.6.1-v0.3.52`). The pairing claims: *this MCC tarball passed the full E2E against that openclaw version on a throwaway box*.
+Version numbers are plain MCC semver (`v0.3.93`) — no openclaw prefix. Instead, `release-manifest.json`'s `latest.validated` records which backend versions the release's E2E actually ran against, e.g. `{ "openclaw": ["2026.9.3"] }`. The E2E suite is what makes that claim true: *this MCC tarball passed the full E2E against that backend version on a throwaway box*.
 
-The gate applies to the **openclaw prefix only**, not every release. The MCC suffix moves freely.
+The gate applies to **recording a newly validated backend version**, not every release. An MCC-only change doesn't need one.
 
-- **MCC patch / fix release** (prefix unchanged, e.g. `2026.6.1-v0.3.52` → `2026.6.1-v0.3.53`): no E2E rerun required. The existing pairing claim still holds — the prior release already validated MCC against that openclaw, and a logic-only MCC change inherits that validation. `build-release.mjs` automatically reuses the prefix from `release-manifest.json`'s last entry.
-- **Openclaw prefix bump** (e.g. `2026.6.1-v0.3.x` → `2026.6.2-v0.3.x`): full E2E **required** before publish. Set `MCC_OPENCLAW_VERSION=<new>` only after the throwaway pass — the env override is the operator's attestation.
+- **MCC patch / fix release** (no new backend version to validate): no E2E rerun required. The existing validated list still holds — the prior release already validated MCC against those backend versions, and a logic-only MCC change inherits that validation. `build-release.mjs` automatically reuses the previous entry's `validated` list from `release-manifest.json` when `MCC_VALIDATED_OPENCLAW` / `MCC_VALIDATED_HERMES` are unset.
+- **Recording a newly validated backend version** (e.g. openclaw 2026.6.1 → 2026.6.2): full E2E **required** before publish. Set `MCC_VALIDATED_OPENCLAW=<new>` only after the throwaway pass — the env var is the operator's attestation.
 
-Workflow for a prefix bump:
+Workflow for recording a newly validated backend version:
 
 1. Throwaway must be running the target openclaw version.
-2. `MCC_OPENCLAW_VERSION=2026.6.2 npm run build:release` — bakes the new pairing into `version.json`.
+2. `npm run build:release` — builds the tarball (no backend-version env var needed at build time).
 3. scp the tarball + run `install/upgrade.sh` on the throwaway. Wait for `/api/health` to come up at the new version.
 4. `npm run test:e2e` against the throwaway.
-5. **Only after the suite is green** → `npm run publish:release`.
+5. **Only after the suite is green** → `MCC_VALIDATED_OPENCLAW=<version the run used> npm run publish:release`.
 
-If a test fails, fix it (MCC or spec) and rebuild. Never publish past a red E2E on a prefix bump — the paired tag would be a lie. Full procedure with copy-paste commands lives in `.claude/skills/release/SKILL.md`.
+If a test fails, fix it (MCC or spec) and rebuild. Never record a validated version past a red E2E — the `validated` entry would be a lie. Full procedure with copy-paste commands lives in `.claude/skills/release/SKILL.md`.
 
 ## Quick commands
 
