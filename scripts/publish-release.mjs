@@ -126,6 +126,50 @@ console.log(`  wrote ${basename(MANIFEST_PATH)}`)
 if (process.env.MCC_NO_GH === '1') {
   console.log(`  (MCC_NO_GH=1) skipping gh release upload`)
 } else {
+  // From P1 on, the release tag `v<mcc>` shares its name with the `npm
+  // version` git tag. If the operator forgot to push that tag, `gh release
+  // create` would happily create a tag of the same name on the remote's
+  // current HEAD instead — a different commit than the one actually built
+  // and tested. Verify origin already has this exact tag on this exact
+  // commit before creating/uploading the release.
+  let remoteLsTags
+  try {
+    remoteLsTags = git('ls-remote', '--tags', 'origin', TAG)
+  } catch (err) {
+    die(`could not query origin for tag ${TAG}: ${err.message}`)
+  }
+  const tagRefs = remoteLsTags
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [sha, ref] = line.split('\t')
+      return { sha, ref }
+    })
+    .filter(({ ref }) => ref === `refs/tags/${TAG}` || ref === `refs/tags/${TAG}^{}`)
+
+  if (tagRefs.length === 0) {
+    die(`tag ${TAG} not found on origin — push it first: \`git push origin ${TAG}\` (or \`git push --follow-tags\`)`)
+  }
+  // Annotated tags list both the tag object and a peeled `^{}` line pointing
+  // at the commit; prefer the peeled commit when present.
+  const peeled = tagRefs.find(({ ref }) => ref.endsWith('^{}'))
+  const remoteCommit = (peeled ?? tagRefs[0]).sha
+
+  let localCommit
+  try {
+    localCommit = git('rev-parse', `${TAG}^{commit}`)
+  } catch (err) {
+    die(`local tag ${TAG} not found — run \`npm version\` first, or check out the commit it was tagged on: ${err.message}`)
+  }
+
+  if (remoteCommit !== localCommit) {
+    die(
+      `tag ${TAG} on origin points to a different commit than local ` +
+        `(origin=${remoteCommit.slice(0, 12)}, local=${localCommit.slice(0, 12)}) — ` +
+        `push the local tag first: \`git push origin ${TAG}\` (or \`git push --follow-tags\`)`,
+    )
+  }
+
   let releaseExists = false
   try {
     execFileSync('gh', ['release', 'view', TAG], { cwd: ROOT, stdio: 'ignore' })

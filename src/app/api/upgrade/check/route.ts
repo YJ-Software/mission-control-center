@@ -4,7 +4,7 @@ import { getVersionInfo, parseMccVersion } from '@/lib/version'
 import { isUpdateAvailable } from '@/lib/version-compare'
 import { agentRuntimeKind } from '@/lib/agent-runtime'
 import { readInstalledOpenclawVersion } from '@/lib/openclaw/installed-version'
-import { validatedOf, validationStatus, type Backend } from '@/lib/release-validation'
+import { validatedOf, validationStatus, type Backend, type ValidationStatus } from '@/lib/release-validation'
 
 // Always evaluate this route on each call. Without this Next.js may
 // statically cache the response, masking new releases until the server
@@ -31,17 +31,24 @@ export async function GET(request: Request) {
     const latestMcc = manifest.latest.mccVersion || parseMccVersion(manifest.latest.version)
     const hasUpdate = isUpdateAvailable(info.mccVersion, latestMcc)
     const artifact = pickArtifact(manifest)
-    // Is the NEW release validated against the backend running here?
+    // Is the NEW release validated against the backend running here? Only
+    // matters when there's actually an update to offer — the UI only shows
+    // this when hasUpdate is true, and computing it means spawning
+    // `openclaw --version`, which the header would otherwise do on every
+    // 5-minute poll even with nothing new to install.
     // Hermes has no local version reader until the native-install recon (P4),
     // so it reports 'unknown' rather than guessing.
     const backend: Backend = agentRuntimeKind() === 'hermes' ? 'hermes' : 'openclaw'
-    const localVersion = backend === 'openclaw' ? await readInstalledOpenclawVersion() : null
-    const validatedAll = validatedOf(manifest.latest)
-    const validation = {
-      backend,
-      localVersion,
-      validated: validatedAll?.[backend] ?? null,
-      status: validationStatus(validatedAll, backend, localVersion),
+    let validation: { backend: Backend; localVersion: string | null; validated: string[] | null; status: ValidationStatus } | null = null
+    if (hasUpdate) {
+      const localVersion = backend === 'openclaw' ? await readInstalledOpenclawVersion() : null
+      const validatedAll = validatedOf(manifest.latest)
+      validation = {
+        backend,
+        localVersion,
+        validated: validatedAll?.[backend] ?? null,
+        status: validationStatus(validatedAll, backend, localVersion),
+      }
     }
     return NextResponse.json({
       current: info.version,

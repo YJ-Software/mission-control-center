@@ -26,7 +26,7 @@ interface CheckResult {
     localVersion: string | null
     validated: string[] | null
     status: 'validated' | 'unvalidated' | 'unknown'
-  }
+  } | null
 }
 
 interface OpenclawCheck {

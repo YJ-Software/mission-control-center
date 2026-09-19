@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 /**
  * `/api/upgrade/check` and `/api/upgrade/openclaw-check` should report
@@ -58,9 +58,27 @@ describe('/api/upgrade/check validation', () => {
     expect(body.validation).toMatchObject({ backend: 'hermes', status: 'unknown' })
     expect(installed).not.toHaveBeenCalled()
   })
+
+  it('no update available: validation is null and the installed version is never read (avoids spawning `openclaw --version` every 5-min poll)', async () => {
+    const originalMccVersion = manifest.latest.mccVersion
+    manifest.latest.mccVersion = '0.3.92' // matches the mocked getVersionInfo() below
+    try {
+      const { GET } = await import('@/app/api/upgrade/check/route')
+      const body = await (await GET(new Request('http://x/api/upgrade/check'))).json()
+      expect(body.hasUpdate).toBe(false)
+      expect(body.validation).toBeNull()
+      expect(installed).not.toHaveBeenCalled()
+    } finally {
+      manifest.latest.mccVersion = originalMccVersion
+    }
+  })
 })
 
 describe('/api/upgrade/openclaw-check validation', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('warns when npm latest is not validated for the running MCC', async () => {
     installed.mockResolvedValue('2026.9.3')
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ version: '2026.9.4', time: null }))))
@@ -68,6 +86,5 @@ describe('/api/upgrade/openclaw-check validation', () => {
     const body = await (await GET()).json()
     expect(body.hasUpdate).toBe(true)
     expect(body.validation).toEqual({ mccVersion: '0.3.92', validated: ['2026.9.3'], status: 'unvalidated' })
-    vi.unstubAllGlobals()
   })
 })
