@@ -21,6 +21,12 @@ interface CheckResult {
   notes: string | null
   artifact: { url: string; sha256: string | null; size: number | null } | null
   error?: string
+  validation?: {
+    backend: 'openclaw' | 'hermes'
+    localVersion: string | null
+    validated: string[] | null
+    status: 'validated' | 'unvalidated' | 'unknown'
+  }
 }
 
 interface OpenclawCheck {
@@ -31,11 +37,45 @@ interface OpenclawCheck {
   hasUpdate: boolean
   installCommand: string
   error?: string
+  validation?: { mccVersion: string; validated: string[] | null; status: 'validated' | 'unvalidated' | 'unknown' } | null
 }
 
 type Phase = 'idle' | 'checking' | 'uploading' | 'applying' | 'restarting' | 'done' | 'error'
 
 interface JobStartResponse { success?: boolean; jobId?: string; error?: string }
+
+/**
+ * Validation note beside an upgrade button. Warn-only by design: the button
+ * is never disabled — backend release cadence is not ours, and blocking could
+ * strand an operator on an MCC version missing a fix.
+ */
+function ValidationNote({ status, subject, validated }: {
+  status: 'validated' | 'unvalidated' | 'unknown'
+  subject: string
+  validated: string[] | null
+}) {
+  if (status === 'validated') {
+    return (
+      <p className="flex items-center gap-1 text-[11px] text-green-400/80">
+        <CheckCircle2 className="w-3 h-3" />
+        Validated: {subject}
+      </p>
+    )
+  }
+  if (status === 'unvalidated') {
+    return (
+      <p className="flex items-start gap-1 text-[11px] text-amber-300/90">
+        <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
+        <span>
+          Not validated: {subject}.
+          {validated && validated.length > 0 && <> Validated with {validated.join(', ')}.</>}
+          {' '}You can still upgrade.
+        </span>
+      </p>
+    )
+  }
+  return null
+}
 
 export function UpgradeCard() {
   const [status, setStatus] = useState<UpgradeStatus | null>(null)
@@ -320,6 +360,13 @@ export function UpgradeCard() {
                   {check.releaseDate && (
                     <p className="font-mono text-[10px] text-white/35">{check.releaseDate}</p>
                   )}
+                  {check.validation && (
+                    <ValidationNote
+                      status={check.validation.status}
+                      subject={`${check.latest} with ${check.validation.backend === 'hermes' ? 'Hermes' : 'OpenClaw'}${check.validation.localVersion ? ` v${check.validation.localVersion}` : ''}`}
+                      validated={check.validation.validated}
+                    />
+                  )}
                 </div>
                 <button
                   onClick={handleApplyFromManifest}
@@ -439,6 +486,13 @@ export function UpgradeCard() {
                 )}
               </div>
             </div>
+            {openclaw.validation && (
+              <ValidationNote
+                status={openclaw.validation.status}
+                subject={`OpenClaw v${openclaw.latest} with MCC v${openclaw.validation.mccVersion}`}
+                validated={openclaw.validation.validated}
+              />
+            )}
             <details className="text-[11px] text-white/55">
               <summary className="cursor-pointer text-white/40 hover:text-white/70">Or run on the server yourself</summary>
               <div className="flex items-center gap-2 mt-2">
