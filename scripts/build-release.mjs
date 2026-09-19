@@ -23,6 +23,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 import { tmpdir } from 'node:os'
+import { bakedVersionJson } from './lib/release-meta.mjs'
 
 // NODE_MODULE_VERSION (ABI) targets bundled into every release tarball so the
 // same artifact runs on multiple Node majors without per-host recompile.
@@ -75,76 +76,8 @@ function archTag() {
   return `${platform}-${arch}`
 }
 
-/** Resolve the openclaw version this release should claim pairing with.
- *
- *  Precedence (highest first):
- *    1. `MCC_OPENCLAW_VERSION` env override — set when the operator just ran
- *       throwaway E2E against a NEW openclaw and wants to roll the prefix
- *       forward. The skill enforces "E2E must be green" before this gets set.
- *    2. `release-manifest.json` latest.openclawVersion — STICKY. Mcc-only
- *       patch releases reuse the last validated openclaw pairing so they
- *       don't have to re-run E2E for a logic-only fix.
- *    3. Local `openclaw --version` — last-resort fallback for first-time
- *       setup before any manifest exists.
- *    4. null — release still ships, version is just unpaired. */
-function openclawPinnedInManifest() {
-  try {
-    const manifestPath = join(ROOT, 'release-manifest.json')
-    if (!existsSync(manifestPath)) return null
-    const parsed = JSON.parse(readFileSync(manifestPath, 'utf8'))
-    const pinned = parsed?.latest?.openclawVersion
-    return typeof pinned === 'string' && pinned ? pinned : null
-  } catch {
-    return null
-  }
-}
-
-function detectOpenclawVersion() {
-  const override = process.env.MCC_OPENCLAW_VERSION
-  if (override) return override.trim()
-  // Sticky: read the last validated pairing from the in-repo manifest.
-  try {
-    const manifestPath = join(ROOT, 'release-manifest.json')
-    if (existsSync(manifestPath)) {
-      const parsed = JSON.parse(readFileSync(manifestPath, 'utf8'))
-      const pinned = parsed?.latest?.openclawVersion
-      if (typeof pinned === 'string' && pinned) return pinned
-    }
-  } catch {
-    // ignore — fall through to local detect
-  }
-  const candidates = [
-    // openclaw beside the node running this build (nvm/Volta) — first so we
-    // detect the same install the target host runs, not a stale global.
-    join(dirname(process.execPath), 'openclaw'),
-    join(os.homedir(), '.npm-global', 'bin', 'openclaw'),
-    join(os.homedir(), '.linuxbrew', 'bin', 'openclaw'),
-    '/home/linuxbrew/.linuxbrew/bin/openclaw',
-    'openclaw',
-  ]
-  for (const bin of candidates) {
-    try {
-      const out = execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: 5000 }).toString()
-      const m = out.match(/OpenClaw\s+([\d.]+)/) || out.match(/\b(\d+\.\d+(?:\.\d+)?)\b/)
-      if (m) return m[1]
-    } catch {
-      // try next candidate
-    }
-  }
-  return null
-}
-
 async function main() {
   const mccVersion = readPkgVersion()
-  const openclawVersion = detectOpenclawVersion()
-  const ocSource = process.env.MCC_OPENCLAW_VERSION
-    ? 'env MCC_OPENCLAW_VERSION (operator override — implies fresh E2E pass)'
-    : openclawPinnedInManifest()
-      ? `sticky from release-manifest.json (mcc-patch release reuses last validated pairing)`
-      : openclawVersion
-        ? `local openclaw --version (first-time setup — run E2E to validate)`
-        : '(not detected)'
-  const displayVersion = openclawVersion ? `${openclawVersion}-v${mccVersion}` : mccVersion
   const commit = gitShortSha()
   const buildTime = new Date().toISOString()
   const tag = archTag()
@@ -153,10 +86,7 @@ async function main() {
   const tarballName = `mission-control-v${mccVersion}-${tag}.tar.gz`
 
   console.log(`Mission Control release build`)
-  console.log(`  display:   ${displayVersion}`)
-  console.log(`  mcc:       ${mccVersion}`)
-  console.log(`  openclaw:  ${openclawVersion || '(unpaired — manifest will have no openclawVersion)'}`)
-  console.log(`             source: ${ocSource}`)
+  console.log(`  version:   ${mccVersion}`)
   console.log(`  commit:    ${commit || '(no git)'}`)
   console.log(`  buildTime: ${buildTime}`)
   console.log(`  target:    ${tag}`)
@@ -248,15 +178,11 @@ async function main() {
   }
 
   // Bake version metadata so the running server has it even without .git.
-  // `version` is the display string (paired or not); `mccVersion` is the
-  // raw semver kept separate so upgrade-poll comparisons stay numeric.
+  // Shape is fixed by scripts/lib/release-meta.mjs (unit-tested for
+  // compatibility with already-deployed dashboards).
   writeFileSync(
     join(STANDALONE, 'version.json'),
-    JSON.stringify(
-      { version: displayVersion, mccVersion, openclawVersion, commit, buildTime },
-      null,
-      2,
-    ),
+    JSON.stringify(bakedVersionJson({ mccVersion, commit, buildTime }), null, 2),
   )
 
   // Ship the deploy/release scripts inside the tarball at ./install/ so the

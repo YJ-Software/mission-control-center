@@ -19,6 +19,9 @@
  *   MCC_NOTES    optional release notes (otherwise tries dist/NOTES.md)
  *   MCC_NO_GH    skip `gh release` step (manifest-only, useful for dry runs)
  *   MCC_NO_PUSH  skip `git commit && git push` step
+ *   MCC_VALIDATED_OPENCLAW  comma list of OpenClaw versions the E2E run used
+ *   MCC_VALIDATED_HERMES    comma list of Hermes versions the E2E run used
+ *                           (both sticky from the previous release when unset)
  */
 
 import { execFileSync } from 'node:child_process'
@@ -26,6 +29,7 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from '
 import { dirname, join, resolve, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import crypto from 'node:crypto'
+import { releaseTag, resolveValidated, buildManifest } from './lib/release-meta.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -70,32 +74,12 @@ if (!versionMatch) die(`cannot parse version/tag from ${tarball.name}`)
 const [, mccVersion, tag] = versionMatch
 const [platform, arch] = tag.split('-')
 
-// Pull the paired openclaw version baked into the tarball's version.json
-// at build time (build-release.mjs writes it). Falls back to unpaired.
-function bakedOpenclawVersion() {
-  try {
-    const raw = execFileSync('tar', ['xzOf', tarball.path, './version.json'], {
-      encoding: 'utf8',
-      timeout: 30000,
-    })
-    const parsed = JSON.parse(raw)
-    return typeof parsed.openclawVersion === 'string' && parsed.openclawVersion ? parsed.openclawVersion : null
-  } catch {
-    return null
-  }
-}
-const openclawVersion = process.env.MCC_OPENCLAW_VERSION?.trim() || bakedOpenclawVersion()
-const DISPLAY_VERSION = openclawVersion ? `${openclawVersion}-v${mccVersion}` : `v${mccVersion}`
-
 const REPO = detectRepo()
-// GitHub release tag mirrors the display string (`2026.6.1-v0.3.52`) when
-// paired, or `v0.3.52` otherwise. Tarball URL follows that tag.
-const TAG = openclawVersion ? `${openclawVersion}-v${mccVersion}` : `v${mccVersion}`
+const TAG = releaseTag(mccVersion)
 const TARBALL_URL = `https://github.com/${REPO}/releases/download/${TAG}/${tarball.name}`
 const MANIFEST_URL = `https://raw.githubusercontent.com/${REPO}/main/release-manifest.json`
 
-console.log(`• publishing ${DISPLAY_VERSION} (${tag}) to GitHub repo ${REPO}`)
-if (!openclawVersion) console.log(`  (no openclaw version pairing — tag falls back to v${mccVersion})`)
+console.log(`• publishing ${TAG} (${tag}) to GitHub repo ${REPO}`)
 
 const size = statSync(tarball.path).size
 const sha = sha256File(tarball.path)
@@ -123,40 +107,17 @@ const newArtifact = {
   size,
 }
 
-// Replace-or-append artifact of the same platform+arch.
-const mergedArtifacts = [newArtifact]
-const prevArts = prevManifest?.latest?.artifacts || []
-for (const a of prevArts) {
-  if (a.platform === platform && a.arch === arch) continue
-  mergedArtifacts.push(a)
-}
+const validated = resolveValidated(process.env, prevManifest?.latest ?? null)
+console.log(`  validated: ${validated ? JSON.stringify(validated) : '(none — set MCC_VALIDATED_OPENCLAW / MCC_VALIDATED_HERMES after E2E)'}`)
 
-const manifest = {
-  latest: {
-    // Combined display string when paired, semver-only otherwise. Customer
-    // dashboards render this directly (sidebar, /api/upgrade/check, etc.).
-    version: openclawVersion ? `${openclawVersion}-v${mccVersion}` : mccVersion,
-    mccVersion,
-    openclawVersion: openclawVersion || null,
-    releaseDate: new Date().toISOString(),
-    ...(notes ? { notes } : {}),
-    artifacts: mergedArtifacts,
-  },
-}
-
-const prevDisplay = prevManifest?.latest?.version
-const prevMcc = prevManifest?.latest?.mccVersion || prevDisplay
-if (prevDisplay && prevMcc !== mccVersion) {
-  manifest.history = [
-    {
-      version: prevDisplay,
-      mccVersion: prevMcc,
-      openclawVersion: prevManifest?.latest?.openclawVersion || null,
-      releaseDate: prevManifest.latest.releaseDate || null,
-    },
-    ...(prevManifest.history || []).slice(0, 9),
-  ]
-}
+const manifest = buildManifest({
+  mccVersion,
+  validated,
+  notes,
+  artifact: newArtifact,
+  prevManifest,
+  now: new Date().toISOString(),
+})
 
 writeFileSync(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + '\n')
 console.log(`  wrote ${basename(MANIFEST_PATH)}`)
