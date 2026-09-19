@@ -136,7 +136,11 @@ export async function fetchManifest(manifestUrl: string): Promise<ReleaseManifes
   // unique query param forces a cache miss so operators don't have to
   // wait the full TTL after a release to see "Upgrade available".
   const bustedUrl = manifestUrl + (manifestUrl.includes('?') ? '&' : '?') + '_=' + Date.now()
-  const res = await fetch(bustedUrl, { cache: 'no-store' })
+  // Bound the request: a manifest host that hangs (rather than refuses)
+  // must not hang every upgrade endpoint that calls fetchManifest
+  // (check, action, openclaw-check) — the try/catch around this call only
+  // handles refusals, not stalls.
+  const res = await fetch(bustedUrl, { cache: 'no-store', signal: AbortSignal.timeout(10_000) })
   if (!res.ok) throw new Error(`manifest fetch failed (${res.status})`)
   const body = (await res.json()) as ReleaseManifest
   if (!body?.latest?.version || !Array.isArray(body.latest.artifacts)) {
