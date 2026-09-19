@@ -18,10 +18,9 @@ UNIT="$SERVICE-logrotate"
 
 log() { echo "• $*"; }
 
+# Resolved from PATH only. If a script caller's PATH lacks /usr/sbin, the
+# dashboard re-runs this at startup under the unit's PATH, which includes it.
 LOGROTATE_BIN="$(command -v logrotate || true)"
-for c in /usr/sbin/logrotate /sbin/logrotate; do
-  [[ -z "$LOGROTATE_BIN" && -x "$c" ]] && LOGROTATE_BIN="$c"
-done
 if [[ -z "$LOGROTATE_BIN" ]]; then
   log "  (non-fatal) logrotate not found; log rotation not installed"
   log "  → sudo apt-get install -y logrotate, then re-run: bash $TMPL_DIR/install-logrotate.sh $TMPL_DIR $STATE $SERVICE"

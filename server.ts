@@ -730,5 +730,16 @@ app.prepare().then(async () => {
     console.log(`   Local:   http://localhost:${port}`)
     console.log(`   Bind:    http://${host}:${port}`)
     console.log(`   Gateway: ${GATEWAY_WS}\n`)
+
+    // Install/refresh the log-rotation timer from THIS version's installer.
+    // Done here because both upgrade paths run the previous version's code —
+    // see ensure-log-rotation.ts. Fire-and-forget; never fatal.
+    void (async () => {
+      const { getInstallInfo } = await import('./src/lib/upgrade/manager')
+      const { ensureLogRotation } = await import('./src/lib/upgrade/ensure-log-rotation')
+      const info = getInstallInfo()
+      const r = await ensureLogRotation(info)
+      if (r === 'ran') console.log('[LogRotation] timer ensured')
+    })().catch((err) => console.warn('[LogRotation] skipped:', (err as Error).message))
   })
 })
