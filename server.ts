@@ -18,6 +18,7 @@ import next from 'next'
 import { loadEnvConfig } from '@next/env'
 import { WebSocketServer, WebSocket } from 'ws'
 import { resolveSecretRef } from './src/lib/openclaw/secret-ref'
+import { reconnectDelayMs } from './src/lib/gateway-reconnect-backoff'
 import { initDb, db } from './src/lib/db'
 import { morningReportConfig } from './src/lib/schema'
 import { eq } from 'drizzle-orm'
@@ -274,6 +275,9 @@ function broadcast(wss: WebSocketServer, message: string) {
 // Connect to OpenClaw gateway and relay events
 let gatewayWs: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+// Consecutive plain-disconnect retries since the last successful auth; drives
+// the backoff in reconnectDelayMs().
+let reconnectFailures = 0
 
 // RPC pending requests for gateway JSON-RPC calls
 const pendingRequests = new Map<string, { resolve: (value: unknown) => void; reject: (reason: unknown) => void; timer: ReturnType<typeof setTimeout> }>()
@@ -402,6 +406,7 @@ function connectGateway(wss: WebSocketServer) {
         // Log auth result
         if (msg.type === 'res' && msg.ok && msg.payload?.type === 'hello-ok') {
           console.log('[Gateway] Authenticated successfully ✓')
+          reconnectFailures = 0
         }
       } catch {}
 
@@ -448,8 +453,9 @@ function connectGateway(wss: WebSocketServer) {
         return
       }
 
-      console.log(`[Gateway] Disconnected (${code} ${reasonStr}), reconnecting in 5s...`)
-      reconnectTimer = setTimeout(() => connectGateway(wss), 5000)
+      const delay = reconnectDelayMs(reconnectFailures++)
+      console.log(`[Gateway] Disconnected (${code} ${reasonStr}), reconnecting in ${delay / 1000}s...`)
+      reconnectTimer = setTimeout(() => connectGateway(wss), delay)
     })
 
     ws.on('error', (err) => {
@@ -457,7 +463,7 @@ function connectGateway(wss: WebSocketServer) {
     })
   } catch (err) {
     console.error('[Gateway] Connection failed:', err)
-    reconnectTimer = setTimeout(() => connectGateway(wss), 5000)
+    reconnectTimer = setTimeout(() => connectGateway(wss), reconnectDelayMs(reconnectFailures++))
   }
 }
 
