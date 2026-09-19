@@ -504,7 +504,7 @@ systemctl --user start mission-control
 ```
 
 `publish:release` 預設會：
-1. 用 `package.json` 的版本號組出 GitHub release tag（`v0.3.93`）
+1. 從 tarball 檔名解析出版本號（打包時從 `package.json` 烘進檔名），組出 GitHub release tag（`v0.3.93`）
 2. 算 sha256 / size，解析 `MCC_VALIDATED_OPENCLAW` / `MCC_VALIDATED_HERMES`（沒設就沿用上一筆記錄），更新 `release-manifest.json`（`latest.version` 為純 semver，`latest.validated` 記錄驗證過的 backend 版本，舊版進 `history[]`）
 3. `gh release create|upload <tag> dist/*.tar.gz`（需要 `gh` CLI 已登入）
 4. `git add release-manifest.json && git commit && git push origin HEAD`

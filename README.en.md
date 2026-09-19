@@ -498,7 +498,7 @@ systemctl --user start mission-control
 ```
 
 `publish:release` will:
-1. Assemble the GitHub release tag from `package.json`'s version (`v0.3.93`)
+1. Assemble the GitHub release tag from the version in the tarball's filename (baked from `package.json` at build time) (`v0.3.93`)
 2. Compute sha256 / size, resolve `MCC_VALIDATED_OPENCLAW` / `MCC_VALIDATED_HERMES` (inherited from the previous entry if unset), and update `release-manifest.json` (plain-semver `latest.version`, `latest.validated` recording the validated backend versions; rotate prior entry into `history[]`)
 3. `gh release create|upload <tag> dist/*.tar.gz` (requires `gh` CLI logged in)
 4. `git add release-manifest.json && git commit && git push origin HEAD`

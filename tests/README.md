@@ -15,7 +15,7 @@ Version numbers are plain MCC semver (`v0.3.93`) — no openclaw prefix. Instead
 
 The gate applies to **recording a newly validated backend version**, not every release. An MCC-only change doesn't need one.
 
-- **MCC patch / fix release** (no new backend version to validate): no E2E rerun required. The existing validated list still holds — the prior release already validated MCC against those backend versions, and a logic-only MCC change inherits that validation. `build-release.mjs` automatically reuses the previous entry's `validated` list from `release-manifest.json` when `MCC_VALIDATED_OPENCLAW` / `MCC_VALIDATED_HERMES` are unset.
+- **MCC patch / fix release** (no new backend version to validate): no E2E rerun required. The existing validated list still holds — the prior release already validated MCC against those backend versions, and a logic-only MCC change inherits that validation. `publish-release.mjs` automatically reuses the previous entry's `validated` list from `release-manifest.json` at publish time when `MCC_VALIDATED_OPENCLAW` / `MCC_VALIDATED_HERMES` are unset.
 - **Recording a newly validated backend version** (e.g. openclaw 2026.6.1 → 2026.6.2): full E2E **required** before publish. Set `MCC_VALIDATED_OPENCLAW=<new>` only after the throwaway pass — the env var is the operator's attestation.
 
 Workflow for recording a newly validated backend version:
