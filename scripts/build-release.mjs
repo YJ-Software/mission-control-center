@@ -369,7 +369,18 @@ async function main() {
   // Copy install.sh + upgrade.sh + service template alongside the tarball so
   // customers can bootstrap without having to extract first to get the script.
   if (existsSync(releaseDeployDir)) {
-    for (const f of ['install.sh', 'upgrade.sh', 'mission-control.service.tmpl']) {
+    // Explicit list — anything install.sh reads from its own directory must be
+    // here, or a bootstrap install (scripts downloaded beside the tarball)
+    // finds the template missing while an extracted-tarball install works.
+    for (const f of [
+      'install.sh',
+      'upgrade.sh',
+      'mission-control.service.tmpl',
+      'install-logrotate.sh',
+      'mission-control-logrotate.conf.tmpl',
+      'mission-control-logrotate.service.tmpl',
+      'mission-control-logrotate.timer.tmpl',
+    ]) {
       const src = join(releaseDeployDir, f)
       if (existsSync(src)) cpSync(src, join(DIST, f))
     }

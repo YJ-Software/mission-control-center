@@ -188,6 +188,9 @@ systemctl --user daemon-reload
 systemctl --user enable "$SERVICE" >/dev/null
 systemctl --user restart "$SERVICE"
 
+# Hourly size-based rotation of the log above (user-level timer, no sudo).
+bash "$TMPL_DIR/install-logrotate.sh" "$TMPL_DIR" "$STATE" "$SERVICE"
+
 # Linger so the service runs without an active login session.
 if ! loginctl show-user "$USER" 2>/dev/null | grep -q "Linger=yes"; then
   if command -v loginctl >/dev/null; then
@@ -242,5 +245,5 @@ echo "  password:  $PASSWORD"
 echo "  health:    $RESPONSE"
 echo
 echo "  status:    systemctl --user status $SERVICE"
-echo "  logs:      journalctl --user -u $SERVICE -f"
+echo "  logs:      tail -f $LOG_FILE"
 echo "  upgrade:   bash $TMPL_DIR/upgrade.sh <new-tarball>"

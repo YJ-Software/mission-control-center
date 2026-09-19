@@ -111,5 +111,11 @@ rm -rf ~/mission-control                    # removes the code
 systemctl --user status  mission-control
 systemctl --user restart mission-control
 systemctl --user stop    mission-control
-journalctl   --user -u   mission-control -f
+tail -f ~/.mission-control/logs/mission-control.log
 ```
+
+Application output goes to that file (`StandardOutput=append:` in the unit),
+not the journal — `journalctl --user -u mission-control` only shows start/stop
+lines. The file is rotated by the `mission-control-logrotate.timer` user unit
+(hourly size check, 20M × 5, gzip, `copytruncate`), installed by
+`install-logrotate.sh` from both `install.sh` and `upgrade.sh`.

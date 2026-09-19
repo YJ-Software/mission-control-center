@@ -201,6 +201,12 @@ if [[ -f "$TMPL" ]]; then
   fi
 fi
 
+# Log rotation timer — installs it on machines that predate it, refreshes it
+# on the rest. Non-fatal by design.
+if [[ -f "$NEW_DIR/install/install-logrotate.sh" ]]; then
+  bash "$NEW_DIR/install/install-logrotate.sh" "$NEW_DIR/install" "$STATE" "$SERVICE"
+fi
+
 # Restart and wait for health. (PORT/HEALTH_URL were resolved before the
 # no-op check so the running-version probe could use them.)
 systemctl --user restart "$SERVICE"

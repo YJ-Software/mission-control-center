@@ -1,0 +1,17 @@
+# Rotation for the dashboard log. Rendered by install-logrotate.sh into
+# __STATE__/logrotate.conf and run as the service user by the
+# mission-control-logrotate timer — no root, no /etc/logrotate.d.
+#
+# copytruncate is REQUIRED, not a preference: the unit writes via
+# StandardOutput=append:, and systemd holds that fd for the life of the
+# process. A rename-style rotation leaves the fd pointing at the renamed
+# file, so every later line lands in the rotated copy and the live path —
+# the one fail2ban watches — stays empty until the next restart.
+__STATE__/logs/mission-control.log {
+    size 20M
+    rotate 5
+    copytruncate
+    compress
+    missingok
+    notifempty
+}

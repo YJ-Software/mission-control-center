@@ -1,8 +1,8 @@
 # Fail2Ban jail for Mission Control Center.
 #
 # Bans any client IP with 5 failed logins within 10 minutes for 1 hour.
-# Reads lines from the `mission-control` systemd user unit via the journald
-# backend — no log-file path to configure.
+# Reads the dashboard's log file (logpath below) — not the journal; see the
+# note inside the jail for why.
 #
 # Requires the `ufw` ban action; it inserts a deny rule at position 1 so
 # the ban takes effect immediately without flushing allow rules.

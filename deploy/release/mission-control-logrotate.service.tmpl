@@ -1,0 +1,6 @@
+[Unit]
+Description=Rotate the Mission Control Center log
+
+[Service]
+Type=oneshot
+ExecStart=__LOGROTATE_BIN__ --state __STATE__/logrotate.state __STATE__/logrotate.conf

@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly size check for the Mission Control Center log
+
+[Timer]
+# Hourly, not daily: rotation is size-triggered (20M), and a gateway that is
+# down all day can push the log well past that before a daily run.
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target
