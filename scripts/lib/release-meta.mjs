@@ -7,11 +7,71 @@
  * version.json.version must equal manifest.latest.version.
  */
 
-/** What the tarball bakes as version.json. */
+/**
+ * @typedef {object} ValidatedVersions
+ * @property {string[]} [openclaw]
+ * @property {string[]} [hermes]
+ */
+
+/**
+ * @typedef {object} Artifact
+ * @property {string} platform
+ * @property {string} arch
+ * @property {string} url
+ * @property {string} sha256
+ * @property {number} size
+ */
+
+/**
+ * @typedef {object} ManifestLatest
+ * @property {string} version
+ * @property {string} mccVersion
+ * @property {string | null} openclawVersion
+ * @property {ValidatedVersions} [validated]
+ * @property {string} releaseDate
+ * @property {string} [notes]
+ * @property {Artifact[]} artifacts
+ */
+
+/**
+ * @typedef {object} HistoryEntry
+ * @property {string} version
+ * @property {string} mccVersion
+ * @property {string | null} openclawVersion
+ * @property {ValidatedVersions} [validated]
+ * @property {string | null} releaseDate
+ */
+
+/**
+ * @typedef {object} Manifest
+ * @property {ManifestLatest} latest
+ * @property {HistoryEntry[]} history
+ */
+
+/**
+ * @typedef {object} VersionJson
+ * @property {string} version
+ * @property {string} mccVersion
+ * @property {string} commit
+ * @property {string} buildTime
+ */
+
+/**
+ * What the tarball bakes as version.json.
+ * @param {object} opts
+ * @param {string} opts.mccVersion
+ * @param {string} opts.commit
+ * @param {string} opts.buildTime
+ * @returns {VersionJson}
+ */
 export function bakedVersionJson({ mccVersion, commit, buildTime }) {
   return { version: mccVersion, mccVersion, commit, buildTime }
 }
 
+/**
+ * @param {string} mccVersion
+ * @returns {string}
+ */
 export function releaseTag(mccVersion) {
   return `v${mccVersion}`
 }
@@ -32,6 +92,10 @@ function prevValidated(prevLatest) {
  *   MCC_VALIDATED_OPENCLAW / MCC_VALIDATED_HERMES (comma lists) — set after a
  *   green throwaway E2E, with the versions the run ACTUALLY used.
  *   Otherwise sticky from the previous release, per backend.
+ *
+ * @param {object} env
+ * @param {object | null} [prevLatest]
+ * @returns {ValidatedVersions | null}
  */
 export function resolveValidated(env, prevLatest) {
   const out = { ...(prevValidated(prevLatest) ?? {}) }
@@ -50,6 +114,16 @@ function historyEntry(latest) {
   }
 }
 
+/**
+ * @param {object} opts
+ * @param {string} opts.mccVersion
+ * @param {ValidatedVersions} [opts.validated]
+ * @param {string} [opts.notes]
+ * @param {Artifact} opts.artifact
+ * @param {Manifest} [opts.prevManifest]
+ * @param {string} opts.now
+ * @returns {Manifest}
+ */
 export function buildManifest({ mccVersion, validated, notes, artifact, prevManifest, now }) {
   const prevLatest = prevManifest?.latest
   const artifacts = [artifact]
@@ -69,6 +143,7 @@ export function buildManifest({ mccVersion, validated, notes, artifact, prevMani
       ...(notes ? { notes } : {}),
       artifacts,
     },
+    history: [],
   }
 
   const prevMcc = prevLatest?.mccVersion || prevLatest?.version
@@ -77,5 +152,6 @@ export function buildManifest({ mccVersion, validated, notes, artifact, prevMani
   } else if (prevManifest?.history) {
     manifest.history = prevManifest.history
   }
+
   return manifest
 }
