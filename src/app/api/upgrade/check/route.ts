@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { fetchManifest, getConfiguredManifestUrl, pickArtifact } from '@/lib/upgrade/manager'
 import { getVersionInfo, parseMccVersion } from '@/lib/version'
 import { isUpdateAvailable } from '@/lib/version-compare'
+import { agentRuntimeKind } from '@/lib/agent-runtime'
+import { readInstalledOpenclawVersion } from '@/lib/openclaw/installed-version'
+import { validatedOf, validationStatus, type Backend } from '@/lib/release-validation'
 
 // Always evaluate this route on each call. Without this Next.js may
 // statically cache the response, masking new releases until the server
@@ -28,12 +31,24 @@ export async function GET(request: Request) {
     const latestMcc = manifest.latest.mccVersion || parseMccVersion(manifest.latest.version)
     const hasUpdate = isUpdateAvailable(info.mccVersion, latestMcc)
     const artifact = pickArtifact(manifest)
+    // Is the NEW release validated against the backend running here?
+    // Hermes has no local version reader until the native-install recon (P4),
+    // so it reports 'unknown' rather than guessing.
+    const backend: Backend = agentRuntimeKind() === 'hermes' ? 'hermes' : 'openclaw'
+    const localVersion = backend === 'openclaw' ? await readInstalledOpenclawVersion() : null
+    const validatedAll = validatedOf(manifest.latest)
+    const validation = {
+      backend,
+      localVersion,
+      validated: validatedAll?.[backend] ?? null,
+      status: validationStatus(validatedAll, backend, localVersion),
+    }
     return NextResponse.json({
       current: info.version,
       currentMcc: info.mccVersion,
       latest: manifest.latest.version,
       latestMcc,
-      openclawVersion: manifest.latest.openclawVersion || null,
+      validation,
       hasUpdate,
       releaseDate: manifest.latest.releaseDate || null,
       notes: manifest.latest.notes || null,

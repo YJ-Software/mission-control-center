@@ -1,25 +1,24 @@
 import { NextResponse } from 'next/server'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
-import { findOpenclawBin } from '@/lib/morning-report/openclaw'
-import { parseCliVersion, isUpdateAvailable } from '@/lib/version-compare'
+import { isUpdateAvailable } from '@/lib/version-compare'
+import { readInstalledOpenclawVersion } from '@/lib/openclaw/installed-version'
+import { fetchManifest, getConfiguredManifestUrl } from '@/lib/upgrade/manager'
+import { getVersionInfo } from '@/lib/version'
+import { validatedForMcc, validationStatus, type ValidationStatus } from '@/lib/release-validation'
 
-const execFileP = promisify(execFile)
-
-async function readCurrentVersion(): Promise<string | null> {
-  const bin = findOpenclawBin()
+/**
+ * Would upgrading OpenClaw to `target` leave this MCC on a validated
+ * combination? Uses the manifest entry for the RUNNING MCC version. A
+ * manifest we cannot fetch is 'unknown' — never a false warning.
+ */
+async function openclawTargetValidation(target: string): Promise<{ mccVersion: string; validated: string[] | null; status: ValidationStatus }> {
+  const { mccVersion } = getVersionInfo()
   try {
-    const { stdout } = await execFileP(bin, ['--version'], { timeout: 5000 })
-    // Output examples:
-    //   "OpenClaw 2026.5.5 (b1abf9d) — One CLI to rule them all..."
-    //   "OpenClaw 2026.7.1-2 (0790d9f) — ..."
-    //   "2026.5.5"
-    // The build suffix (`-2`) is part of the version — dropping it misreports
-    // which build is installed, and comparing it as a dotted segment loses it
-    // just as badly (`parseInt('1-2') === 1`).
-    return parseCliVersion(stdout, 'OpenClaw') || null
+    const url = getConfiguredManifestUrl()
+    if (!url) return { mccVersion, validated: null, status: 'unknown' }
+    const v = validatedForMcc(await fetchManifest(url), mccVersion)
+    return { mccVersion, validated: v?.openclaw ?? null, status: validationStatus(v, 'openclaw', target) }
   } catch {
-    return null
+    return { mccVersion, validated: null, status: 'unknown' }
   }
 }
 
@@ -36,7 +35,7 @@ async function readLatestVersion(): Promise<{ version: string; publishedAt: stri
 
 export async function GET() {
   try {
-    const current = await readCurrentVersion()
+    const current = await readInstalledOpenclawVersion()
     if (!current) {
       return NextResponse.json({
         installed: false,
@@ -48,12 +47,14 @@ export async function GET() {
     }
     const latest = await readLatestVersion()
     const hasUpdate = isUpdateAvailable(current, latest.version)
+    const validation = hasUpdate ? await openclawTargetValidation(latest.version) : null
     return NextResponse.json({
       installed: true,
       current,
       latest: latest.version,
       latestPublishedAt: latest.publishedAt,
       hasUpdate,
+      validation,
       installCommand: `npm install -g openclaw@${latest.version}`,
     })
   } catch (err) {
