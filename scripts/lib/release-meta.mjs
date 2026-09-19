@@ -99,8 +99,13 @@ function prevValidated(prevLatest) {
  */
 export function resolveValidated(env, prevLatest) {
   const out = { ...(prevValidated(prevLatest) ?? {}) }
-  if (env.MCC_VALIDATED_OPENCLAW) out.openclaw = splitList(env.MCC_VALIDATED_OPENCLAW)
-  if (env.MCC_VALIDATED_HERMES) out.hermes = splitList(env.MCC_VALIDATED_HERMES)
+  // A blank/whitespace-only value (" ", ",") is truthy but splits to an empty
+  // list — treat that the same as unset, i.e. keep the sticky value, rather
+  // than writing `[]` and making every customer see "not validated".
+  const openclaw = env.MCC_VALIDATED_OPENCLAW ? splitList(env.MCC_VALIDATED_OPENCLAW) : []
+  if (openclaw.length) out.openclaw = openclaw
+  const hermes = env.MCC_VALIDATED_HERMES ? splitList(env.MCC_VALIDATED_HERMES) : []
+  if (hermes.length) out.hermes = hermes
   return Object.keys(out).length ? out : null
 }
 

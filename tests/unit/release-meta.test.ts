@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { bakedVersionJson, releaseTag, resolveValidated, buildManifest } from '../../scripts/lib/release-meta.mjs'
 import { parseMccVersion } from '@/lib/version'
+import { validatedOf, validationStatus } from '@/lib/release-validation'
 
 const artifact = { platform: 'linux', arch: 'x64', url: 'https://x/v0.3.93/t.tar.gz', sha256: 'ab', size: 1 }
 const prevManifest = {
@@ -40,6 +41,35 @@ describe('resolveValidated', () => {
   it('null when nothing is known', () => {
     expect(resolveValidated({}, null)).toBeNull()
   })
+
+  it('a blank MCC_VALIDATED_OPENCLAW (e.g. " ") is treated as unset, not as "validated against nothing"', () => {
+    expect(resolveValidated({ MCC_VALIDATED_OPENCLAW: ' ' }, prevManifest.latest)).toEqual({ openclaw: ['2026.9.3'] })
+  })
+
+  it('a blank MCC_VALIDATED_HERMES (e.g. ",") is treated as unset, not as "validated against nothing"', () => {
+    expect(
+      resolveValidated({ MCC_VALIDATED_HERMES: ',' }, { version: '0.3.93', validated: { openclaw: ['2026.9.3'], hermes: ['2026.9.14'] } }),
+    ).toEqual({ openclaw: ['2026.9.3'], hermes: ['2026.9.14'] })
+  })
+
+  // Drift guard: the legacy-derivation rule is duplicated in
+  // src/lib/release-validation.ts (validatedOf) for the dashboard's own
+  // reads. Both must agree on every legacy/new shape.
+  it.each([
+    { name: 'legacy entry with only openclawVersion', entry: { version: 'x', openclawVersion: '2026.9.3' } },
+    { name: 'new entry with validated', entry: { version: 'x', validated: { openclaw: ['2026.9.3'], hermes: ['2026.9.14'] } } },
+    { name: 'entry with neither', entry: { version: 'x' } },
+  ])('resolveValidated({}, entry) matches validatedOf(entry) — $name', ({ entry }) => {
+    expect(resolveValidated({}, entry)).toEqual(validatedOf(entry))
+  })
+
+  it('validatedOf: an explicit-but-empty validated object is not treated as legacy fallback, but has no per-backend list', () => {
+    expect(validationStatus(validatedOf({ version: 'x', validated: {} }), 'openclaw', '2026.9.3')).toBe('unknown')
+  })
+
+  it('validatedOf: an empty-string openclawVersion is not a legacy validation claim', () => {
+    expect(validationStatus(validatedOf({ version: 'x', openclawVersion: '' }), 'openclaw', '2026.9.3')).toBe('unknown')
+  })
 })
 
 describe('buildManifest', () => {
@@ -68,7 +98,7 @@ describe('buildManifest', () => {
     expect(latestMcc).toBe('0.3.93')
   })
 
-  it('old applyUpgrade accepts the tarball: expectedVersion === version.json.version', () => {
+  it('job recovery after restart: job.expectedVersion === version.json.version (src/lib/jobs/recovery.ts), else a successful upgrade is misreported as failed/stale', () => {
     const baked = bakedVersionJson({ mccVersion: '0.3.93', commit: 'c', buildTime: 't' })
     expect(m.latest.version).toBe(baked.version)
   })
