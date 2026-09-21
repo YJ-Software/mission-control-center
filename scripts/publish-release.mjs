@@ -29,7 +29,7 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from '
 import { dirname, join, resolve, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import crypto from 'node:crypto'
-import { releaseTag, resolveValidated, buildManifest } from './lib/release-meta.mjs'
+import { releaseTag, resolveValidated, buildManifest, remoteTagCommit } from './lib/release-meta.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..')
@@ -132,28 +132,20 @@ if (process.env.MCC_NO_GH === '1') {
   // current HEAD instead — a different commit than the one actually built
   // and tested. Verify origin already has this exact tag on this exact
   // commit before creating/uploading the release.
+  // Glob the ref so an annotated tag's peeled `^{}` line is included — see
+  // remoteTagCommit's JSDoc for why an exact-ref query would silently break
+  // this check for every annotated tag (which is what `npm version` makes).
   let remoteLsTags
   try {
-    remoteLsTags = git('ls-remote', '--tags', 'origin', TAG)
+    remoteLsTags = git('ls-remote', '--tags', 'origin', `${TAG}*`)
   } catch (err) {
     die(`could not query origin for tag ${TAG}: ${err.message}`)
   }
-  const tagRefs = remoteLsTags
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => {
-      const [sha, ref] = line.split('\t')
-      return { sha, ref }
-    })
-    .filter(({ ref }) => ref === `refs/tags/${TAG}` || ref === `refs/tags/${TAG}^{}`)
+  const remoteCommit = remoteTagCommit(remoteLsTags, TAG)
 
-  if (tagRefs.length === 0) {
+  if (remoteCommit === null) {
     die(`tag ${TAG} not found on origin — push it first: \`git push origin ${TAG}\` (or \`git push --follow-tags\`)`)
   }
-  // Annotated tags list both the tag object and a peeled `^{}` line pointing
-  // at the commit; prefer the peeled commit when present.
-  const peeled = tagRefs.find(({ ref }) => ref.endsWith('^{}'))
-  const remoteCommit = (peeled ?? tagRefs[0]).sha
 
   let localCommit
   try {

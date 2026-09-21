@@ -76,6 +76,42 @@ export function releaseTag(mccVersion) {
   return `v${mccVersion}`
 }
 
+/**
+ * Resolve the commit sha a tag points to on origin, from the raw output of
+ * `git ls-remote --tags origin '<tag>*'`.
+ *
+ * Why the glob: `git ls-remote --tags origin <tag>` with an exact ref only
+ * ever prints the tag-object line (`refs/tags/<tag>`) — for an annotated
+ * tag (what `npm version` creates) that sha is the TAG OBJECT, not the
+ * commit it points at, so comparing it against `git rev-parse
+ * <tag>^{commit}` (a commit sha) always mismatches. Querying with a glob
+ * (`<tag>*`) makes git also emit the peeled `refs/tags/<tag>^{}` line,
+ * which is the commit sha. This function prefers that peeled line when
+ * present (annotated tag) and falls back to the plain line's sha
+ * (lightweight tag, which has no peel).
+ *
+ * Because the query is a glob, it can also match unrelated refs such as
+ * `refs/tags/<tag>-rc1` or `refs/tags/<tag>x` — those are ignored; only an
+ * exact `refs/tags/<tag>` or `refs/tags/<tag>^{}` counts.
+ *
+ * @param {string} lsRemoteOutput raw stdout of `git ls-remote --tags origin '<tag>*'`
+ * @param {string} tag the exact tag name to resolve, e.g. `v0.3.92`
+ * @returns {string | null} the commit sha, or null when the tag is absent
+ */
+export function remoteTagCommit(lsRemoteOutput, tag) {
+  const wantPlain = `refs/tags/${tag}`
+  const wantPeeled = `refs/tags/${tag}^{}`
+  let plainSha = null
+  let peeledSha = null
+  for (const line of String(lsRemoteOutput).split('\n')) {
+    if (!line.trim()) continue
+    const [sha, ref] = line.split('\t')
+    if (ref === wantPeeled) peeledSha = sha
+    else if (ref === wantPlain) plainSha = sha
+  }
+  return peeledSha ?? plainSha
+}
+
 function splitList(s) {
   return String(s).split(',').map((x) => x.trim()).filter(Boolean)
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bakedVersionJson, releaseTag, resolveValidated, buildManifest } from '../../scripts/lib/release-meta.mjs'
+import { bakedVersionJson, releaseTag, resolveValidated, buildManifest, remoteTagCommit } from '../../scripts/lib/release-meta.mjs'
 import { parseMccVersion } from '@/lib/version'
 import { validatedOf, validationStatus } from '@/lib/release-validation'
 
@@ -101,5 +101,32 @@ describe('buildManifest', () => {
   it('job recovery after restart: job.expectedVersion === version.json.version (src/lib/jobs/recovery.ts), else a successful upgrade is misreported as failed/stale', () => {
     const baked = bakedVersionJson({ mccVersion: '0.3.93', commit: 'c', buildTime: 't' })
     expect(m.latest.version).toBe(baked.version)
+  })
+})
+
+describe('remoteTagCommit', () => {
+  it('annotated tag: prefers the peeled refs/tags/<tag>^{} line over the tag-object line', () => {
+    const out = [
+      'a2d33fd1111111111111111111111111111111a\trefs/tags/v0.3.92',
+      'f32f032222222222222222222222222222222b\trefs/tags/v0.3.92^{}',
+    ].join('\n')
+    expect(remoteTagCommit(out, 'v0.3.92')).toBe('f32f032222222222222222222222222222222b')
+  })
+
+  it('lightweight tag: single line, no peel — returns its own sha', () => {
+    const out = 'c3d44fe333333333333333333333333333333c\trefs/tags/v0.3.92'
+    expect(remoteTagCommit(out, 'v0.3.92')).toBe('c3d44fe333333333333333333333333333333c')
+  })
+
+  it('tag absent on origin: empty output returns null', () => {
+    expect(remoteTagCommit('', 'v0.3.92')).toBeNull()
+  })
+
+  it('ignores unrelated refs a glob query can also return, e.g. v0.3.93-rc1 or v0.3.92x', () => {
+    const out = [
+      'd4e55gf444444444444444444444444444444d\trefs/tags/v0.3.93-rc1',
+      'e5f66hg555555555555555555555555555555e\trefs/tags/v0.3.92x',
+    ].join('\n')
+    expect(remoteTagCommit(out, 'v0.3.92')).toBeNull()
   })
 })
