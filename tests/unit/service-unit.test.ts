@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
 import { renderServiceUnit, validateRenderedUnit, decideUnitUpdate } from '@/lib/upgrade/service-unit'
 
 const TMPL = [
@@ -74,5 +76,19 @@ describe('decideUnitUpdate', () => {
 
   it('ignores a trailing-newline-only difference', () => {
     expect(decideUnitUpdate(next + '\n', next)).toBe('unchanged')
+  })
+})
+
+describe('the real shipped template', () => {
+  // Regression guard: a future edit to the real template (a new placeholder,
+  // a dropped ExecStart) must fail CI rather than silently produce a unit
+  // ensure-service-unit.ts writes but the dashboard cannot start from — the
+  // fixture TMPL above is a hand-maintained copy and would not catch drift.
+  it('renders and validates cleanly from deploy/release/mission-control.service.tmpl', () => {
+    const realTemplate = fs.readFileSync(
+      path.join(__dirname, '..', '..', 'deploy', 'release', 'mission-control.service.tmpl'),
+      'utf8'
+    )
+    expect(validateRenderedUnit(renderServiceUnit(realTemplate, vars))).toBeNull()
   })
 })
