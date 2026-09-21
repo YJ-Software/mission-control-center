@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import path from 'node:path'
 import { ensureServiceUnit } from '@/lib/upgrade/ensure-service-unit'
+import { renderServiceUnit } from '@/lib/upgrade/service-unit'
 
 const PREFIX = '/home/u/mission-control'
 const STATE = '/home/u/.mission-control'
@@ -21,8 +22,10 @@ const TMPL = [
   '',
 ].join('\n')
 
-/** In-memory fs seeded with the files each test needs. */
-function fakeFs(seed: Record<string, string>) {
+/** In-memory fs seeded with the files each test needs. `realpaths` seeds a
+ * small symlink map for realpathSync: path -> its canonical target. Any path
+ * not in the map resolves to itself. */
+function fakeFs(seed: Record<string, string>, realpaths: Record<string, string> = {}) {
   const files = { ...seed }
   const calls: string[] = []
   return {
@@ -38,11 +41,16 @@ function fakeFs(seed: Record<string, string>) {
       renameSync: (a: string, b: string) => { files[b] = files[a]; delete files[a]; calls.push(`rename ${a} -> ${b}`) },
       copyFileSync: (a: string, b: string) => { files[b] = files[a]; calls.push(`copy ${a} -> ${b}`) },
       mkdirSync: (p: string) => { calls.push(`mkdir ${p}`) },
+      realpathSync: (p: string) => { calls.push(`realpath ${p}`); return realpaths[p] ?? p },
+      rmSync: (p: string) => { delete files[p]; calls.push(`rm ${p}`) },
     },
   }
 }
 
 const base = { mode: 'release' as const, prefix: PREFIX, state: STATE, service: SERVICE, home: HOME, nodeBin: '/usr/bin/node' }
+// Same options but WITHOUT an explicit nodeBin, so ensureServiceUnit must derive it
+// (from the existing unit's ExecStart, or fall back to process.execPath).
+const baseAutoNode = { mode: 'release' as const, prefix: PREFIX, state: STATE, service: SERVICE, home: HOME }
 
 describe('ensureServiceUnit', () => {
   it('writes the unit when the rendered template differs, then reloads', async () => {
@@ -76,7 +84,6 @@ describe('ensureServiceUnit', () => {
     const before = f.files[UNIT_PATH]
     expect(await ensureServiceUnit({ ...base, fs: f.api, run })).toBe('unchanged')
     expect(f.files[UNIT_PATH]).toBe(before)
-    expect(run).not.toHaveBeenCalled()
   })
 
   it('refuses to write a unit that still has placeholders', async () => {
@@ -113,5 +120,102 @@ describe('ensureServiceUnit', () => {
     expect(await ensureServiceUnit({ ...base, fs: f.api, run })).toBe('failed')
     expect(warn).toHaveBeenCalled()
     warn.mockRestore()
+  })
+
+  it('cleans up the leftover .tmp file when the write fails', async () => {
+    const f = fakeFs({ [TMPL_PATH]: TMPL, '/usr/bin/node': '' })
+    // renameSync throws — simulate a rename failure (e.g. cross-device, permissions).
+    f.api.renameSync = () => { throw new Error('EXDEV') }
+    const run = vi.fn().mockResolvedValue(undefined)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(await ensureServiceUnit({ ...base, fs: f.api, run })).toBe('failed')
+    expect(f.files[`${UNIT_PATH}.tmp`]).toBeUndefined()
+    warn.mockRestore()
+  })
+
+  // --- C1: never pin ExecStart to a resolved, version-specific node path ---
+  describe('nodeBin resolution (no explicit opts.nodeBin)', () => {
+    it('keeps the existing unit\'s node path when it resolves to the same node as process.execPath (unchanged)', async () => {
+      const stableNodePath = '/home/u/.linuxbrew/bin/node'
+      const current = renderServiceUnit(TMPL, { nodeBin: stableNodePath, state: STATE, prefix: PREFIX })
+      const f = fakeFs(
+        { [TMPL_PATH]: TMPL, [UNIT_PATH]: current, [stableNodePath]: '' },
+        { [stableNodePath]: '/real/cellar/node/bin/node', [process.execPath]: '/real/cellar/node/bin/node' },
+      )
+      const run = vi.fn().mockResolvedValue({ stdout: 'no\n' })
+      const result = await ensureServiceUnit({ ...baseAutoNode, fs: f.api, run })
+      expect(result).toBe('unchanged')
+      expect(f.calls.some(c => c.startsWith('write'))).toBe(false)
+    })
+
+    it('falls back to process.execPath when the unit\'s node path no longer exists on disk', async () => {
+      const missingToken = '/home/u/.volta/bin/node'
+      const current = ['[Service]', `ExecStart=${missingToken} ${PREFIX}/current/server.js`, ''].join('\n')
+      const f = fakeFs({ [TMPL_PATH]: TMPL, [UNIT_PATH]: current, [process.execPath]: '' })
+      const run = vi.fn().mockResolvedValue(undefined)
+      const result = await ensureServiceUnit({ ...baseAutoNode, fs: f.api, run })
+      expect(result).toBe('updated')
+      expect(f.files[UNIT_PATH]).toContain(`ExecStart=${process.execPath} `)
+    })
+
+    it('falls back to process.execPath when the unit\'s node path resolves to a different node', async () => {
+      const otherToken = '/home/u/.nvm/versions/node/v18/bin/node'
+      const current = ['[Service]', `ExecStart=${otherToken} ${PREFIX}/current/server.js`, ''].join('\n')
+      const f = fakeFs(
+        { [TMPL_PATH]: TMPL, [UNIT_PATH]: current, [otherToken]: '', [process.execPath]: '' },
+        { [otherToken]: '/real/nvm/v18/node', [process.execPath]: '/real/other/node' },
+      )
+      const run = vi.fn().mockResolvedValue(undefined)
+      const result = await ensureServiceUnit({ ...baseAutoNode, fs: f.api, run })
+      expect(result).toBe('updated')
+      expect(f.files[UNIT_PATH]).toContain(`ExecStart=${process.execPath} `)
+    })
+
+    it('an explicit opts.nodeBin still wins over the existing unit\'s path', async () => {
+      const stableNodePath = '/home/u/.linuxbrew/bin/node'
+      const current = renderServiceUnit(TMPL, { nodeBin: stableNodePath, state: STATE, prefix: PREFIX })
+      const f = fakeFs(
+        { [TMPL_PATH]: TMPL, [UNIT_PATH]: current, [stableNodePath]: '', '/explicit/node': '' },
+        { [stableNodePath]: '/real/cellar/node/bin/node', [process.execPath]: '/real/cellar/node/bin/node' },
+      )
+      const run = vi.fn().mockResolvedValue(undefined)
+      const result = await ensureServiceUnit({ ...baseAutoNode, nodeBin: '/explicit/node', fs: f.api, run })
+      expect(result).toBe('updated')
+      expect(f.files[UNIT_PATH]).toContain('ExecStart=/explicit/node ')
+    })
+  })
+
+  // --- I1: a failed daemon-reload must not be permanent ---
+  describe('opportunistic daemon-reload on the unchanged path', () => {
+    it('runs daemon-reload when systemd reports one is pending', async () => {
+      const f = fakeFs({ [TMPL_PATH]: TMPL, '/usr/bin/node': '' })
+      // Seed a unit that already matches so the first call is a no-op write.
+      await ensureServiceUnit({ ...base, fs: f.api, run: vi.fn().mockResolvedValue(undefined) })
+      const run = vi.fn(async (_cmd: string, args: string[]) => (args.includes('show') ? { stdout: 'yes\n' } : undefined))
+      const result = await ensureServiceUnit({ ...base, fs: f.api, run })
+      expect(result).toBe('unchanged')
+      expect(run).toHaveBeenCalledWith('systemctl', ['--user', 'show', '-p', 'NeedDaemonReload', '--value', `${SERVICE}.service`])
+      expect(run).toHaveBeenCalledWith('systemctl', ['--user', 'daemon-reload'])
+    })
+
+    it('does not run daemon-reload when systemd reports nothing pending', async () => {
+      const f = fakeFs({ [TMPL_PATH]: TMPL, '/usr/bin/node': '' })
+      await ensureServiceUnit({ ...base, fs: f.api, run: vi.fn().mockResolvedValue(undefined) })
+      const run = vi.fn(async (_cmd: string, args: string[]) => (args.includes('show') ? { stdout: 'no\n' } : undefined))
+      const result = await ensureServiceUnit({ ...base, fs: f.api, run })
+      expect(result).toBe('unchanged')
+      expect(run).toHaveBeenCalledWith('systemctl', ['--user', 'show', '-p', 'NeedDaemonReload', '--value', `${SERVICE}.service`])
+      expect(run).not.toHaveBeenCalledWith('systemctl', ['--user', 'daemon-reload'])
+    })
+
+    it('never throws when the NeedDaemonReload check itself fails', async () => {
+      const f = fakeFs({ [TMPL_PATH]: TMPL, '/usr/bin/node': '' })
+      await ensureServiceUnit({ ...base, fs: f.api, run: vi.fn().mockResolvedValue(undefined) })
+      const run = vi.fn().mockRejectedValue(new Error('no user bus'))
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const result = await ensureServiceUnit({ ...base, fs: f.api, run })
+      expect(result).toBe('unchanged')
+      warn.mockRestore()
+    })
   })
 })
