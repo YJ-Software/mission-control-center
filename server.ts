@@ -731,15 +731,18 @@ app.prepare().then(async () => {
     console.log(`   Bind:    http://${host}:${port}`)
     console.log(`   Gateway: ${GATEWAY_WS}\n`)
 
-    // Install/refresh the log-rotation timer from THIS version's installer.
-    // Done here because both upgrade paths run the previous version's code —
-    // see ensure-log-rotation.ts. Fire-and-forget; never fatal.
+    // Install/refresh what THIS version's tarball ships — both upgrade paths
+    // run the previous version's code, so a new logrotate timer or unit
+    // template only arrives on the new version's first boot. Fire-and-forget;
+    // never fatal. The unit change applies on the NEXT restart, not now.
     void (async () => {
       const { getInstallInfo } = await import('./src/lib/upgrade/manager')
       const { ensureLogRotation } = await import('./src/lib/upgrade/ensure-log-rotation')
+      const { ensureServiceUnit } = await import('./src/lib/upgrade/ensure-service-unit')
       const info = getInstallInfo()
-      const r = await ensureLogRotation(info)
-      if (r === 'ran') console.log('[LogRotation] timer ensured')
-    })().catch((err) => console.warn('[LogRotation] skipped:', (err as Error).message))
+      if ((await ensureLogRotation(info)) === 'ran') console.log('[LogRotation] timer ensured')
+      const unit = await ensureServiceUnit(info)
+      if (unit === 'updated') console.log('[ServiceUnit] unit refreshed — applies on next restart')
+    })().catch((err) => console.warn('[Startup] post-listen setup skipped:', (err as Error).message))
   })
 })
