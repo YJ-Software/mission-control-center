@@ -17,7 +17,7 @@ const TALK_REPLY_TIMEOUT = 3 * 60 * 1000
 
 /**
  * The deployer's MCC panel used to print the dashboard password in
- * #mcc-auth-password. The broker-based "開啟任務管制中心" button needs no
+ * #mcc-auth-password. The broker-based MCC button (open-mcc.php) needs no
  * password, so a deploy page may no longer carry it — later phases still log in
  * with it, so fall back to reading it off the box.
  */
@@ -107,7 +107,10 @@ test('whmcs deploy → capture AUTH_PASSWORD → open /talk from the deploy page
   // ── Open /talk the way a customer does: the deploy page's MCC button ──────
   // It opens the deployer's broker (mcc.open-claw.tw) in a new tab, which signs
   // the browser in and lands on /talk — no SSH tunnel, no password.
-  const openMcc = page.getByRole('link', { name: /開啟任務管制中心/ })
+  // Matched by target, not label: the deployer renamed the button from
+  // 「開啟任務管制中心」 to 「立即與 🦞 OpenClaw 對話」 (2026-09) and the copy is
+  // theirs to change; the open-mcc.php endpoint is the contract.
+  const openMcc = page.locator('a[href*="open-mcc.php"]').first()
   await expect(openMcc).toBeVisible({ timeout: 60_000 })
 
   // Right after the deploy flips to 成功 the broker can still answer
