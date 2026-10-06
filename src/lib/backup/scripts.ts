@@ -12,6 +12,7 @@ export interface BackupResult {
   size: number
   sizeHuman: string
   filePath: string
+  warning?: string
 }
 
 export interface BackupFile {
@@ -75,8 +76,8 @@ export async function runBackup(outputDir?: string): Promise<BackupResult> {
 export async function runExtraBackup(
   sourcePath: string, outputDir: string, name: string
 ): Promise<BackupResult> {
-  const { filename, filePath, size } = await backupExtraFolder(sourcePath, outputDir, name)
-  return { filename, size, sizeHuman: formatBytes(size), filePath }
+  const { filename, filePath, size, warning } = await backupExtraFolder(sourcePath, outputDir, name)
+  return { filename, size, sizeHuman: formatBytes(size), filePath, ...(warning ? { warning } : {}) }
 }
 
 // --- Run restore ---

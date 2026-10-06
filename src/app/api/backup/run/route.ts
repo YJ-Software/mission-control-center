@@ -85,12 +85,14 @@ export async function POST(req: NextRequest) {
       }
 
       const extraPaths: string[] = []
+      const warnings: string[] = []
       for (const sourceId of sourceIds) {
         const source = db.select().from(backupSources).where(eq(backupSources.id, sourceId)).get()
         if (source?.enabled) {
           const targetDir = result ? path.dirname(result.filePath) : (outputDir || getBackupOutputDir())
           const extraResult = await runExtraBackup(source.path, targetDir, source.name)
           if (extraResult.filePath) extraPaths.push(extraResult.filePath)
+          if (extraResult.warning) warnings.push(extraResult.warning)
         }
       }
 
@@ -104,6 +106,8 @@ export async function POST(req: NextRequest) {
         fileSize: result?.size ?? 0,
         filePath: result?.filePath ?? null,
         extraFilePaths: extraPaths.length > 0 ? JSON.stringify(extraPaths) : null,
+        // 完成但有警告（例如 tar 讀取時檔案變動）沿用 error 欄位呈現
+        error: warnings.length > 0 ? warnings.join('\n') : null,
       }).where(eq(backupLogs.id, logId)).run()
 
       // Retain cleanup — includes both OpenClaw and extra source files

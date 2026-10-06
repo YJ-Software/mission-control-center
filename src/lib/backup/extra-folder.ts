@@ -28,26 +28,31 @@ function runTar(args: string[]): Promise<TarResult> {
 
 export async function backupExtraFolder(
   sourcePath: string, outputDir: string, name: string, now = new Date()
-): Promise<{ filename: string; filePath: string; size: number }> {
+): Promise<{ filename: string; filePath: string; size: number; warning?: string }> {
   let isDir = false
   try { isDir = fs.statSync(sourcePath).isDirectory() } catch { /* 不存在 */ }
   if (!isDir) throw new Error(`Source directory does not exist: ${sourcePath}`)
 
-  const safeName = name.replace(/[^A-Za-z0-9._-]/g, '')
-  const filename = `extra-backup_${safeName}_${timestamp(now)}.tar.gz`
+  const safeName = name.replace(/[^\p{L}\p{N}._-]+/gu, '_').replace(/^[.-]+/, '') || 'folder'
+  const stem = `extra-backup_${safeName}_${timestamp(now)}`
   fs.mkdirSync(outputDir, { recursive: true })
+  // 絕不覆蓋既有備份：同名時加 _2、_3 …
+  let filename = `${stem}.tar.gz`
+  for (let i = 2; fs.existsSync(path.join(outputDir, filename)); i++) filename = `${stem}_${i}.tar.gz`
   const filePath = path.join(outputDir, filename)
 
   const resolved = path.resolve(sourcePath)
   const args = [
     'czf', filePath,
     ...EXCLUDES.map((e) => `--exclude=${e}`),
-    '-C', path.dirname(resolved), path.basename(resolved),
+    '-C', path.dirname(resolved), '--', path.basename(resolved),
   ]
   const r = await runTar(args)
 
+  let warning: string | undefined
   if (r.code === 1 && fs.existsSync(filePath)) {
-    console.warn(`[backup] tar 回報檔案在讀取時變動（exit 1），仍視為成功：${sourcePath}`)
+    warning = `${sourcePath}：tar 回報檔案在讀取時變動（exit 1），備份可能不一致`
+    console.warn(`[backup] ${warning}`)
   } else if (r.code !== 0) {
     fs.rmSync(filePath, { force: true })
     const tail = r.stderr.trim().split('\n').slice(-5).join('\n') || r.error?.message || ''
@@ -55,5 +60,5 @@ export async function backupExtraFolder(
   }
 
   fs.chmodSync(filePath, 0o600)
-  return { filename, filePath, size: fs.statSync(filePath).size }
+  return { filename, filePath, size: fs.statSync(filePath).size, ...(warning ? { warning } : {}) }
 }
