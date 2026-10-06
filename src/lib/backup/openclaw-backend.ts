@@ -131,7 +131,7 @@ export async function restoreOpenClawBackup(
 
   // 動現行資料之後：每一步都登記 undo，失敗時反向執行；同時追蹤「資料現在實際在哪」，供錯誤訊息使用
   const undo: Array<{ label: string; fn: () => void }> = []
-  const where: { orig: string | null; restored: string } = { orig: liveDir, restored: stagedOpenclaw }
+  const where: { orig: string | null; restored: string } = { orig: st ? liveDir : null, restored: stagedOpenclaw }
   const carriedIn = new Set<string>() // 原資料的項目，目前在 liveDir 內
   const parked = new Set<string>() // 被取代的原 skill，目前在 parkDir 內
   const copiedSkills = new Set<string>() // 還原進來的 skill，目前在 liveSkills 內
@@ -170,15 +170,23 @@ export async function restoreOpenClawBackup(
     }
 
     const filesOk = undoErrors.length === 0
+    // 檔案回滾成功時 staging 已無用處（pre 目錄絕不刪）；失敗時保留供人工復原
+    if (filesOk) cleanStaging()
     if (filesOk && stopErr === null && startErr === null) {
-      cleanStaging()
-      throw new Error(`Restore failed (${reason}); rolled back to previous data. Previous data intact at ${liveDir}.`)
+      throw new Error(
+        `Restore failed (${reason}); rolled back to previous state. ` +
+          (where.orig === liveDir ? `Previous data intact at ${liveDir}.` : 'There was no previous ~/.openclaw to restore.'),
+      )
     }
 
     // 以下訊息依「實際狀態」組成，只提到真的存在的路徑
     const lines: string[] = [`Restore failed (${reason}).`]
     if (filesOk) {
-      lines.push(`Files were rolled back: your original data is at ${liveDir}.`)
+      lines.push(
+        where.orig === liveDir
+          ? `Files were rolled back: your original data is at ${liveDir}.`
+          : 'Files were rolled back; there was no original ~/.openclaw, so no original data exists to recover.',
+      )
     } else {
       lines.push(`Rollback of files FAILED (${undoErrors.join('; ')}). Manual recovery needed.`)
       if (where.orig !== null) {
@@ -193,9 +201,11 @@ export async function restoreOpenClawBackup(
         )
       }
       if (carriedIn.size) {
+        // 搬進來的項目跟著「還原副本」目錄走（where.restored 會隨 rename 更新），所以實際位置是它底下
+        const items = [...carriedIn].map((x) => join(where.restored, x))
         lines.push(
-          `These items of your original data are still inside ${liveDir}: ${[...carriedIn].join(', ')}` +
-            (where.orig && where.orig !== liveDir ? ` (originally from ${where.orig}).` : '.'),
+          `These items of your original data are currently at: ${items.join(', ')}` +
+            (where.orig ? `; move each back into ${where.orig}.` : '.'),
         )
       }
       if (parked.size) lines.push(`Replaced skills still parked in ${parkDir}: ${[...parked].join(', ')}.`)

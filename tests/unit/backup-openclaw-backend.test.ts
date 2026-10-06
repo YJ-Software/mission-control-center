@@ -454,6 +454,52 @@ describe('restoreOpenClawBackup', () => {
     expect(() => fs.renameSync('/a', '/b')).toThrow(/ENOTEMPTY/)
   })
 
+  it('N1: carry-back undo fails: message locates the carried item where it really is', async () => {
+    const { fs, deps } = setup({ healthy: false })
+    // 回滾時 npm 的 carry-back（live/npm -> pre/npm）失敗
+    fs.failOn.push({ op: 'rename', match: /^\/home\/u\/\.openclaw\/npm -> /, once: true })
+    let msg = ''
+    await restoreOpenClawBackup('/a', deps).catch((e) => (msg = (e as Error).message))
+    // 磁碟事實：npm 在 failed-restore 裡，原資料目錄回到 ~/.openclaw（但缺 npm）
+    expect(fs.snapshot(`${FAILED}/npm`)).toEqual({ pkg: 'LIVE-NPM' })
+    expect(fs.existsSync(`${HOME}/.openclaw/npm`)).toBe(false)
+    expect(msg).toContain(`${FAILED}/npm`)
+    expect(msg).not.toMatch(/still inside \/home\/u\/\.openclaw:/)
+    expect(fs.snapshot(`${HOME}/.openclaw/agents`)).toEqual({ main: 'LIVE-AGENT' })
+    expectOnlyExistingPaths(fs, msg.replace(/injected rename failure on [^)]*/, ''))
+  })
+
+  it('N2: no live ~/.openclaw and gateway stop fails: message does not claim ~/.openclaw holds original data', async () => {
+    const { fs, deps } = setup()
+    fs.rmSync(`${HOME}/.openclaw`, { recursive: true })
+    deps.gateway.stop = async () => {
+      throw new Error('stop timed out')
+    }
+    let msg = ''
+    await restoreOpenClawBackup('/a', deps).catch((e) => (msg = (e as Error).message))
+    expect(msg).not.toMatch(/original data is at/)
+    expect(msg).not.toMatch(/intact at/)
+    expect(msg).toMatch(/no original/i)
+    expect(msg).toMatch(/restart the OpenClaw gateway/)
+  })
+
+  it('N3: staging is cleaned when rollback succeeded even though gateway start failed; pre dir kept', async () => {
+    const { fs, deps } = setup({ healthy: false })
+    deps.gateway.start = async () => {
+      throw new Error('unit failed to start')
+    }
+    await restoreOpenClawBackup('/a', deps).catch(() => {})
+    expect(fs.readdirSync(HOME).filter((n) => n.startsWith('.openclaw-restore-staging'))).toEqual([])
+  })
+
+  it('N3: staging is kept when file rollback failed', async () => {
+    const { fs, deps } = setup({ healthy: false })
+    fs.failOn.push({ op: 'rename', match: /^\/home\/u\/\.openclaw\.pre-restore-.* -> \/home\/u\/\.openclaw$/, once: true })
+    await restoreOpenClawBackup('/a', deps).catch(() => {})
+    expect(fs.readdirSync(HOME).filter((n) => n.startsWith('.openclaw-restore-staging')).length).toBe(1)
+    expect(fs.existsSync(PRE)).toBe(true)
+  })
+
   it('only ever runs backup create|verify|restore', async () => {
     const { deps, calls } = setup()
     await createOpenClawBackup('/out', deps)

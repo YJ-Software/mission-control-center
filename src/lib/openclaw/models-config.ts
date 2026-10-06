@@ -68,11 +68,30 @@ export function runOpenclaw(args: string[], timeoutMs = 15000): Promise<RunResul
 }
 
 /** Extract the first balanced JSON object/array from `s`, skipping any
- *  preceding noise (e.g. openclaw 2026.6.1's clack Doctor-warnings box).
+ *  preceding noise (e.g. openclaw 2026.6.1's clack Doctor-warnings box, or a
+ *  log prefix such as `[plugins] foo`). Each `{` / `[` is tried in order until
+ *  the balanced span from it parses as JSON.
  *  Throws if no top-level JSON value is found. */
 export function extractJson(s: string): unknown {
-  const start = s.search(/[{[]/)
-  if (start < 0) throw new Error(`no JSON value in output: ${s.slice(0, 80)}`)
+  let firstStart = -1
+  for (let start = 0; start < s.length; start++) {
+    const open = s[start]
+    if (open !== '{' && open !== '[') continue
+    if (firstStart < 0) firstStart = start
+    const end = balancedEnd(s, start)
+    if (end < 0) continue
+    try {
+      return JSON.parse(s.slice(start, end + 1))
+    } catch {
+      // not JSON (e.g. "[plugins]"): try the next candidate start
+    }
+  }
+  if (firstStart < 0) throw new Error(`no JSON value in output: ${s.slice(0, 80)}`)
+  throw new Error(`unbalanced JSON in output: ${s.slice(firstStart, firstStart + 80)}`)
+}
+
+/** Index of the bracket closing the one at `start`, or -1 if unbalanced. */
+function balancedEnd(s: string, start: number): number {
   const open = s[start]
   const close = open === '{' ? '}' : ']'
   let depth = 0
@@ -90,10 +109,10 @@ export function extractJson(s: string): unknown {
     else if (c === open) depth++
     else if (c === close) {
       depth--
-      if (depth === 0) return JSON.parse(s.slice(start, i + 1))
+      if (depth === 0) return i
     }
   }
-  throw new Error(`unbalanced JSON in output: ${s.slice(start, start + 80)}`)
+  return -1
 }
 
 export interface ModelsStatus {
