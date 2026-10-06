@@ -34,3 +34,21 @@ describe('isDue', () => {
     expect(isDue('hourly', { interval: 1 }, L(2026, 10, 6, 7, 58), L(2026, 10, 6, 7, 59))).toBe(false)
   })
 })
+
+describe('Input validation & loop bounds (regression)', () => {
+  it('daily with days=[] throws', () => {
+    expect(() => nextRunAt('daily', { days: [], time: '03:00' }, L(2026, 10, 6, 12, 0))).toThrow(/non-empty array/)
+  })
+  it('daily with malformed time "abc" throws', () => {
+    expect(() => nextRunAt('daily', { days: [1, 3], time: 'abc' }, L(2026, 10, 6, 12, 0))).toThrow(/Invalid time format/)
+  })
+  it('weekly with time "25:00" throws', () => {
+    expect(() => nextRunAt('weekly', { day: 2, time: '25:00' }, L(2026, 10, 6, 12, 0))).toThrow(/Invalid time format/)
+  })
+  it('hourly with interval 0 throws', () => {
+    expect(() => nextRunAt('hourly', { interval: 0 }, L(2026, 10, 6, 12, 0))).toThrow(/integer >= 1/)
+  })
+  it('monthly with dayOfMonth 31 throws', () => {
+    expect(() => nextRunAt('monthly', { dayOfMonth: 31, time: '02:00' }, L(2026, 10, 6, 0, 0))).toThrow(/1–28/)
+  })
+})
