@@ -39,7 +39,8 @@ export interface BackupManifest {
   createdAt: string
   hostname: string
   parts: {
-    backend: string
+    /** null：此備份不含 backend（未勾選 OpenClaw） */
+    backend: string | null
     mccDb: string
     mccEnv: string | null
   }
@@ -92,14 +93,14 @@ export function parseManifest(json: unknown): BackupManifest {
     throw new Error('parts must be an object')
   }
 
-  // Validate parts.backend
-  if (typeof parts.backend !== 'string' || parts.backend === '') {
-    throw new Error('parts.backend must be a non-empty string')
-  }
-
-  // Check for absolute paths and .. in parts.backend
-  if (isInvalidPath(parts.backend as string)) {
-    throw new Error('parts.backend must not contain absolute paths or ..')
+  // Validate parts.backend (null = 不含 backend)
+  if (parts.backend !== null) {
+    if (typeof parts.backend !== 'string' || parts.backend === '') {
+      throw new Error('parts.backend must be null or a non-empty string')
+    }
+    if (isInvalidPath(parts.backend as string)) {
+      throw new Error('parts.backend must not contain absolute paths or ..')
+    }
   }
 
   // Validate parts.mccDb
@@ -130,7 +131,7 @@ export function parseManifest(json: unknown): BackupManifest {
     createdAt: obj.createdAt as string,
     hostname: obj.hostname as string,
     parts: {
-      backend: parts.backend as string,
+      backend: parts.backend as string | null,
       mccDb: parts.mccDb as string,
       mccEnv: parts.mccEnv as string | null,
     },

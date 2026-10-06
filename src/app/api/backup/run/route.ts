@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { initDb } from '@/lib/db'
 import { verifyBackupToken } from '@/lib/backup/helpers'
 import { isBackupOrRestoreBusy } from '@/lib/backup/scripts'
+import type { TriggerSource } from '@/lib/jobs/types'
 import { startBackupRun, BackupJobNotFoundError, BackupBusyError } from '@/lib/backup/run-backup'
 
 initDb()
+
+const TRIGGER_SOURCES: TriggerSource[] = ['header-button', 'settings-card', 'quick-action', 'cron', 'api']
 
 export async function POST(req: NextRequest) {
   if (!verifyBackupToken(req)) {
@@ -17,13 +20,14 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const { jobId, destinationId, sourceIds } = body
+  const triggeredBy: TriggerSource = TRIGGER_SOURCES.includes(body.triggeredBy) ? body.triggeredBy : 'api'
 
   try {
     const { logId, jobMetaId } = startBackupRun({
       jobId,
       destinationId,
       sourceIds,
-      triggeredBy: 'api',
+      triggeredBy,
     })
     return NextResponse.json({ ok: true, logId, jobId: jobMetaId })
   } catch (err) {

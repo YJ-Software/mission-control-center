@@ -24,14 +24,19 @@ export interface BackupFile {
 }
 
 // --- Concurrency lock ---
-let runningLogId: number | null = null
+// 鎖放在 globalThis：模組被重複載入（server.ts bundle / Next bundle / dev HMR）時仍共用
+const LOCK_KEY = '__mccBackupRunningLogId'
+const lockStore = globalThis as unknown as Record<string, number | null | undefined>
+function getLock(): number | null {
+  return lockStore[LOCK_KEY] ?? null
+}
 
 export function isBackupRunning(): boolean {
-  return runningLogId !== null
+  return getLock() !== null
 }
 
 export function setRunningLogId(id: number | null): void {
-  runningLogId = id
+  lockStore[LOCK_KEY] = id
 }
 
 /**
@@ -39,11 +44,11 @@ export function setRunningLogId(id: number | null): void {
  * 備份進行中拒絕還原，還原進行中拒絕備份。
  */
 export function isBackupOrRestoreBusy(): boolean {
-  return runningLogId !== null
+  return getLock() !== null
 }
 
 export function getRunningLogId(): number | null {
-  return runningLogId
+  return getLock()
 }
 
 // --- Run OpenClaw backup ---

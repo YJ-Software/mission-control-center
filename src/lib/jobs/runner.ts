@@ -67,6 +67,8 @@ export interface JobSpec {
   expectedVersion?: string
   /** mark the job as 'restarting' before the last phase (for self-restart flows) */
   restartingBeforeLastPhase?: boolean
+  /** 工作結束後（不論成功、失敗、或 runner 自身丟錯）一定會呼叫一次，用來做保底清理 */
+  onSettled?: () => void
 }
 
 function nowIso(): string {
@@ -133,6 +135,7 @@ export function startJob(spec: JobSpec): JobMeta {
 
   // Detach the async work.
   void (async () => {
+   try {
     let overallFailed = false
     for (let i = 0; i < spec.phases.length; i++) {
       const phaseSpec = spec.phases[i]
@@ -203,7 +206,10 @@ export function startJob(spec: JobSpec): JobMeta {
     upsertJobMeta(meta)
     emitJobEvent({ type: 'end', jobId: id, meta })
     logTo(id, undefined, 'system', overallFailed ? '✗ failed' : '✓ done')
-  })()
+   } finally {
+    try { spec.onSettled?.() } catch { /* 保底清理不可再丟錯 */ }
+   }
+  })().catch(() => { /* runner I/O 失敗：onSettled 已處理善後 */ })
 
   return meta
 }

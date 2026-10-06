@@ -29,6 +29,9 @@ describe('parseManifest', () => {
     parts: { backend: 'backend/x-openclaw-backup.tar.gz', mccDb: 'mcc/db.sqlite', mccEnv: 'mcc/env.local' },
   }
   it('accepts a valid manifest', () => expect(parseManifest(ok)).toEqual(ok))
+  it('allows parts.backend null (OpenClaw 未包含)', () => {
+    expect(parseManifest({ ...ok, backendVersion: null, parts: { ...ok.parts, backend: null } }).parts.backend).toBeNull()
+  })
   it('allows mccEnv null and backendVersion null', () => {
     expect(parseManifest({ ...ok, backendVersion: null, parts: { ...ok.parts, mccEnv: null } }).parts.mccEnv).toBeNull()
   })

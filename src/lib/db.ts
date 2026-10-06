@@ -5,6 +5,7 @@ import path from 'path'
 import os from 'os'
 import fs from 'fs'
 import { applyPendingDbRestoreOnce } from './backup/pending-db-restore'
+import { reconcileStaleBackupLogs } from './backup/reconcile'
 
 const DB_DIR = path.join(os.homedir(), '.mission-control')
 export const DB_PATH = path.join(DB_DIR, 'db.sqlite')
@@ -395,5 +396,16 @@ export function initDb() {
   const insertConfig = sqlite.prepare('INSERT OR IGNORE INTO morning_report_config (key, value) VALUES (?, ?)')
   for (const [key, value] of defaultConfigs) {
     insertConfig.run(key, value)
+  }
+
+  // 每個行程只做一次：此時 pending DB restore 已套用、沒有備份在跑，殘留的 processing 一定是孤兒
+  const g = globalThis as unknown as { __mccBackupLogsReconciled?: boolean }
+  if (!g.__mccBackupLogsReconciled) {
+    g.__mccBackupLogsReconciled = true
+    try {
+      reconcileStaleBackupLogs(db)
+    } catch (err) {
+      console.warn('[Backup] reconcile stale backup_logs failed:', (err as Error).message)
+    }
   }
 }

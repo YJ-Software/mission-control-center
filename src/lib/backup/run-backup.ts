@@ -4,7 +4,7 @@ import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { eq, desc } from 'drizzle-orm'
 import { db, DB_PATH } from '@/lib/db'
-import { startJob } from '@/lib/jobs/runner'
+import { startJob, type PhaseSpec } from '@/lib/jobs/runner'
 import type { JobMeta, TriggerSource } from '@/lib/jobs/types'
 import { getVersionInfo } from '@/lib/version'
 import { backupJobs, backupDestinations, backupSources, backupLogs } from './schema'
@@ -15,9 +15,6 @@ import { expandHome, getBackupOutputDir, getAllBackupDirs } from './helpers'
 import {
   isBackupOrRestoreBusy, setRunningLogId, runExtraBackup, uploadToFtp, deleteBackupFile,
 } from './scripts'
-
-/** 不含 OpenClaw 時 manifest.parts.backend 的佔位值（parseManifest 要求非空且不得為絕對路徑）。還原端以此判斷沒有 backend 部分。 */
-export const BACKEND_NOT_INCLUDED = '(not-included)'
 
 export class BackupJobNotFoundError extends Error {
   constructor() { super('Job not found') }
@@ -79,6 +76,19 @@ const defaultDeps = (): BackupRunDeps => ({
 })
 
 
+/** 輸出目錄中所有暫存物（staging、私有 tar/extra 目錄、.partial）都用這個前綴，下次執行開頭整批清掃 */
+export const TEMP_PREFIX = '.mcc-backup-'
+
+function sweepOrphans(dir: string) {
+  let names: string[]
+  try { names = fs.readdirSync(dir) } catch { return }
+  for (const n of names) {
+    if (n.startsWith(TEMP_PREFIX)) {
+      try { fs.rmSync(path.join(dir, n), { recursive: true, force: true }) } catch { /* best effort */ }
+    }
+  }
+}
+
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
@@ -89,7 +99,7 @@ export function startBackupRun(
 ): { logId: number; jobMetaId: string } {
   const deps: BackupRunDeps = { ...defaultDeps(), ...depsOverride }
 
-  // --- 解析 job / destination（可能丟錯，此時尚未上鎖、未建 log） ---
+  // --- 解析 job / destination、計算名稱（可能丟錯，此時尚未上鎖、未建 log） ---
   let destConfig: Record<string, unknown> = {}
   let destType = 'local'
   let destName = 'Local'
@@ -115,194 +125,277 @@ export function startBackupRun(
     }
   }
   const jobId = opts.jobId
-  const outputDir = destType === 'local' && destConfig.path
-    ? expandHome(String(destConfig.path))
-    : getBackupOutputDir()
+  // resolve：相對路徑不可跟著 cwd 漂移（release 模式 cwd 是會被換掉的版本目錄）
+  const outputDir = path.resolve(
+    destType === 'local' && destConfig.path ? expandHome(String(destConfig.path)) : getBackupOutputDir(),
+  )
+  const now = deps.now()
+  const stamp = String(now.getTime())
+  const stagingDir = path.join(outputDir, `${TEMP_PREFIX}staging-${stamp}`)
+  const finalPath = path.join(
+    outputDir,
+    buildArchiveName({ backend: 'openclaw', host: deps.hostname(), at: now }),
+  )
 
   // --- 單一執行：同步檢查並上鎖（還原共用這把鎖） ---
   if (isBackupOrRestoreBusy()) throw new BackupBusyError()
-  const inserted = db.insert(backupLogs).values({
+  const logId = db.insert(backupLogs).values({
     jobId: jobId || null,
     status: 'processing',
     destination: destName,
-  }).returning({ id: backupLogs.id }).get()
-  const logId = inserted.id
+  }).returning({ id: backupLogs.id }).get().id
   setRunningLogId(logId)
 
-  // --- 執行狀態 ---
-  const now = deps.now()
-  const stamp = String(now.getTime())
-  const stagingDir = path.join(outputDir, `.mcc-backup-staging-${stamp}`)
-  const tmpArchive = path.join(outputDir, `.mcc-backup-tmp-${stamp}.partial`)
-  const finalPath = path.join(outputDir, buildArchiveName({ backend: 'openclaw', host: deps.hostname(), at: now }))
   const st = {
+    tarDir: null as string | null,
+    extraDir: null as string | null,
     finalWritten: false,
     extras: [] as string[],
     warnings: [] as string[],
-    backendPart: BACKEND_NOT_INCLUDED,
+    backendPart: null as string | null,
     backendVersion: null as string | null,
     envCopied: false,
     finished: false,
   }
 
   const rmQuiet = (p: string) => { try { fs.rmSync(p, { recursive: true, force: true }) } catch { /* best effort */ } }
-  const cleanupTemp = () => { rmQuiet(stagingDir); rmQuiet(tmpArchive) }
+  const cleanupTemp = () => {
+    rmQuiet(stagingDir)
+    if (st.tarDir) rmQuiet(st.tarDir)
+    if (st.extraDir) rmQuiet(st.extraDir)
+  }
+  /** 清理與解鎖：無條件、可重複呼叫、絕不丟錯 */
   const finalize = () => {
     if (st.finished) return
     st.finished = true
-    cleanupTemp()
+    try { cleanupTemp() } catch { /* ignore */ }
     setRunningLogId(null)
   }
-  const failRun = (phase: string, err: unknown, log?: Log) => {
-    const msg = `${phase}: ${errText(err)}`
-    log?.('stderr', msg)
+  const safeLog = (log?: Log): Log => (stream, text) => {
+    try { log?.(stream, text) } catch { /* job log I/O（例如 ENOSPC）不可打斷清理 */ }
+  }
+  /** keep=true：保留本機封存檔與已完成的 extra（例如上傳失敗），並記錄路徑 */
+  const failRun = (phaseName: string, err: unknown, log?: Log, keep = false) => {
+    const msg = `${phaseName}: ${errText(err)}`
+    safeLog(log)('stderr', msg)
     try {
       cleanupTemp()
-      if (st.finalWritten) rmQuiet(finalPath)
-      for (const f of st.extras) rmQuiet(f)
-      db.update(backupLogs).set({
+      const values: Record<string, unknown> = {
         status: 'failed',
         completedAt: Math.floor(Date.now() / 1000),
         error: msg,
-      }).where(eq(backupLogs.id, logId)).run()
+      }
+      if (keep && st.finalWritten) {
+        values.filePath = finalPath
+        values.fileSize = fs.statSync(finalPath).size
+        values.extraFilePaths = st.extras.length > 0 ? JSON.stringify(st.extras) : null
+        values.error = `${msg}（本機備份檔已保留：${finalPath}）`
+      } else {
+        if (st.finalWritten) rmQuiet(finalPath)
+        for (const f of st.extras) rmQuiet(f)
+      }
+      db.update(backupLogs).set(values).where(eq(backupLogs.id, logId)).run()
     } catch { /* 清理失敗不可擋住解鎖 */ }
     finalize()
   }
-  const phase = (name: string, fn: (log: Log) => Promise<void>) => ({
+  const phase = (name: string, fn: (log: Log) => Promise<void>, keepOnFail = false) => ({
     name,
-    inline: async (log: Log) => {
-      try { await fn(log); return 0 } catch (e) { failRun(name, e, log); return 1 }
+    inline: async (rawLog: Log) => {
+      const log = safeLog(rawLog)
+      try { await fn(log); return 0 } catch (e) { failRun(name, e, log, keepOnFail); return 1 }
     },
   })
   const ensureStaging = () => {
     if (fs.existsSync(stagingDir)) return
-    fs.mkdirSync(outputDir, { recursive: true })
     fs.mkdirSync(stagingDir, { mode: 0o700 })
     fs.chmodSync(stagingDir, 0o700)
   }
-
-  const phases = []
-
-  if (includeOpenClaw) {
-    phases.push(phase('openclaw backup create', async (log) => {
-      ensureStaging()
-      const r = await deps.openclawCreate(stagingDir, log)
-      st.backendPart = path.basename(r.archivePath)
-      st.backendVersion = r.version
-      st.warnings.push(...r.warnings)
-    }))
+  /** 私有（0700）暫存目錄：機敏檔案從建立起就不會被他人讀取 */
+  const makePrivateDir = (name: string) => {
+    const d = fs.mkdtempSync(path.join(outputDir, `${TEMP_PREFIX}${name}-`))
+    fs.chmodSync(d, 0o700)
+    return d
+  }
+  const uniqueDest = (name: string) => {
+    const ext = '.tar.gz'
+    const stem = name.endsWith(ext) ? name.slice(0, -ext.length) : name
+    let candidate = path.join(outputDir, name)
+    for (let i = 2; fs.existsSync(candidate); i++) candidate = path.join(outputDir, `${stem}_${i}${ext}`)
+    return candidate
   }
 
-  phases.push(phase('snapshot MCC database', async (log) => {
-    ensureStaging()
-    await deps.snapshotMccDb(deps.dbPath, path.join(stagingDir, 'mcc.sqlite'))
-    st.envCopied = deps.copyEnvFile(deps.envPath, path.join(stagingDir, 'mcc.env'))
-    if (!st.envCopied) log('system', '.env.local 不存在，略過')
-  }))
+  try {
+    fs.mkdirSync(outputDir, { recursive: true })
+    sweepOrphans(outputDir) // 單一執行保證：殘留的暫存物一定是上次中斷的孤兒
 
-  phases.push(phase('package archive', async (log) => {
-    const manifest: BackupManifest = {
-      format: 1,
-      backend: 'openclaw',
-      backendVersion: st.backendVersion,
-      mccVersion: deps.mccVersion(),
-      createdAt: now.toISOString(),
-      hostname: deps.hostname(),
-      parts: {
-        backend: st.backendPart,
-        mccDb: 'mcc.sqlite',
-        mccEnv: st.envCopied ? 'mcc.env' : null,
-      },
+    const phases: PhaseSpec[] = []
+
+    if (includeOpenClaw) {
+      phases.push(phase('openclaw backup create', async (log) => {
+        ensureStaging()
+        const r = await deps.openclawCreate(stagingDir, log)
+        const real = (p: string) => fs.realpathSync(p)
+        let inside = false
+        try {
+          inside = real(path.dirname(path.resolve(r.archivePath))) === real(stagingDir)
+            && fs.existsSync(r.archivePath)
+        } catch { /* 視為不在 staging 內 */ }
+        if (!inside) {
+          rmQuiet(r.archivePath)
+          throw new Error(`OpenClaw 備份檔不在預期的暫存目錄內：${r.archivePath}`)
+        }
+        st.backendPart = path.basename(r.archivePath)
+        st.backendVersion = r.version
+        st.warnings.push(...r.warnings)
+      }))
     }
-    fs.writeFileSync(path.join(stagingDir, 'manifest.json'), JSON.stringify(manifest, null, 2), { mode: 0o600 })
-    await deps.tar(['czf', tmpArchive, '-C', stagingDir, '.'])
-    fs.chmodSync(tmpArchive, 0o600)
-    if (fs.existsSync(finalPath)) throw new Error(`target file already exists: ${path.basename(finalPath)}`)
-    fs.renameSync(tmpArchive, finalPath)
-    st.finalWritten = true
-    rmQuiet(stagingDir)
-    log('system', `archive: ${finalPath}`)
-  }))
 
-  if (sourceIds.length > 0) {
-    phases.push(phase('extra folders', async (log) => {
-      for (const sourceId of sourceIds) {
-        const source = db.select().from(backupSources).where(eq(backupSources.id, sourceId)).get()
-        if (!source?.enabled) continue
-        const r = await deps.runExtraBackup(source.path, outputDir, source.name)
-        if (r.filePath) st.extras.push(r.filePath)
-        if (r.warning) { st.warnings.push(r.warning); log('system', r.warning) }
+    phases.push(phase('snapshot MCC database', async (log) => {
+      ensureStaging()
+      await deps.snapshotMccDb(deps.dbPath, path.join(stagingDir, 'mcc.sqlite'))
+      st.envCopied = deps.copyEnvFile(deps.envPath, path.join(stagingDir, 'mcc.env'))
+      if (!st.envCopied) log('system', '.env.local 不存在，略過')
+    }))
+
+    phases.push(phase('package archive', async (log) => {
+      const manifest: BackupManifest = {
+        format: 1,
+        backend: 'openclaw',
+        backendVersion: st.backendVersion,
+        mccVersion: deps.mccVersion(),
+        createdAt: now.toISOString(),
+        hostname: deps.hostname(),
+        parts: {
+          backend: st.backendPart,
+          mccDb: 'mcc.sqlite',
+          mccEnv: st.envCopied ? 'mcc.env' : null,
+        },
       }
+      fs.writeFileSync(path.join(stagingDir, 'manifest.json'), JSON.stringify(manifest, null, 2), { mode: 0o600 })
+      // tar 寫進獨立的 0700 目錄：封存檔從建立起就不可被他人讀取，chmod 600 後才 rename 到最終名稱
+      st.tarDir = makePrivateDir('tmp')
+      const tmpArchive = path.join(st.tarDir, 'archive.partial')
+      await deps.tar(['czf', tmpArchive, '--force-local', '-C', stagingDir, '.'])
+      fs.chmodSync(tmpArchive, 0o600)
+      if (fs.existsSync(finalPath)) throw new Error(`target file already exists: ${path.basename(finalPath)}`)
+      fs.renameSync(tmpArchive, finalPath)
+      st.finalWritten = true
+      rmQuiet(stagingDir)
+      rmQuiet(st.tarDir)
+      log('system', `archive: ${finalPath}`)
     }))
-  }
 
-  if (destType === 'ftp' && destConfig.ip) {
-    phases.push(phase('upload', async () => {
-      await deps.uploadToFtp(finalPath, destConfig as Parameters<typeof uploadToFtp>[1])
-    }))
-  }
-
-  phases.push(phase('record result', async () => {
-    db.update(backupLogs).set({
-      status: 'completed',
-      completedAt: Math.floor(Date.now() / 1000),
-      fileSize: fs.statSync(finalPath).size,
-      filePath: finalPath,
-      extraFilePaths: st.extras.length > 0 ? JSON.stringify(st.extras) : null,
-      // 完成但有警告沿用 error 欄位呈現
-      error: st.warnings.length > 0 ? st.warnings.join('\n') : null,
-    }).where(eq(backupLogs.id, logId)).run()
-  }))
-
-  // retention 在 completed 之後執行，任何錯誤都只記警告，絕不讓備份變 failed
-  phases.push({
-    name: 'retention',
-    inline: async (log: Log) => {
-      try {
-        if (retainCount > 0 && jobId) {
-          const logs = db.select().from(backupLogs)
-            .where(eq(backupLogs.jobId, jobId))
-            .orderBy(desc(backupLogs.startedAt), desc(backupLogs.id)).all()
-            .filter((l) => l.status === 'completed')
-          if (logs.length > retainCount) {
-            const dirs = getAllBackupDirs()
-            for (const old of logs.slice(retainCount)) {
-              const files: string[] = []
-              if (old.filePath) files.push(old.filePath)
-              if (old.extraFilePaths) {
-                try { files.push(...(JSON.parse(old.extraFilePaths) as string[])) } catch { /* ignore */ }
-              }
-              let allOk = true
-              for (const f of files) {
-                try { deleteBackupFile(f, dirs) } catch (e) {
-                  allOk = false
-                  log('stderr', `WARNING retention: ${f}: ${errText(e)}`)
-                }
-              }
-              if (allOk) db.update(backupLogs).set({ status: 'canceled' }).where(eq(backupLogs.id, old.id)).run()
+    if (sourceIds.length > 0) {
+      // extra 資料夾失敗只是警告：主備份檔是有效資料，不可因此丟棄
+      phases.push(phase('extra folders', async (log) => {
+        st.extraDir = makePrivateDir('extra')
+        for (const sourceId of sourceIds) {
+          const source = db.select().from(backupSources).where(eq(backupSources.id, sourceId)).get()
+          if (!source?.enabled) continue
+          try {
+            const r = await deps.runExtraBackup(source.path, st.extraDir, source.name)
+            if (r.filePath) {
+              const dest = uniqueDest(path.basename(r.filePath))
+              fs.renameSync(r.filePath, dest)
+              st.extras.push(dest)
             }
+            if (r.warning) { st.warnings.push(r.warning); log('system', r.warning) }
+          } catch (e) {
+            const w = `extra 資料夾「${source.name}」備份失敗（已略過）：${errText(e)}`
+            st.warnings.push(w)
+            log('stderr', w)
           }
         }
-      } catch (e) {
-        log('stderr', `WARNING retention: ${errText(e)}`)
-      } finally {
-        finalize()
-      }
-      return 0
-    },
-  })
+        rmQuiet(st.extraDir)
+      }))
+    }
 
-  let meta: JobMeta
-  try {
-    meta = deps.startJob({
+    if (destType === 'ftp' && destConfig.ip) {
+      phases.push(phase('upload', async () => {
+        await deps.uploadToFtp(finalPath, destConfig as Parameters<typeof uploadToFtp>[1])
+      }, true))
+    }
+
+    phases.push(phase('record result', async () => {
+      db.update(backupLogs).set({
+        status: 'completed',
+        completedAt: Math.floor(Date.now() / 1000),
+        fileSize: fs.statSync(finalPath).size,
+        filePath: finalPath,
+        extraFilePaths: st.extras.length > 0 ? JSON.stringify(st.extras) : null,
+        // 完成但有警告沿用 error 欄位呈現
+        error: st.warnings.length > 0 ? st.warnings.join('\n') : null,
+      }).where(eq(backupLogs.id, logId)).run()
+    }))
+
+    // retention 在 completed 之後執行，任何錯誤都只記警告，絕不讓備份變 failed
+    phases.push({
+      name: 'retention',
+      inline: async (rawLog: Log) => {
+        const log = safeLog(rawLog)
+        try {
+          if (retainCount > 0 && jobId) {
+            const logs = db.select().from(backupLogs)
+              .where(eq(backupLogs.jobId, jobId))
+              .orderBy(desc(backupLogs.startedAt), desc(backupLogs.id)).all()
+              .filter((l) => l.status === 'completed')
+            if (logs.length > retainCount) {
+              const dirs = getAllBackupDirs()
+              for (const old of logs.slice(retainCount)) {
+                let mainPath: string | null = old.filePath
+                let extras: string[] = []
+                if (old.extraFilePaths) {
+                  try { extras = JSON.parse(old.extraFilePaths) as string[] } catch { /* ignore */ }
+                }
+                const tryDelete = (f: string) => {
+                  try { deleteBackupFile(f, dirs); return true } catch (e) {
+                    log('stderr', `WARNING retention: ${f}: ${errText(e)}`)
+                    return false
+                  }
+                }
+                if (mainPath && tryDelete(mainPath)) mainPath = null
+                extras = extras.filter((f) => !tryDelete(f))
+                if (!mainPath && extras.length === 0) {
+                  db.update(backupLogs).set({ status: 'canceled' }).where(eq(backupLogs.id, old.id)).run()
+                } else {
+                  // 只剩刪不掉的路徑：寫回剩餘，不留指向已刪檔案的紀錄
+                  db.update(backupLogs).set({
+                    filePath: mainPath,
+                    extraFilePaths: extras.length > 0 ? JSON.stringify(extras) : null,
+                  }).where(eq(backupLogs.id, old.id)).run()
+                }
+              }
+            }
+          }
+        } catch (e) {
+          log('stderr', `WARNING retention: ${errText(e)}`)
+        } finally {
+          finalize()
+        }
+        return 0
+      },
+    })
+
+    const meta = deps.startJob({
       kind: 'backup-run',
       label: 'MCC 備份',
       triggeredBy: opts.triggeredBy,
       phases,
+      // 保底：即使 runner 自己的 I/O 丟錯、沒跑到最後一個 phase，也一定解鎖並收尾
+      onSettled: () => {
+        if (st.finished) return
+        try {
+          const cur = db.select().from(backupLogs).where(eq(backupLogs.id, logId)).get()
+          if (cur?.status === 'processing') failRun('job runner', '工作在完成前中斷')
+          else finalize()
+        } catch {
+          finalize()
+        }
+      },
     })
+    return { logId, jobMetaId: meta.id }
   } catch (e) {
     failRun('start job', e)
     throw e
   }
-  return { logId, jobMetaId: meta.id }
 }
