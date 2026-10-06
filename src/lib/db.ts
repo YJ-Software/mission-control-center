@@ -4,12 +4,17 @@ import * as schema from './schema'
 import path from 'path'
 import os from 'os'
 import fs from 'fs'
+import { applyPendingDbRestoreOnce } from './backup/pending-db-restore'
 
 const DB_DIR = path.join(os.homedir(), '.mission-control')
 const DB_PATH = path.join(DB_DIR, 'db.sqlite')
 
 if (!fs.existsSync(DB_DIR)) {
   fs.mkdirSync(DB_DIR, { recursive: true })
+}
+
+if (applyPendingDbRestoreOnce(DB_PATH) === 'applied') {
+  console.log('[Backup] restored MCC database applied from backup')
 }
 
 const sqlite = new Database(DB_PATH)
