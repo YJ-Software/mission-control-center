@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { waitForAgentOverride } from './config-guard'
 
 let cachedPath: string | null = null
 /** PATH with the usual openclaw install locations folded in, so a spawn works
@@ -316,7 +317,7 @@ export function applyAgentOverride(
 /** Read the whole `agents` object. Returns {} when this OpenClaw has no agents
  * config at all — including 2026.8.1's "Unknown config path", which the old
  * `not found`-only check mistook for a hard failure and turned into a 500. */
-async function readAgentsConfig(): Promise<unknown> {
+export async function readAgentsConfig(): Promise<unknown> {
   const r = await runOpenclaw(['config', 'get', 'agents'])
   if (r.code !== 0) {
     if (/not found|unknown config path/i.test(r.stderr)) return {}
@@ -352,13 +353,35 @@ export async function clearAgentModelOverride(agentId: string): Promise<void> {
   await writeAgentOverride(agentId, undefined)
 }
 
-async function writeAgentOverride(
+export interface WriteOverrideDeps {
+  read(): Promise<unknown>
+  write(path: string, value: unknown): Promise<void>
+  sleep(ms: number): Promise<void>
+}
+
+const defaultWriteDeps: WriteOverrideDeps = {
+  read: readAgentsConfig,
+  write: async (path, value) => {
+    const r = await runOpenclaw(['config', 'set', path, JSON.stringify(value), '--strict-json'])
+    if (r.code !== 0) throw new Error(`config set failed (${r.code}): ${r.stderr.trim()}`)
+  },
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}
+
+/** Write, then verify the override is really in the config. A `config set`
+ * that exits 0 can still be lost under load (2026.9.8), so one retry is
+ * attempted from a fresh read before giving up loudly. */
+export async function writeAgentOverride(
   agentId: string,
   override: AgentModelOverride | undefined,
+  deps: WriteOverrideDeps = defaultWriteDeps,
 ): Promise<void> {
-  const { path, value } = applyAgentOverride(await readAgentsConfig(), agentId, override)
-  const r = await runOpenclaw(['config', 'set', path, JSON.stringify(value), '--strict-json'])
-  if (r.code !== 0) throw new Error(`config set failed (${r.code}): ${r.stderr.trim()}`)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { path, value } = applyAgentOverride(await deps.read(), agentId, override)
+    await deps.write(path, value)
+    if (await waitForAgentOverride(agentId, override, deps)) return
+  }
+  throw new Error(`agent override did not persist for ${agentId} — OpenClaw may be busy; try again`)
 }
 
 /** Read the TRUE global defaults (agents.defaults.model) from openclaw.json,

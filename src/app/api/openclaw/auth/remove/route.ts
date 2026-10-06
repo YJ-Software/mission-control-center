@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { guardAgentsDuring } from '@/lib/openclaw/config-guard'
+import { readAgentsConfig, runOpenclaw } from '@/lib/openclaw/models-config'
 import { invalidateStoredProfiles, listAgents, removeProfile } from '@/lib/openclaw/auth-profiles'
 
 const SAFE_ID = /^[a-zA-Z0-9_.-]+$/
@@ -31,9 +33,24 @@ export async function POST(req: NextRequest) {
   // removal or a CLI timeout reached the dashboard as an empty 500 — the delete
   // button just failed, with nothing in the response saying why.
   try {
-    for (const a of targets) {
-      await removeProfile(a, profileId)
-    }
+    // `models auth logout` rewrites openclaw.json from its own view of the config;
+    // under load that view can lack a just-made agents change and put it back
+    // (OpenClaw 2026.9.8), so the agents section is snapshotted and restored.
+    await guardAgentsDuring(
+      async () => {
+        for (const a of targets) {
+          await removeProfile(a, profileId)
+        }
+      },
+      {
+        readAgents: readAgentsConfig,
+        writeAgents: async (v) => {
+          const r = await runOpenclaw(['config', 'set', 'agents', JSON.stringify(v), '--strict-json'])
+          if (r.code !== 0) throw new Error(`config set agents failed (${r.code}): ${r.stderr.trim()}`)
+        },
+        log: (m) => console.warn(`[auth/remove] ${m}`),
+      },
+    )
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : String(err) },
