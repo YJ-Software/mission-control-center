@@ -64,17 +64,24 @@ class FakeFs {
     if (!src || src.dir[src.name] === undefined) throw new Error(`ENOENT ${a}`)
     const dst = this.parent(b)
     if (!dst) throw new Error(`ENOENT parent of ${b}`)
-    if (dst.dir[dst.name] !== undefined) throw new Error(`EEXIST ${b}`)
-    dst.dir[dst.name] = src.dir[src.name]
+    const existing = dst.dir[dst.name]
+    const moving = src.dir[src.name]
+    if (existing !== undefined) {
+      // 比照 Linux rename(2)：目的地是非空目錄 -> ENOTEMPTY；目錄蓋不了檔案/反之；空目錄與檔案可被取代
+      if (isDir(existing) && Object.keys(existing).length > 0) throw new Error(`ENOTEMPTY ${b}`)
+      if (isDir(existing) !== isDir(moving)) throw new Error(`ENOTDIR/EISDIR ${b}`)
+    }
+    dst.dir[dst.name] = moving
     delete src.dir[src.name]
   }
-  rmSync = ((p: string, o?: { force?: boolean }) => {
+  rmSync = ((p: string, o?: { force?: boolean; recursive?: boolean }) => {
     this.maybeFail('rm', p)
     const pr = this.parent(p)
     if (!pr || pr.dir[pr.name] === undefined) {
       if (o?.force) return
       throw new Error(`ENOENT ${p}`)
     }
+    if (isDir(pr.dir[pr.name]) && !o?.recursive) throw new Error(`ERR_FS_EISDIR ${p}`)
     delete pr.dir[pr.name]
   }) as unknown as OpenClawBackendDeps['fs']['rmSync']
   cpSync = ((a: string, b: string, o?: { verbatimSymlinks?: boolean }) => {
@@ -82,8 +89,16 @@ class FakeFs {
     if (!o?.verbatimSymlinks) throw new Error('cpSync must use verbatimSymlinks')
     const n = this.get(a)
     if (n === undefined) throw new Error(`ENOENT ${a}`)
-    this.put(b, JSON.parse(JSON.stringify(n)))
+    const copy = JSON.parse(JSON.stringify(n)) as Node
+    const existing = this.get(b)
+    // 真正的 cpSync 會把目錄「合併」進既有目錄
+    if (isDir(existing) && isDir(copy)) Object.assign(existing, copy)
+    else this.put(b, copy)
   }) as unknown as OpenClawBackendDeps['fs']['cpSync']
+  lstatSync = ((p: string) => {
+    const n = this.get(p)
+    return n === undefined ? undefined : { isSymbolicLink: () => typeof n === 'object' && '__link' in n }
+  }) as unknown as OpenClawBackendDeps['fs']['lstatSync']
   mkdirSync = ((p: string) => {
     if (!isDir(this.get(p))) this.put(p, {})
     return undefined
@@ -191,8 +206,17 @@ describe('createOpenClawBackup / verify', () => {
   })
 })
 
+function expectOnlyExistingPaths(fs: FakeFs, msg: string) {
+  const paths = msg.match(/\/home\/u\/[^\s,;)]+/g) ?? []
+  for (const raw of paths) {
+    const p = raw.replace(/[.:]+$/, '')
+    expect(fs.existsSync(p), `message names nonexistent path ${p}: ${msg}`).toBe(true)
+  }
+}
+
 describe('restoreOpenClawBackup', () => {
   const PRE = `${HOME}/.openclaw.pre-restore-2026-10-06T08-00-00-123Z`
+  const FAILED = `${HOME}/.openclaw.failed-restore-2026-10-06T08-00-00-123Z`
 
   it('success: staged content live, extensions/npm/tmp from live, pre kept, stop→start, symlinks preserved', async () => {
     const { fs, deps, events } = setup()
@@ -212,7 +236,10 @@ describe('restoreOpenClawBackup', () => {
     expect(pre.extensions).toBeUndefined()
     // managed skills：被取代者改名保留，沒被碰的不動
     expect(fs.snapshot(`${HOME}/.agents/skills/s1`)).toEqual({ f: 'RESTORED-SKILL-S1' })
-    expect(fs.snapshot(`${HOME}/.agents/skills/s1.pre-restore-2026-10-06T08-00-00-123Z`)).toEqual({ f: 'LIVE-SKILL-S1' })
+    expect(fs.snapshot(`${HOME}/.agents/skills.pre-restore-2026-10-06T08-00-00-123Z/s1`)).toEqual({ f: 'LIVE-SKILL-S1' })
+    expect(r.parkedSkillsDir).toBe(`${HOME}/.agents/skills.pre-restore-2026-10-06T08-00-00-123Z`)
+    // 不可有任何 *.pre-restore-* 留在 skills 目錄裡（OpenClaw 會當成重複 skill 載入）
+    expect(fs.readdirSync(`${HOME}/.agents/skills`).filter((n) => n.includes('pre-restore'))).toEqual([])
     expect(fs.snapshot(`${HOME}/.agents/skills/mine`)).toEqual({ f: 'LIVE-MINE' })
     expect(events).toEqual(['stop', 'start', 'wait'])
     // staging 已清除
@@ -317,10 +344,114 @@ describe('restoreOpenClawBackup', () => {
       msg = (e as Error).message
     }
     expect(msg).toMatch(/not healthy/)
-    expect(msg).toMatch(/rollback failed/)
+    expect(msg).toMatch(/Rollback of files FAILED/)
     expect(msg).toMatch(/Manual recovery/)
     expect(msg).toContain(PRE)
     expect(fs.existsSync(PRE)).toBe(true)
+    expect(msg).toContain(`ORIGINAL data is at ${PRE}`)
+    expect(msg).toContain(`RESTORED copy is at ${FAILED}`)
+    // 此情境下 ~/.openclaw 確實不存在，訊息明說「不在那裡」是正確的（不套用只含存在路徑的檢查）
+    expect(fs.existsSync(`${HOME}/.openclaw`)).toBe(false)
+  })
+
+  it('I2-A: gateway.stop always fails: live untouched, message names no nonexistent path, says restart needed', async () => {
+    const { fs, deps } = setup()
+    deps.gateway.stop = async () => {
+      throw new Error('stop timed out')
+    }
+    const before = fs.snapshot(`${HOME}/.openclaw`)
+    let msg = ''
+    await restoreOpenClawBackup('/a', deps).catch((e) => (msg = (e as Error).message))
+    expect(fs.snapshot(`${HOME}/.openclaw`)).toEqual(before)
+    expect(msg).toMatch(/stop timed out/)
+    expect(msg).toMatch(/restart the OpenClaw gateway/)
+    expect(msg).toContain(`original data is at ${HOME}/.openclaw`)
+    expect(msg).not.toContain('pre-restore')
+    expectOnlyExistingPaths(fs, msg)
+  })
+
+  it('I2-B: gateway never starts (unhealthy then start fails in rollback): files rolled back, message says original is at ~/.openclaw', async () => {
+    const { fs, deps } = setup({ healthy: false })
+    deps.gateway.start = async () => {
+      throw new Error('unit failed to start')
+    }
+    const before = fs.snapshot(`${HOME}/.openclaw`)
+    let msg = ''
+    await restoreOpenClawBackup('/a', deps).catch((e) => (msg = (e as Error).message))
+    expect(fs.snapshot(`${HOME}/.openclaw`)).toEqual(before)
+    expect(msg).toContain(`original data is at ${HOME}/.openclaw`)
+    expect(msg).toMatch(/could not be started/)
+    expect(msg).not.toContain('pre-restore')
+    expect(msg).not.toMatch(/RESTORED data/)
+    expectOnlyExistingPaths(fs, msg)
+  })
+
+  it('M1: no live ~/.openclaw: restore works and preRestoreDir is null', async () => {
+    const { fs, deps } = setup()
+    fs.rmSync(`${HOME}/.openclaw`, { recursive: true })
+    const r = await restoreOpenClawBackup('/a', deps)
+    expect(r.preRestoreDir).toBeNull()
+    expect((fs.snapshot(`${HOME}/.openclaw`) as { [k: string]: Node })['openclaw.json']).toBe('RESTORED-CONFIG')
+  })
+
+  it('M1: no live ~/.openclaw and unhealthy: rollback leaves no ~/.openclaw and no pre dir', async () => {
+    const { fs, deps } = setup({ healthy: false })
+    fs.rmSync(`${HOME}/.openclaw`, { recursive: true })
+    await expect(restoreOpenClawBackup('/a', deps)).rejects.toThrow(/rolled back/)
+    expect(fs.existsSync(`${HOME}/.openclaw`)).toBe(false)
+    expect(fs.existsSync(PRE)).toBe(false)
+  })
+
+  it('M2: ~/.agents/skills created by this run is removed on rollback', async () => {
+    const { fs, deps } = setup({ healthy: false })
+    fs.rmSync(`${HOME}/.agents`, { recursive: true })
+    await expect(restoreOpenClawBackup('/a', deps)).rejects.toThrow(/rolled back/)
+    expect(fs.existsSync(`${HOME}/.agents/skills`)).toBe(false)
+    expect(fs.existsSync(`${HOME}/.agents/skills.pre-restore-2026-10-06T08-00-00-123Z`)).toBe(false)
+  })
+
+  it('I1: rollback of parked skills puts them back and removes the park dir', async () => {
+    const { fs, deps } = setup({ healthy: false })
+    await expect(restoreOpenClawBackup('/a', deps)).rejects.toThrow(/rolled back/)
+    expect(fs.snapshot(`${HOME}/.agents/skills/s1`)).toEqual({ f: 'LIVE-SKILL-S1' })
+    expect(fs.readdirSync(`${HOME}/.agents`)).toEqual(['skills'])
+  })
+
+  it('M4: live entries are listed after gateway.stop', async () => {
+    const { fs, deps } = setup()
+    const origStop = deps.gateway.stop
+    deps.gateway.stop = async () => {
+      await origStop()
+      fs.put(`${HOME}/.openclaw/late-entry`, { z: 'LATE' }) // gateway 停止前最後一刻建立的項目
+    }
+    await restoreOpenClawBackup('/a', deps)
+    expect((fs.snapshot(`${HOME}/.openclaw`) as { [k: string]: Node })['late-entry']).toEqual({ z: 'LATE' })
+  })
+
+  it('M9: ~/.openclaw is a symlink: refuses before touching anything', async () => {
+    const { fs, deps, calls, events } = setup()
+    fs.rmSync(`${HOME}/.openclaw`, { recursive: true })
+    fs.put(`${HOME}/.openclaw`, { __link: '/elsewhere' })
+    const before = fs.snapshot(HOME)
+    await expect(restoreOpenClawBackup('/a', deps)).rejects.toThrow(/symbolic link/)
+    expect(fs.snapshot(HOME)).toEqual(before)
+    expect(calls).toEqual([])
+    expect(events).toEqual([])
+  })
+
+  it('rollback of a staged skill that did not exist live removes the copy', async () => {
+    const { fs, deps } = setup({ healthy: false })
+    fs.rmSync(`${HOME}/.agents/skills/s1`, { recursive: true })
+    await expect(restoreOpenClawBackup('/a', deps)).rejects.toThrow(/rolled back/)
+    expect(fs.existsSync(`${HOME}/.agents/skills/s1`)).toBe(false)
+    expect(fs.snapshot(`${HOME}/.agents/skills/mine`)).toEqual({ f: 'LIVE-MINE' })
+  })
+
+  it('fake fs fidelity: rename onto a non-empty dir throws ENOTEMPTY', () => {
+    const fs = new FakeFs()
+    fs.put('/a/x', 'f')
+    fs.put('/b/y', 'f')
+    expect(() => fs.renameSync('/a', '/b')).toThrow(/ENOTEMPTY/)
   })
 
   it('only ever runs backup create|verify|restore', async () => {

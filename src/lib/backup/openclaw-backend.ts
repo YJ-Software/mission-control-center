@@ -1,13 +1,13 @@
 import { join } from 'node:path'
 import type * as NodeFs from 'node:fs'
-import { runOpenclaw } from '@/lib/openclaw/models-config'
+import { runOpenclaw, extractJson } from '@/lib/openclaw/models-config'
 import { planCarryOver } from './restore-plan'
 
 export interface OpenClawBackendDeps {
   run(args: string[], timeoutMs: number): Promise<{ code: number; stdout: string; stderr: string }>
   fs: Pick<
     typeof NodeFs,
-    'existsSync' | 'readdirSync' | 'renameSync' | 'rmSync' | 'cpSync' | 'mkdirSync' | 'mkdtempSync'
+    'existsSync' | 'lstatSync' | 'readdirSync' | 'renameSync' | 'rmSync' | 'cpSync' | 'mkdirSync' | 'mkdtempSync'
   >
   home: string
   gateway: { stop(): Promise<void>; start(): Promise<void>; waitHealthy(timeoutMs: number): Promise<boolean> }
@@ -24,17 +24,14 @@ function tail(s: string, n = 300): string {
   return s.length > n ? s.slice(-n) : s
 }
 
-/** stdout 前面可能有非 JSON 的雜訊行：取第一個 '{' 到最後一個 '}'。 */
+/** stdout 前面可能有非 JSON 的雜訊（例如 doctor 警告框）：用 extractJson 跳過。 */
 function parseJson(stdout: string, what: string, stderr: string): Record<string, unknown> {
-  const a = stdout.indexOf('{')
-  const b = stdout.lastIndexOf('}')
-  if (a < 0 || b < a) {
-    throw new Error(`${what}: no JSON in output (${tail(stdout, 120)}) ${tail(stderr)}`)
-  }
   try {
-    return JSON.parse(stdout.slice(a, b + 1)) as Record<string, unknown>
+    const v = extractJson(stdout)
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Error('not a JSON object')
+    return v as Record<string, unknown>
   } catch (e) {
-    throw new Error(`${what}: invalid JSON (${(e as Error).message}) ${tail(stderr)}`)
+    throw new Error(`${what}: unparseable output (${(e as Error).message}) ${tail(stderr)}`)
   }
 }
 
@@ -78,13 +75,24 @@ function stamp(d: Date): string {
 export async function restoreOpenClawBackup(
   archivePath: string,
   deps: OpenClawBackendDeps,
-): Promise<{ preRestoreDir: string }> {
+): Promise<{ preRestoreDir: string | null; parkedSkillsDir: string | null }> {
   const { fs, home, gateway, log } = deps
   const ts = stamp(deps.now())
   const liveDir = join(home, '.openclaw')
   const preDir = join(home, `.openclaw.pre-restore-${ts}`)
   const failedDir = join(home, `.openclaw.failed-restore-${ts}`)
-  const liveSkills = join(home, '.agents', 'skills')
+  const agentsDir = join(home, '.agents')
+  const liveSkills = join(agentsDir, 'skills')
+  // 被取代的 skill 停放在 skills 的「兄弟」目錄，不可放在 skills 裡（OpenClaw 會把它當成重複 skill 載入）
+  const parkDir = join(agentsDir, `skills.pre-restore-${ts}`)
+
+  // 前置檢查：~/.openclaw 若是 symlink，整目錄互換無法保留語意，直接拒絕（尚未動任何東西）
+  const st = fs.lstatSync(liveDir, { throwIfNoEntry: false })
+  if (st && st.isSymbolicLink()) {
+    throw new Error(
+      `Refusing to restore: ${liveDir} is a symbolic link. Swap-restore needs a real directory; nothing was changed.`,
+    )
+  }
 
   // 1. staging（放在 home 底下，確保與 live 同一個檔案系統，rename 不會 EXDEV）
   const staging = fs.mkdtempSync(join(home, '.openclaw-restore-staging-'))
@@ -99,8 +107,6 @@ export async function restoreOpenClawBackup(
   let stagedOpenclaw: string
   let stagedSkills: string
   let stagedSkillNames: string[] = []
-  let liveEntries: string[] = []
-  let carry: string[] = []
   try {
     const r = await deps.run(['backup', 'restore', archivePath, '--target', staging, '--json'], RESTORE_TIMEOUT_MS)
     if (r.code !== 0) throw new Error(`openclaw backup restore failed (exit ${r.code}): ${tail(r.stderr)}`)
@@ -118,58 +124,112 @@ export async function restoreOpenClawBackup(
       throw new Error(`restored archive has no .openclaw at ${stagedOpenclaw}`)
     }
     if (fs.existsSync(stagedSkills)) stagedSkillNames = fs.readdirSync(stagedSkills) as string[]
-    liveEntries = fs.existsSync(liveDir) ? (fs.readdirSync(liveDir) as string[]) : []
-    carry = planCarryOver(liveEntries, fs.readdirSync(stagedOpenclaw) as string[])
   } catch (e) {
     cleanStaging() // 尚未動到現行資料
     throw e
   }
 
-  // 3. 開始動現行資料：每一步都登記 undo，失敗時反向執行
+  // 動現行資料之後：每一步都登記 undo，失敗時反向執行；同時追蹤「資料現在實際在哪」，供錯誤訊息使用
   const undo: Array<{ label: string; fn: () => void }> = []
+  const where: { orig: string | null; restored: string } = { orig: liveDir, restored: stagedOpenclaw }
+  const carriedIn = new Set<string>() // 原資料的項目，目前在 liveDir 內
+  const parked = new Set<string>() // 被取代的原 skill，目前在 parkDir 內
+  const copiedSkills = new Set<string>() // 還原進來的 skill，目前在 liveSkills 內
+  let hadLive = false
+  let carry: string[] = []
+  let stopErr: string | null = null
+  let startErr: string | null = null
+
+  /** rename 並更新位置追蹤（只在 rename 成功後更新） */
+  const mv = (from: string, to: string) => {
+    fs.renameSync(from, to)
+    if (from === where.orig) where.orig = to
+    else if (from === where.restored) where.restored = to
+  }
+
   const failure = async (reason: string): Promise<never> => {
     log('stderr', `還原失敗，開始回滾：${reason}`)
-    const errors: string[] = []
+    stopErr = null // 以回滾時的 stop 結果為準
     try {
       await gateway.stop()
     } catch (e) {
-      errors.push(`gateway stop: ${(e as Error).message}`)
+      stopErr = (e as Error).message
     }
+    const undoErrors: string[] = []
     for (const u of undo.reverse()) {
       try {
         u.fn()
       } catch (e) {
-        errors.push(`${u.label}: ${(e as Error).message}`)
+        undoErrors.push(`${u.label}: ${(e as Error).message}`)
       }
     }
     try {
       await gateway.start()
     } catch (e) {
-      errors.push(`gateway start: ${(e as Error).message}`)
+      startErr = (e as Error).message
     }
-    if (errors.length) {
-      throw new Error(
-        `Restore failed (${reason}) AND rollback failed (${errors.join('; ')}). ` +
-          `Manual recovery needed: your previous data is at ${preDir} (never deleted); ` +
-          `restored data may be at ${liveDir} / ${failedDir}; staging at ${staging}.`,
-      )
+
+    const filesOk = undoErrors.length === 0
+    if (filesOk && stopErr === null && startErr === null) {
+      cleanStaging()
+      throw new Error(`Restore failed (${reason}); rolled back to previous data. Previous data intact at ${liveDir}.`)
     }
-    cleanStaging()
-    throw new Error(`Restore failed (${reason}); rolled back to previous data. Previous data intact at ${liveDir}.`)
+
+    // 以下訊息依「實際狀態」組成，只提到真的存在的路徑
+    const lines: string[] = [`Restore failed (${reason}).`]
+    if (filesOk) {
+      lines.push(`Files were rolled back: your original data is at ${liveDir}.`)
+    } else {
+      lines.push(`Rollback of files FAILED (${undoErrors.join('; ')}). Manual recovery needed.`)
+      if (where.orig !== null) {
+        lines.push(
+          `Your ORIGINAL data is at ${where.orig}` + (where.orig === liveDir ? '.' : ` (not at ${liveDir}); it was never deleted.`),
+        )
+      }
+      if (fs.existsSync(where.restored)) {
+        lines.push(
+          `The RESTORED copy is at ${where.restored}` +
+            (where.restored === liveDir ? ' (so ' + liveDir + ' currently holds RESTORED data, not your original).' : '.'),
+        )
+      }
+      if (carriedIn.size) {
+        lines.push(
+          `These items of your original data are still inside ${liveDir}: ${[...carriedIn].join(', ')}` +
+            (where.orig && where.orig !== liveDir ? ` (originally from ${where.orig}).` : '.'),
+        )
+      }
+      if (parked.size) lines.push(`Replaced skills still parked in ${parkDir}: ${[...parked].join(', ')}.`)
+      if (copiedSkills.size) lines.push(`Restored skills copied into ${liveSkills}: ${[...copiedSkills].join(', ')}.`)
+      if (fs.existsSync(staging)) lines.push(`Staging directory kept at ${staging}.`)
+    }
+    if (stopErr !== null) {
+      lines.push(`The gateway could not be stopped (${stopErr}); it may still be running against the old files, so restart the OpenClaw gateway after fixing the above.`)
+    }
+    if (startErr !== null) {
+      lines.push(`The gateway could not be started (${startErr}); start the OpenClaw gateway manually.`)
+    }
+    if (!filesOk && stopErr === null && startErr === null) lines.push('Restart the OpenClaw gateway once the files are fixed.')
+    throw new Error(lines.join(' '))
   }
 
   let reason: string | null = null
   try {
     await gateway.stop()
 
+    // 停掉之後才列舉（gateway 停止前可能還在建立新項目）
+    hadLive = fs.existsSync(liveDir)
+    const liveEntries = hadLive ? (fs.readdirSync(liveDir) as string[]) : []
+    carry = planCarryOver(liveEntries, fs.readdirSync(stagedOpenclaw) as string[])
+
     // 4. 整個目錄互換
-    const hadLive = fs.existsSync(liveDir)
     if (hadLive) {
-      fs.renameSync(liveDir, preDir)
-      undo.push({ label: `rename ${preDir} -> ${liveDir}`, fn: () => fs.renameSync(preDir, liveDir) })
+      mv(liveDir, preDir)
+      undo.push({ label: `rename ${preDir} -> ${liveDir}`, fn: () => mv(preDir, liveDir) })
+    } else {
+      where.orig = null
     }
-    fs.renameSync(stagedOpenclaw, liveDir)
-    undo.push({ label: `rename ${liveDir} -> ${failedDir}`, fn: () => fs.renameSync(liveDir, failedDir) })
+    mv(stagedOpenclaw, liveDir)
+    undo.push({ label: `rename ${liveDir} -> ${failedDir}`, fn: () => mv(liveDir, failedDir) })
 
     // 5. 把原 live 的項目搬回來（extensions/npm/tmp 等歸檔不含的部分）
     for (const x of carry) {
@@ -177,22 +237,53 @@ export async function restoreOpenClawBackup(
       const src = join(preDir, x)
       fs.rmSync(dst, { recursive: true, force: true })
       fs.renameSync(src, dst)
-      undo.push({ label: `carry back ${x}`, fn: () => fs.renameSync(dst, src) })
+      carriedIn.add(x)
+      undo.push({
+        label: `carry back ${x}`,
+        fn: () => {
+          fs.renameSync(dst, src)
+          carriedIn.delete(x)
+        },
+      })
     }
 
     // 6. managed skills
-    if (stagedSkillNames.length) fs.mkdirSync(liveSkills, { recursive: true })
-    for (const name of stagedSkillNames) {
-      const dst = join(liveSkills, name)
-      const aside = `${dst}.pre-restore-${ts}`
-      const existed = fs.existsSync(dst)
-      if (existed) {
-        fs.renameSync(dst, aside)
-        undo.push({ label: `restore skill ${name}`, fn: () => fs.renameSync(aside, dst) })
+    if (stagedSkillNames.length) {
+      if (!fs.existsSync(liveSkills)) {
+        fs.mkdirSync(liveSkills, { recursive: true })
+        undo.push({ label: `remove created ${liveSkills}`, fn: () => rmdirIfEmpty(liveSkills) })
       }
-      // 先登記 undo（複製到一半失敗也要能清掉）；反向執行時先 rm 副本，再把原 skill 改名回來
-      undo.push({ label: `remove copied skill ${name}`, fn: () => fs.rmSync(dst, { recursive: true, force: true }) })
-      fs.cpSync(join(stagedSkills, name), dst, { recursive: true, verbatimSymlinks: true })
+      let parkCreated = false
+      for (const name of stagedSkillNames) {
+        const dst = join(liveSkills, name)
+        const aside = join(parkDir, name)
+        if (fs.existsSync(dst)) {
+          if (!parkCreated) {
+            parkCreated = true
+            fs.mkdirSync(parkDir, { recursive: true })
+            undo.push({ label: `remove created ${parkDir}`, fn: () => rmdirIfEmpty(parkDir) })
+          }
+          fs.renameSync(dst, aside)
+          parked.add(name)
+          undo.push({
+            label: `restore skill ${name}`,
+            fn: () => {
+              fs.renameSync(aside, dst)
+              parked.delete(name)
+            },
+          })
+        }
+        // 先登記 undo（複製到一半失敗也要能清掉）；反向執行時先 rm 副本，再把原 skill 搬回來
+        copiedSkills.add(name)
+        undo.push({
+          label: `remove copied skill ${name}`,
+          fn: () => {
+            fs.rmSync(dst, { recursive: true, force: true })
+            copiedSkills.delete(name)
+          },
+        })
+        fs.cpSync(join(stagedSkills, name), dst, { recursive: true, verbatimSymlinks: true })
+      }
     }
 
     // 7. 啟動並等健康
@@ -205,6 +296,11 @@ export async function restoreOpenClawBackup(
   if (reason !== null) return failure(reason)
 
   cleanStaging()
-  log('system', `還原完成，舊資料保留於 ${preDir}`)
-  return { preRestoreDir: preDir }
+  const preRestoreDir = hadLive ? preDir : null
+  log('system', preRestoreDir ? `還原完成，舊資料保留於 ${preDir}` : '還原完成（原本沒有 ~/.openclaw，無舊資料可保留）')
+  return { preRestoreDir, parkedSkillsDir: parked.size ? parkDir : null }
+
+  function rmdirIfEmpty(dir: string) {
+    if (fs.existsSync(dir) && (fs.readdirSync(dir) as string[]).length === 0) fs.rmSync(dir, { recursive: true })
+  }
 }
