@@ -2,6 +2,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import fs from 'fs'
 import path from 'path'
+import { backupExtraFolder } from './extra-folder'
 import { getScriptsDir, getBackupOutputDir, formatBytes } from './helpers'
 
 const execFileAsync = promisify(execFile)
@@ -74,17 +75,7 @@ export async function runBackup(outputDir?: string): Promise<BackupResult> {
 export async function runExtraBackup(
   sourcePath: string, outputDir: string, name: string
 ): Promise<BackupResult> {
-  const scriptPath = path.join(process.cwd(), 'scripts', 'backup-extra.sh')
-  fs.mkdirSync(outputDir, { recursive: true })
-
-  const { stdout } = await execFileAsync('/bin/bash', [scriptPath, sourcePath, outputDir, name], {
-    timeout: 120000,
-  })
-
-  const filename = stdout.trim()
-  const filePath = path.join(outputDir, filename)
-  const size = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0
-
+  const { filename, filePath, size } = await backupExtraFolder(sourcePath, outputDir, name)
   return { filename, size, sizeHuman: formatBytes(size), filePath }
 }
 
