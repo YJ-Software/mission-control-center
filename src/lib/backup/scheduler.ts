@@ -116,7 +116,8 @@ export async function removeLegacyBackupCron(deps: {
       log(`刪除舊備份 cron ${j.id} 失敗：${err instanceof Error ? err.message : String(err)}`)
     }
   }
-  return ok > 0 ? 'removed' : 'deferred'
+  // 只有全部刪除成功才算 removed；部分失敗要重試（下次重新 list，已刪的不會再出現）
+  return ok === legacy.length ? 'removed' : 'deferred'
 }
 
 // ---------------------------------------------------------------------------
@@ -155,51 +156,72 @@ async function cleanLegacyOnce(): Promise<boolean> {
   return true
 }
 
-export function startBackupScheduler(): void {
+/** 供測試注入；正式呼叫不帶參數 */
+export interface SchedulerStartOpts {
+  jobs?: () => SchedulerJob[]
+  isRunning?: () => boolean
+  /** 同步啟動備份；未提供時於載入 run-backup 後才開始 tick */
+  start?: (jobId: string) => 'started' | 'busy'
+  now?: () => Date
+  /** 回傳 true 表示清理完成（removed/none），false 表示稍後重試 */
+  cleanLegacy?: () => Promise<boolean>
+  log?: (msg: string) => void
+}
+
+export function startBackupScheduler(opts: SchedulerStartOpts = {}): void {
   const g = globalThis as unknown as Record<string, boolean | undefined>
   if (g[STARTED_KEY]) return
   g[STARTED_KEY] = true
 
-  let lastTick = new Date()
+  const nowFn = opts.now ?? (() => new Date())
+  const log = opts.log ?? ((m: string) => console.log('[backup-scheduler]', m))
+  let lastTick = nowFn()
   let pending: Map<string, Date> = new Map()
-  console.log('[backup-scheduler] 已啟動；MCC 停機期間錯過的排程不會補跑')
+  log('已啟動；MCC 停機期間錯過的排程不會補跑')
 
-  // start() 需同步回傳；startBackupRun 以靜態 import 載入
-  let startSync: ((id: string) => 'started' | 'busy') | null = null
-  import('./run-backup').then(({ startBackupRun }) => {
-    startSync = (jobId) => {
-      try {
-        startBackupRun({ jobId, triggeredBy: 'cron' })
-        return 'started'
-      } catch (err) {
-        if (err instanceof BackupBusyError) return 'busy'
-        throw err
+  let startSync: ((id: string) => 'started' | 'busy') | null = opts.start ?? null
+  if (!startSync) {
+    import('./run-backup').then(({ startBackupRun }) => {
+      startSync = (jobId) => {
+        try {
+          startBackupRun({ jobId, triggeredBy: 'cron' })
+          return 'started'
+        } catch (err) {
+          if (err instanceof BackupBusyError) return 'busy'
+          throw err
+        }
       }
-    }
-  }).catch((err) => console.error('[backup-scheduler] 載入 run-backup 失敗:', err))
+    }).catch((err) => console.error('[backup-scheduler] 載入 run-backup 失敗:', err))
+  }
 
   const timer = setInterval(() => {
-    const now = new Date()
+    const now = nowFn()
     try {
-      if (!startSync) return
+      if (!startSync) return // 尚未就緒：不推進 lastTick，視窗保留給下一 tick
+      if (now < lastTick) {
+        log('偵測到系統時鐘往回調，重設排程基準並略過本次 tick')
+        lastTick = now
+        return
+      }
       const r = tickBackupScheduler(lastTick, now, {
-        jobs: readJobs,
-        isRunning: isBackupRunning,
+        jobs: opts.jobs ?? readJobs,
+        isRunning: opts.isRunning ?? isBackupRunning,
         start: startSync,
-        log: (m) => console.log('[backup-scheduler]', m),
+        log,
       }, pending)
       pending = r.pending
-      for (const id of r.started) console.log(`[backup-scheduler] 已啟動備份 job ${id}`)
+      for (const id of r.started) log(`已啟動備份 job ${id}`)
+      lastTick = now // 只在成功時推進；例外時下一 tick 會重新涵蓋同一視窗
     } catch (err) {
-      console.error('[backup-scheduler] tick 失敗:', err)
+      console.error('[backup-scheduler] tick 失敗，下一輪重試同一視窗:', err)
     }
-    lastTick = now
   }, TICK_MS)
   timer.unref()
 
   // 舊 cron 清理：deferred 每 60 分鐘重試，直到 removed / none
+  const clean = opts.cleanLegacy ?? cleanLegacyOnce
   const attempt = () => {
-    cleanLegacyOnce().then((done) => {
+    clean().then((done) => {
       if (!done) setTimeout(attempt, LEGACY_RETRY_MS).unref()
     }).catch((err) => {
       console.error('[backup-scheduler] 舊 cron 清理失敗:', err)

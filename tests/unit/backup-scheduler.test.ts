@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { tickBackupScheduler, removeLegacyBackupCron, type SchedulerJob } from '@/lib/backup/scheduler'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { tickBackupScheduler, removeLegacyBackupCron, startBackupScheduler, type SchedulerJob } from '@/lib/backup/scheduler'
 
 const daily = (id: string, time = '03:00', enabled = 1): SchedulerJob => ({
   id, enabled, scheduleType: 'daily', scheduleConfig: { days: [0, 1, 2, 3, 4, 5, 6], time } as never,
@@ -104,20 +104,98 @@ describe('removeLegacyBackupCron', () => {
   it('沒有 💾 → none', async () => {
     expect(await removeLegacyBackupCron({ list: async () => [{ id: '2', name: 'x' }], remove: vi.fn() })).toBe('none')
   })
-  it('單一 remove 失敗不影響其他，至少一個成功 → removed 並記錄', async () => {
+  it('單一 remove 失敗不影響其他，且有記錄', async () => {
     const log = vi.fn()
     const remove = vi.fn(async (id: string) => { if (id === '1') throw new Error('x') })
-    const r = await removeLegacyBackupCron({
-      list: async () => [{ id: '1', name: '💾 a' }, { id: '2', name: '💾 b' }], remove, log,
-    })
-    expect(r).toBe('removed')
+    await removeLegacyBackupCron({ list: async () => [{ id: '1', name: '💾 a' }, { id: '2', name: '💾 b' }], remove, log })
     expect(remove).toHaveBeenCalledTimes(2)
     expect(log).toHaveBeenCalledTimes(1)
+  })
+  it('部分失敗 → deferred（會重試）', async () => {
+    const r = await removeLegacyBackupCron({
+      list: async () => [{ id: '1', name: '💾 a' }, { id: '2', name: '💾 b' }],
+      remove: async (id: string) => { if (id === '2') throw new Error('x') },
+    })
+    expect(r).toBe('deferred')
   })
   it('全部 remove 失敗 → deferred（之後重試）', async () => {
     const r = await removeLegacyBackupCron({
       list: async () => [{ id: '1', name: '💾 a' }], remove: async () => { throw new Error('x') },
     })
     expect(r).toBe('deferred')
+  })
+})
+
+describe('startBackupScheduler', () => {
+  const KEY = '__mccBackupSchedulerStarted'
+  let clock: Date
+  const nowFn = () => new Date(clock)
+  const advance = async (ms: number) => { clock = new Date(clock.getTime() + ms); await vi.advanceTimersByTimeAsync(ms) }
+  beforeEach(() => {
+    vi.useFakeTimers()
+    delete (globalThis as Record<string, unknown>)[KEY]
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    clock = at(2, 59)
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    delete (globalThis as Record<string, unknown>)[KEY]
+  })
+  const base = (over: Record<string, unknown> = {}) => {
+    const start = vi.fn<(id: string) => 'started' | 'busy'>(() => 'started')
+    return { start, opts: { jobs: () => [daily('a')], isRunning: () => false, start, now: nowFn, log: () => {}, cleanLegacy: async () => true, ...over } }
+  }
+
+  it('冪等：第二次呼叫不會再建 timer / 再清理', () => {
+    const clean = vi.fn(async () => true)
+    const b = base({ cleanLegacy: clean })
+    startBackupScheduler(b.opts)
+    startBackupScheduler(b.opts)
+    expect(clean).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(1)
+  })
+  it('開機視窗：啟動後第一個 tick 前到期的排程仍會啟動', async () => {
+    const b = base()
+    startBackupScheduler(b.opts)
+    await advance(60_000) // 02:59 -> 03:00
+    expect(b.start).toHaveBeenCalledWith('a')
+  })
+  it('tick 例外不會殺掉 interval，也不推進 lastTick（下一輪仍涵蓋該視窗）', async () => {
+    let fail = true
+    const b = base({ jobs: () => { if (fail) throw new Error('SQLITE_BUSY'); return [daily('a')] } })
+    startBackupScheduler(b.opts)
+    await advance(60_000) // 03:00 tick 失敗
+    expect(b.start).not.toHaveBeenCalled()
+    fail = false
+    await advance(60_000) // 03:01：視窗仍從 02:59 起，涵蓋 03:00
+    expect(b.start).toHaveBeenCalledTimes(1)
+  })
+  it('時鐘往回調：重設基準並略過該 tick，不重複執行', async () => {
+    const b = base()
+    startBackupScheduler(b.opts)
+    await advance(60_000) // 03:00 啟動
+    expect(b.start).toHaveBeenCalledTimes(1)
+    clock = new Date(clock.getTime() - 10 * 60_000) // 回調到 02:51
+    await vi.advanceTimersByTimeAsync(60_000)
+    clock = new Date(clock.getTime() + 60_000)
+    await advance(60_000 * 5)
+    expect(b.start).toHaveBeenCalledTimes(1)
+  })
+  it('舊 cron 清理 deferred：每小時重試直到成功', async () => {
+    const clean = vi.fn<() => Promise<boolean>>()
+    clean.mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+    const b = base({ cleanLegacy: clean, jobs: () => [] })
+    startBackupScheduler(b.opts)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(clean).toHaveBeenCalledTimes(1)
+    await advance(59 * 60_000)
+    expect(clean).toHaveBeenCalledTimes(1)
+    await advance(60_000)
+    expect(clean).toHaveBeenCalledTimes(2)
+    await advance(60 * 60_000)
+    expect(clean).toHaveBeenCalledTimes(3)
+    await advance(3 * 60 * 60_000)
+    expect(clean).toHaveBeenCalledTimes(3)
   })
 })
