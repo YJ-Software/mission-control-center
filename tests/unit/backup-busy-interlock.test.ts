@@ -22,7 +22,7 @@ beforeEach(() => {
 })
 
 describe('備份/還原進行中拒絕重啟與升級', () => {
-  for (const a of ['restart-dashboard', 'restart-openclaw', 'update-mcc']) {
+  for (const a of ['restart-dashboard', 'restart-openclaw', 'update-mcc', 'update-openclaw', 'reboot-system']) {
     it(`/api/action ${a} → 409 且不啟動 job`, async () => {
       const res = await action(post('/api/action', { action: a }))
       expect(res.status).toBe(409)

@@ -86,11 +86,15 @@ export function writeLastDbRestore(
   now: Date = new Date(),
 ): void {
   try {
-    fs.writeFileSync(
-      path.join(path.dirname(dbPath), 'last-db-restore.json'),
-      JSON.stringify({ result, at: now.toISOString(), detail }, null, 2),
-      { mode: 0o600 },
-    )
+    const target = path.join(path.dirname(dbPath), 'last-db-restore.json')
+    const tmp = `${target}.tmp`
+    try {
+      fs.writeFileSync(tmp, JSON.stringify({ result, at: now.toISOString(), detail }, null, 2), { mode: 0o600 })
+      fs.renameSync(tmp, target)
+    } catch (e) {
+      try { fs.rmSync(tmp, { force: true }) } catch { /* ignore */ }
+      throw e
+    }
   } catch { /* ignore */ }
 }
 

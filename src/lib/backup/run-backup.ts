@@ -12,16 +12,16 @@ import { buildArchiveName, type BackupManifest } from './archive-format'
 import { createOpenClawBackup, defaultOpenClawBackendRun } from './openclaw-backend'
 import { snapshotMccDb, copyEnvFile } from './mcc-state'
 import { expandHome, getBackupOutputDir, getAllBackupDirs } from './helpers'
+import { BackupBusyError, isBackupOrRestoreBusy, acquireLock, releaseLock } from './lock'
+import { assertNoBlockingJob } from './job-guard'
 import {
-  isBackupOrRestoreBusy, setRunningLogId, runExtraBackup, uploadToFtp, deleteBackupFile,
+  runExtraBackup, uploadToFtp, deleteBackupFile,
 } from './scripts'
 
 export class BackupJobNotFoundError extends Error {
   constructor() { super('Job not found') }
 }
-export class BackupBusyError extends Error {
-  constructor() { super('A backup or restore is already running') }
-}
+export { BackupBusyError }
 
 type Log = (stream: 'stdout' | 'stderr' | 'system', text: string) => void
 
@@ -36,6 +36,7 @@ export interface BackupRunDeps {
   now: () => Date
   hostname: () => string
   mccVersion: () => string
+  findBlockingJob?: () => import('@/lib/jobs/types').JobMeta | null
   dbPath: string
   envPath: string
 }
@@ -139,12 +140,13 @@ export function startBackupRun(
 
   // --- 單一執行：同步檢查並上鎖（還原共用這把鎖） ---
   if (isBackupOrRestoreBusy()) throw new BackupBusyError()
+  assertNoBlockingJob(deps.findBlockingJob)
   const logId = db.insert(backupLogs).values({
     jobId: jobId || null,
     status: 'processing',
     destination: destName,
   }).returning({ id: backupLogs.id }).get().id
-  setRunningLogId(logId)
+  const lockToken = acquireLock(logId)
 
   const st = {
     tarDir: null as string | null,
@@ -169,7 +171,7 @@ export function startBackupRun(
     if (st.finished) return
     st.finished = true
     try { cleanupTemp() } catch { /* ignore */ }
-    setRunningLogId(null)
+    releaseLock(lockToken)
   }
   const safeLog = (log?: Log): Log => (stream, text) => {
     try { log?.(stream, text) } catch { /* job log I/O（例如 ENOSPC）不可打斷清理 */ }

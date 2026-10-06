@@ -387,6 +387,14 @@ describe('startBackupRun', () => {
     expect(isBackupRunning()).toBe(false)
   })
 
+  it('重啟類 job 進行中：拒絕啟動備份、不建 row、不上鎖', () => {
+    const job = { id: 'j', kind: 'upgrade-mcc', label: 'Upgrade MCC', status: 'running' } as never
+    expect(() => startBackupRun({ destinationId: 'd1', triggeredBy: 'api' }, makeDeps({ findBlockingJob: () => job })))
+      .toThrow(/Upgrade MCC/)
+    expect(db.select().from(backupLogs).all()).toHaveLength(0)
+    expect(isBackupRunning()).toBe(false)
+  })
+
   it('I1：logger 一直丟錯，仍解鎖、row 不停在 processing、暫存清掉', async () => {
     logger = () => { throw new Error('ENOSPC') }
     const r = startBackupRun({ destinationId: 'd1', triggeredBy: 'api' }, makeDeps({

@@ -14,9 +14,9 @@ import {
 } from './openclaw-backend'
 import { preparePendingDbRestore, commitPendingDbRestore, discardPreparedDbRestore, discardPendingDbRestore } from './mcc-state'
 import { checkScriptsAvailable } from './helpers'
-import { isBackupOrRestoreBusy, setRunningLogId } from './lock'
+import { BackupBusyError, isBackupOrRestoreBusy, acquireLock, releaseLock } from './lock'
+import { assertNoBlockingJob } from './job-guard'
 import { runRestore } from './scripts'
-import { BackupBusyError } from './run-backup'
 
 export { BackupBusyError }
 
@@ -45,6 +45,7 @@ export interface RestoreDeps {
   scheduleRestart: (service: string) => void
   getInstall: () => { mode: string; service: string }
   mccVersion: () => string
+  findBlockingJob?: () => JobMeta | null
   /** 現行 MCC 的裸 semver，用來比對備份是否來自較新的版本 */
   runningSemver: () => string
   /** release 重啟前持有鎖的最長時間（行程若仍活著就釋放） */
@@ -226,7 +227,7 @@ async function readManifestOnly(deps: RestoreDeps, file: string): Promise<Backup
   let out: string | null = null
   let lastErr: unknown
   for (const member of ['./manifest.json', 'manifest.json']) {
-    try { out = await deps.tar(['--force-local', '-xOzf', file, member]); break } catch (e) { lastErr = e }
+    try { out = await deps.tar(['--force-local', '-xOzf', file, '--occurrence=1', member]); break } catch (e) { lastErr = e }
   }
   if (out === null) throw new RestoreRejectedError(`封存檔內讀不到 manifest.json：${errText(lastErr)}`)
   let raw: unknown
@@ -318,7 +319,8 @@ export function startRestore(
 
   // 單一執行：同步檢查並上鎖（與備份共用）
   if (isBackupOrRestoreBusy()) throw new BackupBusyError()
-  setRunningLogId(RESTORE_LOCK)
+  assertNoBlockingJob(deps.findBlockingJob)
+  const lockToken = acquireLock(RESTORE_LOCK)
 
   const st = {
     dir: null as string | null,      // .restore-<ts>（0700）
@@ -340,7 +342,7 @@ export function startRestore(
     if (st.timer) { clearTimeout(st.timer); st.timer = null }
     try { rmDir() } catch { /* ignore */ }
     try { deps.discardPreparedDb(deps.dbPath) } catch { /* ignore */ }
-    setRunningLogId(null)
+    releaseLock(lockToken)
   }
   const safeLog = (log?: Log): Log => (s, t) => { try { log?.(s, t) } catch { /* log I/O 不可打斷清理 */ } }
   const phase = (name: string, fn: (log: Log) => Promise<void>, opts: { last?: boolean } = {}): PhaseSpec => ({

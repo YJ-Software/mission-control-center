@@ -288,6 +288,11 @@ describe('last-db-restore.json（開機套用結果）', () => {
     expect(applyPendingDbRestoreOnce(dbp())).toBe('rejected')
     expect(read().result).toBe('rejected'); expect(read().detail).toContain('完整性')
   })
+  it('寫入用 tmp + rename：不留 .tmp，且覆寫舊內容', () => {
+    writeLastDbRestore(dbp(), 'error', 'first'); writeLastDbRestore(dbp(), 'applied', 'second')
+    expect(read().detail).toBe('second')
+    expect(fs.readdirSync(dir).some(f => f.endsWith('.tmp'))).toBe(false)
+  })
   it('沒有 pending 不寫檔', () => {
     makeDb(dbp(), 'old')
     expect(applyPendingDbRestoreOnce(dbp())).toBe('none')

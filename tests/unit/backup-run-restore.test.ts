@@ -285,6 +285,28 @@ describe('startRestore mcc（release 模式）', () => {
     expect(isBackupOrRestoreBusy()).toBe(false)
   })
 
+  it('重啟類 job 進行中：BackupBusyError，不上鎖、不動任何東西', () => {
+    const job = { id: 'j', kind: 'restart-openclaw', label: 'Restart OpenClaw', status: 'running' } as never
+    expect(() => startRestore(buildArchive(), 'api', deps({ findBlockingJob: () => job }))).toThrow(BackupBusyError)
+    expect(isBackupOrRestoreBusy()).toBe(false)
+    expect(calls).toEqual([])
+  })
+
+  it('過期的安全計時器不可清掉較新擁有者的鎖（owner token）', async () => {
+    startRestore(buildArchive(), 'api', deps({ restartLockHoldMs: 60 }))
+    await done
+    expect(isBackupOrRestoreBusy()).toBe(true)
+    setRunningLogId(77) // 計時器觸發前，另一個擁有者接手
+    await new Promise((r) => setTimeout(r, 200))
+    expect(isBackupOrRestoreBusy()).toBe(true)
+  })
+
+  it('manifest 讀取帶 --occurrence=1', async () => {
+    const seen: string[][] = []
+    await describeBackup(buildArchive(), deps({ tar: async (a) => { seen.push(a); return tarReal(a) } }))
+    expect(seen[0]).toContain('--occurrence=1')
+  })
+
   it('已有備份/還原在跑：BackupBusyError，且不釋放別人的鎖', () => {
     const file = buildArchive()
     setRunningLogId(5)
