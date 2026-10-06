@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid'
 import { db } from '@/lib/db'
 import { settings } from '@/lib/schema'
+import { backupDestinations } from './schema'
 import { eq } from 'drizzle-orm'
 import path from 'path'
 import os from 'os'
@@ -125,4 +126,20 @@ export function formatBytes(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
+/** Collect all unique backup directories: default + all local destinations */
+export function getAllBackupDirs(): string[] {
+  const dirs = new Set<string>()
+  dirs.add(getBackupOutputDir())
+  const dests = db.select().from(backupDestinations).all()
+  for (const d of dests) {
+    if (d.type === 'local') {
+      try {
+        const config = JSON.parse(d.config)
+        if (config.path) dirs.add(expandHome(config.path))
+      } catch { /* skip */ }
+    }
+  }
+  return Array.from(dirs)
 }

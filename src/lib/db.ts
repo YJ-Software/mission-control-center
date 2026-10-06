@@ -7,7 +7,7 @@ import fs from 'fs'
 import { applyPendingDbRestoreOnce } from './backup/pending-db-restore'
 
 const DB_DIR = path.join(os.homedir(), '.mission-control')
-const DB_PATH = path.join(DB_DIR, 'db.sqlite')
+export const DB_PATH = path.join(DB_DIR, 'db.sqlite')
 
 if (!fs.existsSync(DB_DIR)) {
   fs.mkdirSync(DB_DIR, { recursive: true })

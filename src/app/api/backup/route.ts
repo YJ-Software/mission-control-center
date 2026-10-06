@@ -1,27 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, initDb } from '@/lib/db'
-import { backupJobs, backupLogs, backupDestinations } from '@/lib/backup/schema'
+import { backupJobs, backupLogs } from '@/lib/backup/schema'
 import { eq, sql } from 'drizzle-orm'
 import { listBackupFiles, deleteBackupFile } from '@/lib/backup/scripts'
-import { checkScriptsAvailable, getOrCreateBackupToken, formatBytes, getBackupOutputDir, expandHome } from '@/lib/backup/helpers'
+import { checkScriptsAvailable, getOrCreateBackupToken, formatBytes, getAllBackupDirs } from '@/lib/backup/helpers'
 
 initDb()
-
-/** Collect all unique backup directories: default + all local destinations */
-function getAllBackupDirs(): string[] {
-  const dirs = new Set<string>()
-  dirs.add(getBackupOutputDir())
-  const dests = db.select().from(backupDestinations).all()
-  for (const d of dests) {
-    if (d.type === 'local') {
-      try {
-        const config = JSON.parse(d.config)
-        if (config.path) dirs.add(expandHome(config.path))
-      } catch { /* skip */ }
-    }
-  }
-  return Array.from(dirs)
-}
 
 /** List backup files from all backup directories */
 function listAllBackupFiles() {

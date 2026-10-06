@@ -11,6 +11,8 @@ export type JobKind =
   | 'reboot-host'
   | 'doctor'
   | 'provider-login'
+  | 'backup-run'
+  | 'backup-restore'
 
 export type JobStatus = 'running' | 'restarting' | 'success' | 'failed' | 'cancelled'
 

@@ -34,6 +34,14 @@ export function setRunningLogId(id: number | null): void {
   runningLogId = id
 }
 
+/**
+ * 備份與還原共用同一把鎖（Task 8 的還原也用 setRunningLogId／isBackupRunning）：
+ * 備份進行中拒絕還原，還原進行中拒絕備份。
+ */
+export function isBackupOrRestoreBusy(): boolean {
+  return runningLogId !== null
+}
+
 export function getRunningLogId(): number | null {
   return runningLogId
 }
