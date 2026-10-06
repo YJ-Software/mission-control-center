@@ -6,8 +6,8 @@ import { test, expect } from './fixtures/login'
  * Flow:
  *  1. Auth tab — add Moonshot Kimi API key to `main` agent, verify the
  *     `kimi:manual` profile shows up with an active badge.
- *  2. Models tab → `main` agent — set per-agent override primary to
- *     `kimi/kimi-code`, save, verify the badge flips to 已覆寫.
+ *  2. Models tab → `main` agent — set per-agent override primary to the
+ *     Kimi coding model, save, verify the badge flips to 已覆寫.
  *  3. /chat — send a prompt, verify a non-empty assistant reply lands.
  *
  * Requires `KIMI_CODE_API_KEY` in `.env.e2e.local` (loaded by env-e2e.ts).
@@ -15,8 +15,20 @@ import { test, expect } from './fixtures/login'
  */
 
 const SAVE_TIMEOUT = 30_000
+// The login job installs/consents the provider plugin before pasting the key,
+// and that phase alone varies with the OpenClaw release: measured on 2026.9.6,
+// plugin consent 21.2s + paste-api-key 9.0s + provider registration 6.2s =
+// 36.3s, which failed a 30s wait although the job succeeded. The dialog itself
+// has no client-side timeout (it follows the job's SSE stream to `end`), so
+// only this spec's patience was wrong.
+const LOGIN_JOB_TIMEOUT = 120_000
 const CHAT_REPLY_TIMEOUT = 90_000
-const OVERRIDE_PRIMARY = 'kimi/kimi-code'
+// The Kimi coding model's id depends on the installed kimi provider plugin:
+// 2026.9.6 renamed `kimi-code` to `kimi-for-coding` (the old id survives only
+// as a runtime alias in the plugin manifest's modelIdNormalization, so it is
+// no longer offered in the picker). Take whichever the picker actually lists,
+// newest name first.
+const OVERRIDE_PRIMARY_CANDIDATES = ['kimi/kimi-for-coding', 'kimi/kimi-code']
 const PROVIDER_PROFILE_PREFIX = 'kimi:'
 
 async function api(
@@ -65,7 +77,7 @@ test.describe('LLM 管理 — kimi auth + per-agent override + chat', () => {
     // Wait for success banner
     await expect(
       dialog.getByText(/登入成功|Login successful/i),
-    ).toBeVisible({ timeout: SAVE_TIMEOUT })
+    ).toBeVisible({ timeout: LOGIN_JOB_TIMEOUT })
     await dialog.getByRole('button', { name: /^完成$|^Done$/i }).click()
 
     // Verify the kimi:* profile row is now visible in main agent's list
@@ -81,13 +93,22 @@ test.describe('LLM 管理 — kimi auth + per-agent override + chat', () => {
     await page.getByRole('tab', { name: /^模型$|^Models$/i }).click()
     await page.getByRole('button', { name: /^main$/ }).click()
 
-    // The override editor's primary <select> — pick kimi/kimi-code
+    // The override editor's primary <select> — pick the Kimi coding model
     const primarySelect = page
       .locator('label')
       .filter({ hasText: /主要模型|Primary model/i })
       .locator('xpath=following-sibling::select[1]')
     await expect(primarySelect).toBeVisible({ timeout: 10_000 })
-    await primarySelect.selectOption(OVERRIDE_PRIMARY)
+    // Options load after the credential lands; wait for any kimi entry first.
+    await expect(primarySelect.locator('option[value^="kimi/"]').first()).toBeAttached({ timeout: SAVE_TIMEOUT })
+    const offered = await primarySelect.locator('option').evaluateAll((els) =>
+      els.map((el) => (el as HTMLOptionElement).value),
+    )
+    const overridePrimary = OVERRIDE_PRIMARY_CANDIDATES.find((id) => offered.includes(id))
+    if (!overridePrimary) {
+      throw new Error(`no Kimi coding model in the picker; offered: ${offered.filter((v) => v.startsWith('kimi/')).join(', ') || '(none)'}`)
+    }
+    await primarySelect.selectOption(overridePrimary)
 
     await page.getByRole('button', { name: /^儲存$|^Save$/i }).click()
 
@@ -126,7 +147,7 @@ test.describe('LLM 管理 — kimi auth + per-agent override + chat', () => {
     )
 
     // Both cleanup calls are ASSERTED. A silently-failing cleanup leaves the
-    // agent pinned to kimi/kimi-code with no kimi credential, and every later
+    // agent pinned to a kimi model with no kimi credential, and every later
     // spec in the run then dies on `No API key found for provider "kimi"` —
     // which reads as a dozen unrelated failures instead of one cleanup bug.
     const cleared = await api(
