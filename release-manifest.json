@@ -1,21 +1,34 @@
 {
   "latest": {
-    "version": "2026.9.3-v0.3.92",
-    "mccVersion": "0.3.92",
-    "openclawVersion": "2026.9.3",
-    "releaseDate": "2026-09-16T09:57:11.590Z",
-    "notes": "- fix(browser): **自動修復 OpenCLI 擴充功能的自動載入**。Google Chrome 每次重啟都會忘記以 CDP 載入的擴充功能，因此瀏覽器服務設定需帶有自動重新載入（0.3.82 起）；但服務設定只在安裝當下寫入，升級不會重寫，**瀏覽器堆疊安裝於 0.3.82 之前的機器永遠不會取得這一行**，Chrome 一重啟，opencli 的瀏覽器指令即全數失敗，而畫面上一切正常\n  - 升級到本版後，Mission Control 會在啟動時自動補上（以 systemd drop-in，不重寫整份設定，不會更動 VNC 連接埠），並立即重新載入一次，不必等下次重啟\n  - 修復完成會寫入通知中心；/api/browser/opencli 新增 autoloadConfigured 欄位，瀏覽器安裝 E2E 亦已加上對應斷言\n  - 實際後果案例：晨報「社群熱點」整段連續四天未產出，直到有人察覺\n- fix(morning-report): 缺段告警改用實際存在的投遞指令。先前呼叫的 `openclaw announce` 在 OpenClaw 並不存在，推播每次失敗，通知只留在儀表板鈴鐺；改用晨報設定的頻道與聊天 ID 送出\n  - 同時修正一個隱患：告警函式內直接讀取資料庫且未受保護，讀取失敗會連帶中斷 finalize",
+    "version": "0.3.93",
+    "mccVersion": "0.3.93",
+    "openclawVersion": "2026.9.8",
+    "validated": {
+      "openclaw": [
+        "2026.9.5",
+        "2026.9.6",
+        "2026.9.8"
+      ]
+    },
+    "releaseDate": "2026-10-06T07:34:54.207Z",
+    "notes": "- **版本號顯示方式改變，這不是降版**：先前的版本顯示為 `2026.9.3-v0.3.92`（前面是配對的 OpenClaw 版本），從本版起只顯示 Mission Control 自己的版本，例如 `v0.3.93`。版本數字本身是往上升的，請放心升級\n  - 「這一版跟哪個 OpenClaw 版本驗證過」改為獨立記錄。本版已在 OpenClaw **2026.9.5、2026.9.6、2026.9.8** 上完整驗證\n  - 設定頁的升級卡片會標示目前的組合是否驗證過（Mission Control 與 OpenClaw 兩個升級按鈕都有）。沒驗證過的組合只會顯示提醒，**不會阻擋升級**\n- fix(logs): **儀表板日誌加上自動輪替**。日誌檔先前從不輪替，Gateway 長時間連不上時每天會增加數萬行。現在每小時檢查一次，超過 20MB 就輪替，保留 5 份壓縮檔，日誌路徑不變（fail2ban 照常運作）\n  - 不論是用升級按鈕、`upgrade.sh` 或全新安裝，新版第一次啟動時都會自動設定好，不需要手動操作\n- fix(server): Gateway 斷線時的重連改為逐步拉長間隔（5 秒起、最長 60 秒），連上即恢復。Gateway 長時間不在時不再狂刷日誌\n- fix(upgrade): 新版啟動時會依自帶的範本更新 Mission Control 自己的 systemd 服務設定，修正「用升級按鈕升級的機器永遠拿不到服務設定更新」。變更在下次重啟服務時生效，更新前會先備份；node 路徑沿用原本穩定的路徑，不會被固定到版本專屬目錄\n- fix(upgrade): 讀取發版資訊加上 10 秒逾時，發版伺服器沒有回應時，升級檢查不會再卡住\n- docs: 安裝完成時提示的看日誌指令改為 `tail -f ~/.mission-control/logs/mission-control.log`（先前提示的 journalctl 看不到應用程式輸出）\n- 內部：新增後端抽象層，預設行為完全不變",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/2026.9.3-v0.3.92/mission-control-v0.3.92-linux-x64.tar.gz",
-        "sha256": "20eaaf72baeca0838fb704b2add5489afb14344c32cbb591672fc5a3a3ce44d7",
-        "size": 27366701
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.93/mission-control-v0.3.93-linux-x64.tar.gz",
+        "sha256": "9fb983a4bcba41966898919b72f4fab33292ec01023e32ab49e97b18726fc440",
+        "size": 27507444
       }
     ]
   },
   "history": [
+    {
+      "version": "2026.9.3-v0.3.92",
+      "mccVersion": "0.3.92",
+      "openclawVersion": "2026.9.3",
+      "releaseDate": "2026-09-16T09:57:11.590Z"
+    },
     {
       "version": "2026.9.3-v0.3.91",
       "mccVersion": "0.3.91",
@@ -69,12 +82,6 @@
       "mccVersion": "0.3.83",
       "openclawVersion": "2026.8.2",
       "releaseDate": "2026-09-01T19:55:23.513Z"
-    },
-    {
-      "version": "2026.8.2-v0.3.82",
-      "mccVersion": "0.3.82",
-      "openclawVersion": "2026.8.2",
-      "releaseDate": "2026-09-01T18:19:10.296Z"
     }
   ]
 }
