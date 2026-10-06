@@ -170,6 +170,21 @@ describe('startBackupRun', () => {
     expect(isBackupRunning()).toBe(false)
   })
 
+  it('OpenClaw 自身的 warnings 只進 job log，不讓 row 變成「完成（有警告）」', async () => {
+    // 實測 2026-10-06：OpenClaw 2026.9.8 每次備份都回報 codex-home/goals_1.sqlite「archived as opaque bytes」，
+    // 若寫進 row，每一筆備份都會顯示成有警告，真正需要注意的警告就被淹沒了
+    const r = startBackupRun({ destinationId: 'd1', triggeredBy: 'api' }, makeDeps({
+      openclawCreate: async (dir) => {
+        const p = path.join(dir, 'oc-backup.tar.gz')
+        fs.writeFileSync(p, 'oc')
+        return { archivePath: p, version: '2026.9.8', warnings: ['SQLite file archived as opaque bytes without a live snapshot or integrity checks: /x.sqlite'] }
+      },
+    }))
+    await done
+    const log = row(r.logId)
+    expect(log.status).toBe('completed')
+    expect(log.error).toBeNull()
+  })
   it('.env.local 不存在：manifest.parts.mccEnv 為 null', async () => {
     startBackupRun({ destinationId: 'd1', triggeredBy: 'api' }, makeDeps({ copyEnvFile: () => false }))
     await done

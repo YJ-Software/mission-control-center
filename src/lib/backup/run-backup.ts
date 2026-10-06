@@ -248,7 +248,8 @@ export function startBackupRun(
         }
         st.backendPart = path.basename(r.archivePath)
         st.backendVersion = r.version
-        st.warnings.push(...r.warnings)
+        // OpenClaw 自身的 warnings 已由 createOpenClawBackup 寫進 job log；不放進 row，
+        // 否則它每次都有的資訊性警告會讓每筆備份都顯示「完成（有警告）」
       }))
     }
 
