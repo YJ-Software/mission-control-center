@@ -3,7 +3,10 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { RotateCcw, Trash2, Archive, AlertTriangle, X } from 'lucide-react'
+import { RotateCcw, Trash2, Archive, AlertTriangle, X, ExternalLink } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { restoreAction, systemLogJobUrl } from '@/lib/backup/ui-helpers'
+import type { BackupKind } from '@/lib/backup/archive-format'
 
 interface BackupFile {
   filename: string
@@ -11,6 +14,8 @@ interface BackupFile {
   sizeHuman: string
   createdAt: string
   filePath: string
+  kind: BackupKind
+  legacyRestorable: boolean
 }
 
 interface BackupFilesData {
@@ -23,9 +28,10 @@ interface DashboardData {
 
 type ModalState =
   | { phase: 'dry-run-loading'; file: BackupFile }
-  | { phase: 'dry-run-result'; file: BackupFile; output: string }
+  | { phase: 'dry-run-result'; file: BackupFile; output: string; kind: BackupKind | null }
   | { phase: 'restoring'; file: BackupFile; output: string }
-  | { phase: 'restore-done'; file: BackupFile; output: string }
+  | { phase: 'started'; file: BackupFile; jobId: string }
+  | { phase: 'error'; file: BackupFile; message: string }
 
 export function BackupRestore() {
   const t = useTranslations('backup')
@@ -56,39 +62,49 @@ export function BackupRestore() {
 
   const backupToken = dashboardData?.backupToken ?? ''
 
+  async function postRestore(file: BackupFile, dryRun: boolean) {
+    const res = await fetch('/api/backup/restore', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Backup-Token': backupToken,
+      },
+      body: JSON.stringify({ file: file.filePath, dryRun }),
+    })
+    const data = await res.json().catch(() => ({}))
+    return { res, data }
+  }
+
+  function failureMessage(status: number, data: { error?: string }): string {
+    if (status === 409) return t('restore.busy')
+    return data.error || t('restore.requestFailed')
+  }
+
   async function handleRestore(file: BackupFile) {
     setModal({ phase: 'dry-run-loading', file })
     try {
-      const res = await fetch('/api/backup/restore', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Backup-Token': backupToken,
-        },
-        body: JSON.stringify({ file: file.filePath, dryRun: true }),
-      })
-      const data = await res.json()
-      setModal({ phase: 'dry-run-result', file, output: data.output ?? '' })
+      const { res, data } = await postRestore(file, true)
+      if (!res.ok) {
+        setModal({ phase: 'error', file, message: failureMessage(res.status, data) })
+        return
+      }
+      setModal({ phase: 'dry-run-result', file, output: data.output ?? '', kind: data.kind ?? file.kind })
     } catch (err) {
-      setModal(null)
+      setModal({ phase: 'error', file, message: String(err) })
     }
   }
 
   async function handleConfirmRestore(file: BackupFile, dryRunOutput: string) {
     setModal({ phase: 'restoring', file, output: dryRunOutput })
     try {
-      const res = await fetch('/api/backup/restore', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Backup-Token': backupToken,
-        },
-        body: JSON.stringify({ file: file.filePath, dryRun: false }),
-      })
-      const data = await res.json()
-      setModal({ phase: 'restore-done', file, output: data.output ?? '' })
+      const { res, data } = await postRestore(file, false)
+      if (!res.ok || !data.jobId) {
+        setModal({ phase: 'error', file, message: failureMessage(res.status, data) })
+        return
+      }
+      setModal({ phase: 'started', file, jobId: String(data.jobId) })
     } catch (err) {
-      setModal({ phase: 'restore-done', file, output: String(err) })
+      setModal({ phase: 'error', file, message: String(err) })
     }
   }
 
@@ -157,6 +173,7 @@ export function BackupRestore() {
               {files.map((file) => {
                 const isConfirmingDelete = deletingFile === file.filePath
                 const isDeleting = deletingInProgress === file.filePath
+                const action = restoreAction(file)
 
                 return (
                   <tr
@@ -166,6 +183,15 @@ export function BackupRestore() {
                     {/* Name */}
                     <td className="px-4 py-3 font-mono text-xs text-white/80 break-all">
                       {file.filename}
+                      {file.kind !== 'mcc' && (
+                        <span className={`ml-2 px-1.5 py-0.5 rounded border text-[10px] font-sans whitespace-nowrap ${
+                          file.kind === 'legacy-openclaw'
+                            ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                            : 'bg-white/10 text-white/50 border-white/10'
+                        }`}>
+                          {t(`restore.kind.${file.kind}`)}
+                        </span>
+                      )}
                     </td>
 
                     {/* Created */}
@@ -206,13 +232,34 @@ export function BackupRestore() {
                           </div>
                         ) : (
                           <>
-                            <button
-                              onClick={() => handleRestore(file)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 border border-cyan-500/20 transition-colors"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                              {t('restore.restoreBtn')}
-                            </button>
+                            {action === 'enabled' && (
+                              <button
+                                onClick={() => handleRestore(file)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 border border-cyan-500/20 transition-colors"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                {t('restore.restoreBtn')}
+                              </button>
+                            )}
+                            {action === 'legacy-disabled' && (
+                              <TooltipProvider delayDuration={150}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span tabIndex={0} className="inline-flex">
+                                      <button
+                                        type="button"
+                                        disabled
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 text-white/30 border border-white/10 cursor-not-allowed"
+                                      >
+                                        <RotateCcw className="w-3.5 h-3.5" />
+                                        {t('restore.restoreBtn')}
+                                      </button>
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">{t('restore.legacyDisabledTip')}</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
                             <button
                               onClick={() => setDeletingFile(file.filePath)}
                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 transition-colors"
@@ -241,7 +288,7 @@ export function BackupRestore() {
               <h3 className="text-sm font-semibold text-white">
                 {t('restore.previewTitle')}
               </h3>
-              {(modal.phase === 'dry-run-result' || modal.phase === 'restore-done') && (
+              {(modal.phase === 'dry-run-result' || modal.phase === 'started' || modal.phase === 'error') && (
                 <button
                   onClick={() => setModal(null)}
                   className="text-white/40 hover:text-white/70 transition-colors"
@@ -281,6 +328,10 @@ export function BackupRestore() {
                   <span>{t('restore.restoreWarning')}</span>
                 </div>
 
+                {modal.kind && (
+                  <p className="text-[11px] text-white/40 mb-2">{t('restore.kindLabel')}：{t(`restore.kind.${modal.kind}`)}</p>
+                )}
+
                 {/* Dry-run output */}
                 <pre className="font-mono text-xs text-white/70 bg-black/40 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap mb-6">
                   {modal.output || '(no output)'}
@@ -305,18 +356,48 @@ export function BackupRestore() {
               </>
             )}
 
-            {/* Restore done */}
-            {modal.phase === 'restore-done' && (
+            {/* Restore job started */}
+            {modal.phase === 'started' && (
               <>
-                <pre className="font-mono text-xs text-white/70 bg-black/40 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap mb-6">
-                  {modal.output || '(no output)'}
-                </pre>
+                <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs mb-4">
+                  <RotateCcw className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{t('restore.jobStarted')}</span>
+                </div>
+                <p className="text-xs text-white/60 mb-3">
+                  {t('restore.jobId')}：<span className="font-mono text-white/80 break-all">{modal.jobId}</span>
+                </p>
+                <a
+                  href={systemLogJobUrl(modal.jobId)}
+                  className="inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 underline underline-offset-2 mb-4"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  {t('restore.viewInSystemLog')}
+                </a>
+                <p className="text-[11px] text-white/45 leading-relaxed mb-6">{t('restore.restartNote')}</p>
                 <div className="flex justify-end">
                   <button
                     onClick={() => setModal(null)}
                     className="px-4 py-2 rounded-lg text-xs font-medium bg-white/10 text-white/60 hover:bg-white/20 transition-colors"
                   >
-                    {t('common.cancel')}
+                    {t('common.close')}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Error */}
+            {modal.phase === 'error' && (
+              <>
+                <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs mb-6">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span className="whitespace-pre-wrap break-words">{modal.message}</span>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setModal(null)}
+                    className="px-4 py-2 rounded-lg text-xs font-medium bg-white/10 text-white/60 hover:bg-white/20 transition-colors"
+                  >
+                    {t('common.close')}
                   </button>
                 </div>
               </>

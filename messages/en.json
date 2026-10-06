@@ -1756,8 +1756,12 @@
       "completed": "Completed",
       "failed": "Failed",
       "canceled": "Canceled",
-      "scriptsNotFound": "Backup scripts not found",
-      "scriptsNotFoundDesc": "Configure the scripts directory in settings",
+      "backupUnsupported": "This OpenClaw version does not support native backup",
+      "dbRestore": {
+        "applied": "MCC database was restored from a backup",
+        "rejected": "The database in the backup failed its check and was not applied",
+        "error": "Applying the backup database at startup failed"
+      },
       "wizard": "Backup Wizard",
       "wizardDesc": "Step-by-step guide to create a complete backup job",
       "wizardStart": "Start Backup Wizard",
@@ -1848,8 +1852,8 @@
       "retainCustom": "Custom",
       "sources": "Sources",
       "sourceRequired": "Please select at least one backup source",
-      "model": "LLM Model",
-      "modelOptional": "Optional - for scheduled backups",
+      "completedWithWarning": "Completed (with warnings)",
+      "warning": "Warning",
       "runNow": "Run Now",
       "running": "Running...",
       "logs": "Backup Logs",
@@ -1871,6 +1875,20 @@
       "restoreWarning": "This will overwrite current OpenClaw data. A pre-restore backup will be created automatically.",
       "deleteConfirm": "Are you sure you want to delete this backup?",
       "noBackups": "No backup files found",
+      "kindLabel": "Backup type",
+      "kind": {
+        "mcc": "MCC backup",
+        "legacy-openclaw": "Legacy format",
+        "extra": "Extra folder",
+        "unknown": "Unknown file"
+      },
+      "legacyDisabledTip": "Legacy backups are incomplete; download only",
+      "busy": "A backup or restore is already running. Please try again later.",
+      "requestFailed": "Request failed. Please try again later.",
+      "jobStarted": "Restore job started.",
+      "jobId": "Job ID",
+      "viewInSystemLog": "View in System Log",
+      "restartNote": "MCC restarts automatically at the end of the restore. A temporary disconnect is normal; refresh the page after a moment.",
       "previewTitle": "Restore Preview"
     },
     "common": {

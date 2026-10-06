@@ -3,8 +3,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { Archive, Database, Briefcase, Activity, AlertTriangle, Wand2 } from 'lucide-react'
+import { Archive, Database, Briefcase, Activity, AlertTriangle, Info, Wand2 } from 'lucide-react'
 import { BackupWizard } from './backup-wizard'
+import { recentDbRestore, type LastDbRestore } from '@/lib/backup/ui-helpers'
 
 interface DashboardData {
   totalBackups: number
@@ -18,8 +19,9 @@ interface DashboardData {
     failed: number
     canceled: number
   }
-  scriptsAvailable: boolean
-  scriptsMissing: string[]
+  backupAvailable: boolean
+  backupMissingReason: string | null
+  lastDbRestore: LastDbRestore | null
   backupToken: string
 }
 
@@ -45,12 +47,42 @@ export function BackupDashboard({ onNavigate }: { onNavigate?: (tab: string) => 
     return <div className="text-red-400 text-sm font-mono p-4">發生錯誤</div>
   }
 
+  const lastRestore = recentDbRestore(data.lastDbRestore)
+
   return (
     <div className="space-y-4">
-      {!data.scriptsAvailable && (
-        <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span>{t('dashboard.scriptsNotFound')} — {t('dashboard.scriptsNotFoundDesc')}</span>
+      {!data.backupAvailable && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            {t('dashboard.backupUnsupported')}
+            {data.backupMissingReason && (
+              <span className="block text-xs text-yellow-400/70 font-mono mt-1 whitespace-pre-wrap break-all">{data.backupMissingReason}</span>
+            )}
+          </span>
+        </div>
+      )}
+
+      {lastRestore && (
+        <div className={`flex items-start gap-3 px-4 py-3 rounded-lg border text-sm ${
+          lastRestore.result === 'applied'
+            ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-300'
+            : lastRestore.result === 'rejected'
+              ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'
+              : 'bg-red-500/10 border-red-500/30 text-red-400'
+        }`}>
+          {lastRestore.result === 'applied'
+            ? <Info className="w-4 h-4 shrink-0 mt-0.5" />
+            : <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />}
+          <span>
+            {t(`dashboard.dbRestore.${lastRestore.result}`)}
+            <span className="text-xs opacity-70 ml-2">
+              {new Date(lastRestore.at).toLocaleString('zh-TW')}
+            </span>
+            {lastRestore.detail && (
+              <span className="block text-xs opacity-80 font-mono mt-1 whitespace-pre-wrap break-all">{lastRestore.detail}</span>
+            )}
+          </span>
         </div>
       )}
 

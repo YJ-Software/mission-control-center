@@ -1756,8 +1756,12 @@
       "completed": "已完成",
       "failed": "失敗",
       "canceled": "已取消",
-      "scriptsNotFound": "找不到備份腳本",
-      "scriptsNotFoundDesc": "請在設定中配置腳本目錄",
+      "backupUnsupported": "此 OpenClaw 版本不支援原生備份",
+      "dbRestore": {
+        "applied": "MCC 資料庫已從備份還原",
+        "rejected": "備份中的資料庫未通過檢查、未套用",
+        "error": "開機時套用備份資料庫失敗"
+      },
       "wizard": "備份精靈",
       "wizardDesc": "一步步引導您建立完整的備份任務",
       "wizardStart": "啟動備份精靈",
@@ -1848,8 +1852,8 @@
       "retainCustom": "自訂",
       "sources": "備份來源",
       "sourceRequired": "請至少選擇一個備份來源",
-      "model": "LLM 模型",
-      "modelOptional": "選填 — 用於排程備份",
+      "completedWithWarning": "完成（有警告）",
+      "warning": "警告",
       "runNow": "立即執行",
       "running": "執行中...",
       "logs": "備份記錄",
@@ -1871,6 +1875,20 @@
       "restoreWarning": "此操作將覆蓋目前的 OpenClaw 資料。系統會自動建立還原前備份。",
       "deleteConfirm": "確定要刪除此備份檔案嗎？",
       "noBackups": "找不到備份檔案",
+      "kindLabel": "備份類型",
+      "kind": {
+        "mcc": "MCC 備份",
+        "legacy-openclaw": "舊格式",
+        "extra": "額外資料夾",
+        "unknown": "未知檔案"
+      },
+      "legacyDisabledTip": "舊格式備份不完整，僅供下載",
+      "busy": "目前已有備份或還原正在執行，請稍後再試。",
+      "requestFailed": "請求失敗，請稍後再試。",
+      "jobStarted": "還原工作已開始。",
+      "jobId": "工作編號",
+      "viewInSystemLog": "到系統紀錄查看",
+      "restartNote": "還原完成後 MCC 會自動重啟，頁面暫時斷線屬正常，稍候重新整理即可。",
       "previewTitle": "還原預覽"
     },
     "common": {

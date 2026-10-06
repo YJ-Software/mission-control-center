@@ -380,10 +380,6 @@ function StepJob({ value, onChange, t }: {
             ))}
           </div>
         </div>
-        <div>
-          <label className="text-xs text-white/50 mb-1 block">{t('jobs.model')}</label>
-          <input value={value.model} onChange={e => onChange({ ...value, model: e.target.value })} placeholder={t('jobs.modelOptional')} className={inputClass} />
-        </div>
       </div>
     </div>
   )

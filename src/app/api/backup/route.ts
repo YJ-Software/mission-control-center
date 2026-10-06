@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db, initDb } from '@/lib/db'
+import { db, initDb, DB_PATH } from '@/lib/db'
 import { backupJobs, backupLogs } from '@/lib/backup/schema'
 import { eq, sql } from 'drizzle-orm'
 import { listBackupFiles, deleteBackupFile } from '@/lib/backup/scripts'
-import { checkScriptsAvailable, getOrCreateBackupToken, formatBytes, getAllBackupDirs } from '@/lib/backup/helpers'
+import { getBackupAvailability } from '@/lib/backup/availability'
+import { readLastDbRestore } from '@/lib/backup/pending-db-restore'
+import { getOrCreateBackupToken, formatBytes, getAllBackupDirs } from '@/lib/backup/helpers'
 
 initDb()
 
@@ -24,7 +26,7 @@ export async function GET(req: NextRequest) {
   const type = new URL(req.url).searchParams.get('type')
 
   if (type === 'dashboard') {
-    const scriptsCheck = checkScriptsAvailable()
+    const availability = await getBackupAvailability()
     const totalJobs = db.select({ count: sql<number>`count(*)` }).from(backupJobs).get()
     const files = listAllBackupFiles()
     const totalUsageBytes = files.reduce((sum, f) => sum + f.size, 0)
@@ -43,8 +45,9 @@ export async function GET(req: NextRequest) {
       totalUsageBytes,
       totalJobs: totalJobs?.count ?? 0,
       queue,
-      scriptsAvailable: scriptsCheck.ok,
-      scriptsMissing: scriptsCheck.missing,
+      backupAvailable: availability.available,
+      backupMissingReason: availability.reason,
+      lastDbRestore: readLastDbRestore(DB_PATH),
       backupToken: getOrCreateBackupToken(),
     })
   }

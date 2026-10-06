@@ -3,7 +3,8 @@ import { promisify } from 'util'
 import fs from 'fs'
 import path from 'path'
 import { backupExtraFolder } from './extra-folder'
-import { getScriptsDir, getBackupOutputDir, formatBytes } from './helpers'
+import { getScriptsDir, getBackupOutputDir, formatBytes, checkScriptsAvailable } from './helpers'
+import { classifyBackupFile, type BackupKind } from './archive-format'
 
 const execFileAsync = promisify(execFile)
 
@@ -21,6 +22,8 @@ export interface BackupFile {
   sizeHuman: string
   createdAt: string
   filePath: string
+  kind: BackupKind
+  legacyRestorable: boolean
 }
 
 // --- Concurrency lock（實作在 lock.ts：無其他依賴，讓 action/upgrade 路由不必載入資料庫） ---
@@ -105,6 +108,7 @@ export async function uploadToFtp(
 export function listBackupFiles(dir?: string): BackupFile[] {
   const backupDir = dir || getBackupOutputDir()
   if (!fs.existsSync(backupDir)) return []
+  const legacyRestorable = checkScriptsAvailable().ok
 
   return fs.readdirSync(backupDir)
     .filter(f => f.endsWith('.tar.gz'))
@@ -117,6 +121,8 @@ export function listBackupFiles(dir?: string): BackupFile[] {
         sizeHuman: formatBytes(stat.size),
         createdAt: stat.birthtime.toISOString(),
         filePath,
+        kind: classifyBackupFile(filename),
+        legacyRestorable,
       }
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())

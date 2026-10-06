@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
+import { classifyLogOutcome } from '@/lib/backup/ui-helpers'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Plus, Trash2, ChevronDown, ChevronUp, Loader2, CheckCircle2,
@@ -102,6 +103,7 @@ const STATUS_BADGE: Record<string, string> = {
   processing: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   pending: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
 }
+const WARNING_BADGE = 'bg-amber-500/20 text-amber-400 border-amber-500/30'
 
 function statusBadgeCls(status: string): string {
   return STATUS_BADGE[status] ?? 'bg-white/10 text-white/50 border-white/10'
@@ -144,7 +146,9 @@ function ToggleSwitch({
 // ---------------------------------------------------------------------------
 
 function LogRow({ log }: { log: BackupLog }) {
+  const t = useTranslations('backup.jobs')
   const [expanded, setExpanded] = useState(false)
+  const isWarning = classifyLogOutcome(log.status, log.error) === 'warning'
 
   return (
     <>
@@ -161,8 +165,8 @@ function LogRow({ log }: { log: BackupLog }) {
             <ChevronDown className="w-3 h-3" />
           </motion.span>
           <span className="text-white/40 w-28 shrink-0">{formatTimestamp(log.startedAt)}</span>
-          <span className={`px-1.5 py-0.5 rounded border text-[10px] font-mono uppercase shrink-0 ${statusBadgeCls(log.status)}`}>
-            {log.status}
+          <span className={`px-1.5 py-0.5 rounded border text-[10px] font-mono shrink-0 ${isWarning ? WARNING_BADGE : `uppercase ${statusBadgeCls(log.status)}`}`}>
+            {isWarning ? t('completedWithWarning') : log.status}
           </span>
           <span className="text-white/40 w-16 shrink-0">{formatDuration(log.startedAt, log.completedAt)}</span>
           <span className="text-white/35">{formatBytes(log.fileSize)}</span>
@@ -182,8 +186,10 @@ function LogRow({ log }: { log: BackupLog }) {
             <div className="px-6 pb-3 pt-1 space-y-2 bg-black/20 text-xs font-mono border-t border-white/[0.05]">
               {log.error && (
                 <div>
-                  <span className="text-red-400/70 uppercase tracking-wider text-[10px]">Error</span>
-                  <p className="text-red-400 mt-0.5 whitespace-pre-wrap break-all">{log.error}</p>
+                  <span className={`${isWarning ? 'text-amber-400/70' : 'text-red-400/70'} uppercase tracking-wider text-[10px]`}>
+                    {isWarning ? t('warning') : 'Error'}
+                  </span>
+                  <p className={`${isWarning ? 'text-amber-400' : 'text-red-400'} mt-0.5 whitespace-pre-wrap break-all`}>{log.error}</p>
                 </div>
               )}
               {log.filePath && (
@@ -476,17 +482,6 @@ function JobForm({ initial, destinations, schedules, sources, onSave, onCancel, 
         {!hasAnySources && (
           <p className="text-xs text-red-400/80 mt-1.5">{t('sourceRequired')}</p>
         )}
-      </div>
-
-      {/* Model */}
-      <div>
-        <label className="block text-xs font-mono text-white/50 mb-1">{t('model')}</label>
-        <input
-          className={inputCls}
-          value={form.model}
-          onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-          placeholder={t('modelOptional')}
-        />
       </div>
 
       {/* Actions */}

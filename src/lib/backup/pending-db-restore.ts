@@ -113,3 +113,16 @@ export function applyPendingDbRestoreOnce(dbPath: string): 'applied' | 'none' | 
     throw err
   }
 }
+
+/** 讀取開機還原結果；檔案不存在或內容壞掉一律回 null。 */
+export function readLastDbRestore(
+  dbPath: string,
+): { result: 'applied' | 'rejected' | 'error'; at: string; detail: string } | null {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(path.dirname(dbPath), 'last-db-restore.json'), 'utf8'))
+    if (!raw || typeof raw !== 'object') return null
+    if (!['applied', 'rejected', 'error'].includes(raw.result)) return null
+    if (typeof raw.at !== 'string') return null
+    return { result: raw.result, at: raw.at, detail: typeof raw.detail === 'string' ? raw.detail : '' }
+  } catch { return null }
+}
