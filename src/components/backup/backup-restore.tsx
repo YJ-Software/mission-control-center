@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import { RotateCcw, Trash2, Archive, AlertTriangle, X, ExternalLink } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { restoreAction, systemLogJobUrl } from '@/lib/backup/ui-helpers'
@@ -35,6 +35,7 @@ type ModalState =
 
 export function BackupRestore() {
   const t = useTranslations('backup')
+  const locale = useLocale()
   const queryClient = useQueryClient()
 
   const [modal, setModal] = useState<ModalState | null>(null)
@@ -90,7 +91,7 @@ export function BackupRestore() {
       }
       setModal({ phase: 'dry-run-result', file, output: data.output ?? '', kind: data.kind ?? file.kind })
     } catch (err) {
-      setModal({ phase: 'error', file, message: String(err) })
+      setModal({ phase: 'error', file, message: t('restore.networkError') })
     }
   }
 
@@ -104,7 +105,7 @@ export function BackupRestore() {
       }
       setModal({ phase: 'started', file, jobId: String(data.jobId) })
     } catch (err) {
-      setModal({ phase: 'error', file, message: String(err) })
+      setModal({ phase: 'error', file, message: t('restore.networkError') })
     }
   }
 
@@ -196,7 +197,7 @@ export function BackupRestore() {
 
                     {/* Created */}
                     <td className="px-4 py-3 text-white/50 text-xs whitespace-nowrap">
-                      {new Date(file.createdAt).toLocaleString('zh-TW', {
+                      {new Date(file.createdAt).toLocaleString(locale, {
                         year: 'numeric',
                         month: '2-digit',
                         day: '2-digit',
@@ -245,7 +246,7 @@ export function BackupRestore() {
                               <TooltipProvider delayDuration={150}>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <span tabIndex={0} className="inline-flex">
+                                    <span tabIndex={0} role="button" aria-disabled="true" aria-label={`${t('restore.restoreBtn')}: ${t('restore.legacyDisabledTip')}`} className="inline-flex">
                                       <button
                                         type="button"
                                         disabled
@@ -334,7 +335,7 @@ export function BackupRestore() {
 
                 {/* Dry-run output */}
                 <pre className="font-mono text-xs text-white/70 bg-black/40 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap mb-6">
-                  {modal.output || '(no output)'}
+                  {modal.output || t('restore.noOutput')}
                 </pre>
 
                 {/* Actions */}

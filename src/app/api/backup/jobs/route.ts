@@ -3,6 +3,7 @@ import { db, initDb } from '@/lib/db'
 import { backupJobs, backupDestinations, backupSchedules, backupLogs } from '@/lib/backup/schema'
 import { eq, desc, sql } from 'drizzle-orm'
 import { newId } from '@/lib/backup/helpers'
+import { classifyLogOutcome } from '@/lib/backup/ui-helpers'
 
 initDb()
 
@@ -22,6 +23,7 @@ export async function GET() {
       scheduleType: sched?.type,
       lastRun: lastLog?.startedAt,
       lastStatus: lastLog?.status,
+      lastWarning: classifyLogOutcome(lastLog?.status ?? '', lastLog?.error) === 'warning',
     }
   })
   return NextResponse.json(result)

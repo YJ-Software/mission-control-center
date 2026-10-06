@@ -31,6 +31,8 @@ export interface LastDbRestore {
 }
 
 export const LAST_DB_RESTORE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+/** 成功套用是「已處理」的資訊，只留 1 天；失敗/拒絕留 7 天。 */
+export const LAST_DB_RESTORE_APPLIED_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 /** 只顯示 7 天內的開機還原結果；時間壞掉或在未來太遠視為不顯示。 */
 export function recentDbRestore(v: LastDbRestore | null | undefined, now: number = Date.now()): LastDbRestore | null {
@@ -38,6 +40,7 @@ export function recentDbRestore(v: LastDbRestore | null | undefined, now: number
   const at = Date.parse(v.at)
   if (!Number.isFinite(at)) return null
   const age = now - at
-  if (age > LAST_DB_RESTORE_MAX_AGE_MS) return null
+  const max = v.result === 'applied' ? LAST_DB_RESTORE_APPLIED_MAX_AGE_MS : LAST_DB_RESTORE_MAX_AGE_MS
+  if (age > max) return null
   return v
 }

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import { classifyLogOutcome } from '@/lib/backup/ui-helpers'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -28,6 +28,7 @@ interface BackupJob {
   scheduleName: string
   lastRun: number | null
   lastStatus: string | null
+  lastWarning?: boolean
 }
 
 interface Destination {
@@ -88,8 +89,8 @@ function formatBytes(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function formatTimestamp(unix: number): string {
-  return new Date(unix * 1000).toLocaleString('zh-TW', {
+function formatTimestamp(unix: number, locale: string): string {
+  return new Date(unix * 1000).toLocaleString(locale, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -147,6 +148,7 @@ function ToggleSwitch({
 
 function LogRow({ log }: { log: BackupLog }) {
   const t = useTranslations('backup.jobs')
+  const locale = useLocale()
   const [expanded, setExpanded] = useState(false)
   const isWarning = classifyLogOutcome(log.status, log.error) === 'warning'
 
@@ -164,7 +166,7 @@ function LogRow({ log }: { log: BackupLog }) {
           >
             <ChevronDown className="w-3 h-3" />
           </motion.span>
-          <span className="text-white/40 w-28 shrink-0">{formatTimestamp(log.startedAt)}</span>
+          <span className="text-white/40 w-28 shrink-0">{formatTimestamp(log.startedAt, locale)}</span>
           <span className={`px-1.5 py-0.5 rounded border text-[10px] font-mono shrink-0 ${isWarning ? WARNING_BADGE : `uppercase ${statusBadgeCls(log.status)}`}`}>
             {isWarning ? t('completedWithWarning') : log.status}
           </span>
@@ -187,7 +189,7 @@ function LogRow({ log }: { log: BackupLog }) {
               {log.error && (
                 <div>
                   <span className={`${isWarning ? 'text-amber-400/70' : 'text-red-400/70'} uppercase tracking-wider text-[10px]`}>
-                    {isWarning ? t('warning') : 'Error'}
+                    {isWarning ? t('warning') : t('error')}
                   </span>
                   <p className={`${isWarning ? 'text-amber-400' : 'text-red-400'} mt-0.5 whitespace-pre-wrap break-all`}>{log.error}</p>
                 </div>
@@ -613,11 +615,17 @@ function JobRow({ job, destinations, schedules, sources, backupToken }: JobRowPr
           </div>
 
           {/* Last status badge */}
-          <div className="shrink-0 w-24 flex justify-end">
+          <div className="shrink-0 w-28 flex justify-end">
             {job.lastStatus ? (
-              <span className={`px-2 py-0.5 rounded border text-[10px] font-mono uppercase ${statusBadgeCls(job.lastStatus)}`}>
-                {job.lastStatus}
-              </span>
+              job.lastWarning ? (
+                <span className={`px-2 py-0.5 rounded border text-[10px] font-mono whitespace-nowrap ${WARNING_BADGE}`}>
+                  {t('completedWithWarning')}
+                </span>
+              ) : (
+                <span className={`px-2 py-0.5 rounded border text-[10px] font-mono uppercase ${statusBadgeCls(job.lastStatus)}`}>
+                  {job.lastStatus}
+                </span>
+              )
             ) : (
               <span className="text-white/20 text-xs font-mono">—</span>
             )}

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useTranslations } from 'next-intl'
+import { useTranslations, useLocale } from 'next-intl'
 import { Archive, Database, Briefcase, Activity, AlertTriangle, Info, Wand2 } from 'lucide-react'
 import { BackupWizard } from './backup-wizard'
 import { recentDbRestore, type LastDbRestore } from '@/lib/backup/ui-helpers'
@@ -27,6 +27,7 @@ interface DashboardData {
 
 export function BackupDashboard({ onNavigate }: { onNavigate?: (tab: string) => void }) {
   const t = useTranslations('backup')
+  const locale = useLocale()
   const [showWizard, setShowWizard] = useState(false)
 
   const { data, isLoading, isError } = useQuery<DashboardData>({
@@ -77,7 +78,7 @@ export function BackupDashboard({ onNavigate }: { onNavigate?: (tab: string) => 
           <span>
             {t(`dashboard.dbRestore.${lastRestore.result}`)}
             <span className="text-xs opacity-70 ml-2">
-              {new Date(lastRestore.at).toLocaleString('zh-TW')}
+              {new Date(lastRestore.at).toLocaleString(locale)}
             </span>
             {lastRestore.detail && (
               <span className="block text-xs opacity-80 font-mono mt-1 whitespace-pre-wrap break-all">{lastRestore.detail}</span>

@@ -55,14 +55,21 @@ export function runOpenclaw(args: string[], timeoutMs = 15000): Promise<RunResul
     child.stderr.setEncoding('utf8')
     child.stdout.on('data', (d: string) => (stdout += d))
     child.stderr.on('data', (d: string) => (stderr += d))
-    const timer = setTimeout(() => child.kill('SIGTERM'), timeoutMs)
+    let timedOut = false
+    const timer = setTimeout(() => { timedOut = true; child.kill('SIGTERM') }, timeoutMs)
     child.on('error', (err) => {
       clearTimeout(timer)
       resolve({ code: 127, stdout, stderr: stderr + `\n${err.message}` })
     })
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       clearTimeout(timer)
-      resolve({ code: code ?? 0, stdout, stderr })
+      if (code === null) {
+        // 被訊號終止：絕不當成成功。逾時回 124（同 timeout(1)）。
+        const why = timedOut ? `timed out after ${timeoutMs}ms` : `terminated by signal ${signal ?? 'unknown'}`
+        resolve({ code: timedOut ? 124 : 128, stdout, stderr: `${stderr}\n${why}` })
+        return
+      }
+      resolve({ code, stdout, stderr })
     })
   })
 }

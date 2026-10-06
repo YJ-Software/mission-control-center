@@ -41,9 +41,15 @@ describe('systemLogJobUrl', () => {
 describe('recentDbRestore', () => {
   const now = Date.parse('2026-10-10T00:00:00Z')
   const v = (at: string) => ({ result: 'applied' as const, at, detail: 'd' })
-  it('7 天內顯示、超過不顯示', () => {
-    expect(recentDbRestore(v('2026-10-08T00:00:00Z'), now)).not.toBeNull()
-    expect(recentDbRestore(v(new Date(now - LAST_DB_RESTORE_MAX_AGE_MS - 1000).toISOString()), now)).toBeNull()
+  it('7 天內顯示、超過不顯示（rejected）', () => {
+    const r = (at: string) => ({ result: 'rejected' as const, at, detail: 'd' })
+    expect(recentDbRestore(r('2026-10-08T00:00:00Z'), now)).not.toBeNull()
+    expect(recentDbRestore(r(new Date(now - LAST_DB_RESTORE_MAX_AGE_MS - 1000).toISOString()), now)).toBeNull()
+  })
+  it('applied 只留 1 天，失敗/拒絕留 7 天', () => {
+    expect(recentDbRestore(v('2026-10-08T00:00:00Z'), now)).toBeNull()
+    expect(recentDbRestore({ result: 'rejected', at: '2026-10-08T00:00:00Z', detail: '' }, now)).not.toBeNull()
+    expect(recentDbRestore(v('2026-10-09T12:00:00Z'), now)).not.toBeNull()
   })
   it('null 與壞時間回 null', () => {
     expect(recentDbRestore(null, now)).toBeNull()

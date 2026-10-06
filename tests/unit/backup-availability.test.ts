@@ -28,3 +28,15 @@ describe('getBackupAvailability', () => {
     expect(run).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('in-flight 去重', () => {
+  it('並發呼叫共用同一次探測', async () => {
+    let release!: (v: { code: number; stdout: string; stderr: string }) => void
+    const run = vi.fn(() => new Promise<{ code: number; stdout: string; stderr: string }>(r => { release = r }))
+    const a = getBackupAvailability({ run, now: () => 0 })
+    const b = getBackupAvailability({ run, now: () => 0 })
+    release({ code: 0, stdout: '', stderr: '' })
+    expect(await a).toEqual(await b)
+    expect(run).toHaveBeenCalledTimes(1)
+  })
+})
