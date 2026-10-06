@@ -3,7 +3,6 @@ import { db, initDb } from '@/lib/db'
 import { backupJobs, backupDestinations, backupSchedules, backupLogs } from '@/lib/backup/schema'
 import { eq, desc, sql } from 'drizzle-orm'
 import { newId } from '@/lib/backup/helpers'
-import { syncBackupCron } from '@/lib/backup/sync-cron'
 
 initDb()
 
@@ -43,7 +42,6 @@ export async function POST(req: NextRequest) {
     model: model || null,
   }).run()
 
-  syncBackupCron().catch(console.error)
   return NextResponse.json({ ok: true, id })
 }
 
@@ -62,7 +60,6 @@ export async function PUT(req: NextRequest) {
   if (updates.model !== undefined) set.model = updates.model
 
   db.update(backupJobs).set(set).where(eq(backupJobs.id, id)).run()
-  syncBackupCron().catch(console.error)
   return NextResponse.json({ ok: true })
 }
 
@@ -71,6 +68,5 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   db.delete(backupJobs).where(eq(backupJobs.id, id)).run()
-  syncBackupCron().catch(console.error)
   return NextResponse.json({ ok: true })
 }

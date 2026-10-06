@@ -643,6 +643,13 @@ app.prepare().then(async () => {
     console.error('[cs-storage] scheduler init failed:', err)
   })
 
+  // Built-in backup scheduler (replaces the old AI-agent cron) + legacy cron cleanup.
+  import('./src/lib/backup/scheduler').then(({ startBackupScheduler }) => {
+    startBackupScheduler()
+  }).catch(err => {
+    console.error('[backup-scheduler] init failed:', err)
+  })
+
   // Only handle upgrade for our /ws paths; let Next.js handle HMR upgrades
   server.on('upgrade', (req, socket, head) => {
     const upgradeUrl = new URL(req.url!, `http://${req.headers.host || 'localhost'}`)

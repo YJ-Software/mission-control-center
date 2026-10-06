@@ -3,7 +3,6 @@ import { db, initDb } from '@/lib/db'
 import { backupSchedules, backupJobs } from '@/lib/backup/schema'
 import { eq, sql } from 'drizzle-orm'
 import { newId, validateScheduleConfig } from '@/lib/backup/helpers'
-import { syncBackupCron } from '@/lib/backup/sync-cron'
 
 initDb()
 
@@ -47,7 +46,6 @@ export async function PUT(req: NextRequest) {
   if (updates.config !== undefined) set.config = updates.config
 
   db.update(backupSchedules).set(set).where(eq(backupSchedules.id, id)).run()
-  syncBackupCron().catch(console.error)
   return NextResponse.json({ ok: true })
 }
 
@@ -64,6 +62,5 @@ export async function DELETE(req: NextRequest) {
   }
 
   db.delete(backupSchedules).where(eq(backupSchedules.id, id)).run()
-  syncBackupCron().catch(console.error)
   return NextResponse.json({ ok: true })
 }
