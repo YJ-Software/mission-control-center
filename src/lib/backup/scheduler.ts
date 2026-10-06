@@ -125,7 +125,10 @@ export async function removeLegacyBackupCron(deps: {
 // ---------------------------------------------------------------------------
 
 const TICK_MS = 60_000
-const LEGACY_RETRY_MS = 60 * 60_000
+// 舊 cron 清理重試的退避間隔。開機時 gateway WebSocket 多半還沒連上（實測 2026-10-06 第一次一定失敗），
+// 所以第一次重試要快；若等一小時，舊 cron 會和內建排程在下一個整點各跑一次備份。
+const LEGACY_RETRY_DELAYS_MS = [60_000, 2 * 60_000, 5 * 60_000, 10 * 60_000, 30 * 60_000]
+const LEGACY_RETRY_MAX_MS = 60 * 60_000
 const STARTED_KEY = '__mccBackupSchedulerStarted'
 
 function readJobs(): SchedulerJob[] {
@@ -218,14 +221,20 @@ export function startBackupScheduler(opts: SchedulerStartOpts = {}): void {
   }, TICK_MS)
   timer.unref()
 
-  // 舊 cron 清理：deferred 每 60 分鐘重試，直到 removed / none
+  // 舊 cron 清理：deferred 時依退避間隔重試（1、2、5、10、30 分鐘，之後每小時），直到 removed / none
   const clean = opts.cleanLegacy ?? cleanLegacyOnce
+  let failures = 0
+  const retryLater = () => {
+    const delay = LEGACY_RETRY_DELAYS_MS[failures] ?? LEGACY_RETRY_MAX_MS
+    failures++
+    setTimeout(attempt, delay).unref()
+  }
   const attempt = () => {
     clean().then((done) => {
-      if (!done) setTimeout(attempt, LEGACY_RETRY_MS).unref()
+      if (!done) retryLater()
     }).catch((err) => {
       console.error('[backup-scheduler] 舊 cron 清理失敗:', err)
-      setTimeout(attempt, LEGACY_RETRY_MS).unref()
+      retryLater()
     })
   }
   attempt()
