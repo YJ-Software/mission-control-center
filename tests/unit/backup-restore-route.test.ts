@@ -73,6 +73,14 @@ describe('POST /api/backup/restore', () => {
     const f = path.join(tmp, 'backup', 'openclaw-backup_a.tar.gz'); fs.writeFileSync(f, 'x')
     expect((await POST(req({ file: f }))).status).toBe(400)
   })
+  it('400：dryRun 遇到不安全封存 / manifest 無效（RestoreRejectedError）', async () => {
+    m.describe.mockRejectedValue(new RestoreRejectedError('manifest 無效'))
+    expect((await POST(req({ file, dryRun: true }))).status).toBe(400)
+  })
+  it('500：dryRun 遇到其他錯誤', async () => {
+    m.describe.mockRejectedValue(new Error('io'))
+    expect((await POST(req({ file, dryRun: true }))).status).toBe(500)
+  })
   it('dryRun：回 { ok, output, kind } 且不啟動', async () => {
     const res = await POST(req({ file, dryRun: true }))
     expect(res.status).toBe(200)

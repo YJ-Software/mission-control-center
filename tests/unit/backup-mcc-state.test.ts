@@ -179,6 +179,7 @@ describe('pending 驗證與 staging', () => {
     fs.writeFileSync(dbp() + '-shm', 's')
     const failing = {
       existsSync: fs.existsSync,
+      statSync: fs.statSync,
       renameSync: (a: string, b: string) => {
         if (a.endsWith('-wal')) throw new Error('wal boom')
         fs.renameSync(a, b)
@@ -244,5 +245,81 @@ describe('applyPendingDbRestoreOnce', () => {
     const dbp = path.join(dir, 'db.sqlite')
     makeDb(dbp + '.restore-pending')
     expect(applyPendingDbRestoreOnce(dbp)).toBe('applied')
+  })
+})
+
+import { PENDING_MAX_AGE_MS, writeLastDbRestore } from '@/lib/backup/pending-db-restore'
+import { preparePendingDbRestore, commitPendingDbRestore, discardPreparedDbRestore, discardPendingDbRestore } from '@/lib/backup/mcc-state'
+
+describe('pending 過期（延遲引信）', () => {
+  const dbp = () => path.join(dir, 'db.sqlite')
+  const ago = (ms: number) => { const t = new Date(Date.now() - ms); fs.utimesSync(dbp() + '.restore-pending', t, t) }
+  it('超過 1 小時：拒絕、改名 .restore-rejected-、現行 db 不動、report 說明原因', () => {
+    makeDb(dbp(), 'keep'); makeDb(dbp() + '.restore-pending', 'new'); ago(PENDING_MAX_AGE_MS + 60_000)
+    const report: { detail?: string } = {}
+    expect(applyPendingDbRestore(dbp(), fs, new Date(), report)).toBe('rejected')
+    expect(fs.existsSync(dbp() + '.restore-pending')).toBe(false)
+    expect(fs.readdirSync(dir).some(f => f.startsWith('db.sqlite.restore-rejected-'))).toBe(true)
+    const d = new Database(dbp(), { readonly: true })
+    expect(d.prepare('SELECT v FROM t').all()).toEqual([{ v: 'keep' }]); d.close()
+    expect(report.detail).toContain('超過 1 小時')
+  })
+  it('未滿 1 小時：照常套用', () => {
+    makeDb(dbp(), 'old'); makeDb(dbp() + '.restore-pending', 'new'); ago(PENDING_MAX_AGE_MS - 5 * 60_000)
+    expect(applyPendingDbRestore(dbp())).toBe('applied')
+  })
+  it('now 可注入：同一個檔案在未來時間點就過期', () => {
+    makeDb(dbp(), 'old'); makeDb(dbp() + '.restore-pending', 'new')
+    expect(applyPendingDbRestore(dbp(), fs, new Date(Date.now() + 2 * 3600_000))).toBe('rejected')
+  })
+})
+
+describe('last-db-restore.json（開機套用結果）', () => {
+  const dbp = () => path.join(dir, 'db.sqlite')
+  const read = () => JSON.parse(fs.readFileSync(path.join(dir, 'last-db-restore.json'), 'utf8'))
+  it('applied 寫入 result/at/detail', () => {
+    makeDb(dbp(), 'old'); makeDb(dbp() + '.restore-pending', 'new')
+    expect(applyPendingDbRestoreOnce(dbp())).toBe('applied')
+    const j = read()
+    expect(j.result).toBe('applied'); expect(j.detail).toContain('pre-restore'); expect(Date.parse(j.at)).not.toBeNaN()
+  })
+  it('rejected（損毀）寫入原因', () => {
+    makeDb(dbp(), 'old'); fs.writeFileSync(dbp() + '.restore-pending', 'garbage'.repeat(500))
+    expect(applyPendingDbRestoreOnce(dbp())).toBe('rejected')
+    expect(read().result).toBe('rejected'); expect(read().detail).toContain('完整性')
+  })
+  it('沒有 pending 不寫檔', () => {
+    makeDb(dbp(), 'old')
+    expect(applyPendingDbRestoreOnce(dbp())).toBe('none')
+    expect(fs.existsSync(path.join(dir, 'last-db-restore.json'))).toBe(false)
+  })
+  it('writeLastDbRestore 記錄 error；目錄不存在時不丟錯', () => {
+    writeLastDbRestore(dbp(), 'error', 'boom')
+    expect(read()).toMatchObject({ result: 'error', detail: 'boom' })
+    expect(() => writeLastDbRestore('/nonexistent/x/db.sqlite', 'error', 'x')).not.toThrow()
+  })
+})
+
+describe('prepare / commit 兩段式', () => {
+  const dbp = () => path.join(dir, 'db.sqlite')
+  it('prepare 只產生 .tmp（不產生 pending），commit 才 rename，mtime 為現在', () => {
+    const snap = path.join(dir, 'snap'); makeDb(snap)
+    preparePendingDbRestore(snap, dbp())
+    expect(fs.existsSync(dbp() + '.restore-pending.tmp')).toBe(true)
+    expect(fs.existsSync(dbp() + '.restore-pending')).toBe(false)
+    const old = new Date(Date.now() - 3 * 3600_000); fs.utimesSync(dbp() + '.restore-pending.tmp', old, old)
+    commitPendingDbRestore(dbp())
+    expect(fs.existsSync(dbp() + '.restore-pending.tmp')).toBe(false)
+    expect(Date.now() - fs.statSync(dbp() + '.restore-pending').mtimeMs).toBeLessThan(60_000)
+    expect(fs.statSync(dbp() + '.restore-pending').mode & 0o777).toBe(0o600)
+  })
+  it('prepare 拒絕損毀快照且不留 .tmp；discard 系列', () => {
+    const snap = path.join(dir, 'snap'); fs.writeFileSync(snap, 'x'.repeat(2000))
+    expect(() => preparePendingDbRestore(snap, dbp())).toThrow(/完整性/)
+    expect(fs.readdirSync(dir).some(f => f.includes('restore-pending'))).toBe(false)
+    const good = path.join(dir, 'good'); makeDb(good); preparePendingDbRestore(good, dbp()); discardPreparedDbRestore(dbp())
+    expect(fs.existsSync(dbp() + '.restore-pending.tmp')).toBe(false)
+    stagePendingDbRestore(good, dbp()); discardPendingDbRestore(dbp())
+    expect(fs.existsSync(dbp() + '.restore-pending')).toBe(false)
   })
 })

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { isBackupOrRestoreBusy } from '@/lib/backup/lock'
 import { createWriteStream } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
@@ -54,6 +55,12 @@ const VALID_SOURCES: TriggerSource[] = ['header-button', 'settings-card', 'quick
  *   - application/json with { url, sha256?, triggeredBy? } — download & apply
  */
 export async function POST(request: Request) {
+  if (isBackupOrRestoreBusy()) {
+    return NextResponse.json(
+      { error: '備份或還原進行中，暫時無法升級；請等它完成後再試' },
+      { status: 409 },
+    )
+  }
   const info = getInstallInfo()
   if (info.mode !== 'release') {
     return NextResponse.json(

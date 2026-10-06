@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { exec } from 'child_process'
 import { startJob } from '@/lib/jobs/runner'
 import type { TriggerSource } from '@/lib/jobs/types'
+import { isBackupOrRestoreBusy } from '@/lib/backup/lock'
+
+/** 備份/還原進行中，這些動作會把它打斷（還原中途被重啟可能留下搬到一半的資料） */
+const BLOCKED_DURING_BACKUP = new Set(['restart-dashboard', 'restart-openclaw', 'update-mcc'])
 
 /**
  * Quick Actions API — all commands are hardcoded static strings,
@@ -244,6 +248,13 @@ export async function POST(req: NextRequest) {
 
     if (!actions[action]) {
       return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 })
+    }
+
+    if (BLOCKED_DURING_BACKUP.has(action) && isBackupOrRestoreBusy()) {
+      return NextResponse.json(
+        { success: false, error: '備份或還原進行中，暫時無法重啟；請等它完成後再試' },
+        { status: 409 },
+      )
     }
 
     const result = await actions[action]({ triggeredBy })

@@ -33,19 +33,52 @@ export function copyEnvFile(src: string, dest: string): boolean {
   return true
 }
 
-/** 把快照放成 <dbPath>.restore-pending，下次行程啟動時由 db.ts 套用。 */
-export function stagePendingDbRestore(snapshotPath: string, dbPath: string): void {
+const pendingOf = (dbPath: string) => `${dbPath}.restore-pending`
+
+/**
+ * 第一步（在動任何現行資料之前）：驗證快照並複製成 <pending>.tmp。
+ * 空間不足、權限等會失敗的步驟都在這裡；失敗時不留 .tmp。
+ */
+export function preparePendingDbRestore(snapshotPath: string, dbPath: string): void {
   if (!isSqliteDbHealthy(snapshotPath)) {
     throw new Error(`備份中的資料庫快照無法通過完整性檢查，已拒絕排程還原：${snapshotPath}`)
   }
-  const pending = `${dbPath}.restore-pending`
-  const tmp = `${pending}.tmp`
+  const tmp = `${pendingOf(dbPath)}.tmp`
   try {
     fs.copyFileSync(snapshotPath, tmp)
     fs.chmodSync(tmp, 0o600)
-    fs.renameSync(tmp, pending)
   } catch (err) {
     fs.rmSync(tmp, { force: true })
+    throw err
+  }
+}
+
+/** 第二步（OpenClaw 換好之後）：只做一次 rename，並把 mtime 設為現在（過期計時從此刻開始）。 */
+export function commitPendingDbRestore(dbPath: string): void {
+  const tmp = `${pendingOf(dbPath)}.tmp`
+  const now = new Date()
+  fs.utimesSync(tmp, now, now)
+  fs.renameSync(tmp, pendingOf(dbPath))
+}
+
+/** 清掉準備階段留下的 .tmp（任何失敗路徑都可呼叫，不丟錯）。 */
+export function discardPreparedDbRestore(dbPath: string): void {
+  try { fs.rmSync(`${pendingOf(dbPath)}.tmp`, { force: true }) } catch { /* ignore */ }
+}
+
+/** 連已提交的 pending 一併撤銷（排程重啟失敗時使用）。 */
+export function discardPendingDbRestore(dbPath: string): void {
+  discardPreparedDbRestore(dbPath)
+  try { fs.rmSync(pendingOf(dbPath), { force: true }) } catch { /* ignore */ }
+}
+
+/** 把快照放成 <dbPath>.restore-pending，下次行程啟動時由 db.ts 套用。 */
+export function stagePendingDbRestore(snapshotPath: string, dbPath: string): void {
+  preparePendingDbRestore(snapshotPath, dbPath)
+  try {
+    commitPendingDbRestore(dbPath)
+  } catch (err) {
+    discardPreparedDbRestore(dbPath)
     throw err
   }
 }
