@@ -386,7 +386,8 @@ export function startBackupRun(
         if (st.finished) return
         try {
           const cur = db.select().from(backupLogs).where(eq(backupLogs.id, logId)).get()
-          if (cur?.status === 'processing') failRun('job runner', '工作在完成前中斷')
+          // 封存檔已 rename 成最終名稱就是有效資料：保留並在 error 指出路徑
+          if (cur?.status === 'processing') failRun('job runner', '工作在完成前中斷', undefined, true)
           else finalize()
         } catch {
           finalize()

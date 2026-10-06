@@ -209,7 +209,7 @@ export function startJob(spec: JobSpec): JobMeta {
    } finally {
     try { spec.onSettled?.() } catch { /* 保底清理不可再丟錯 */ }
    }
-  })().catch(() => { /* runner I/O 失敗：onSettled 已處理善後 */ })
+  })().catch((err) => console.error('[jobs] runner failed', err))
 
   return meta
 }

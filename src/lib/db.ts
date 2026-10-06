@@ -14,7 +14,8 @@ if (!fs.existsSync(DB_DIR)) {
   fs.mkdirSync(DB_DIR, { recursive: true })
 }
 
-const restoreResult = applyPendingDbRestoreOnce(DB_PATH)
+// 測試行程絕不可替換或改動開發者的真實 DB（多個單元測試會間接 import 本檔並開啟真實 db.sqlite）
+const restoreResult = process.env.VITEST ? 'none' : applyPendingDbRestoreOnce(DB_PATH)
 if (restoreResult === 'applied') {
   console.log('[Backup] restored MCC database applied from backup')
 } else if (restoreResult === 'rejected') {
@@ -400,7 +401,7 @@ export function initDb() {
 
   // 每個行程只做一次：此時 pending DB restore 已套用、沒有備份在跑，殘留的 processing 一定是孤兒
   const g = globalThis as unknown as { __mccBackupLogsReconciled?: boolean }
-  if (!g.__mccBackupLogsReconciled) {
+  if (!g.__mccBackupLogsReconciled && !process.env.VITEST) {
     g.__mccBackupLogsReconciled = true
     try {
       reconcileStaleBackupLogs(db)

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -47,6 +47,7 @@ function makeDb() {
 
 let tmp: string
 let outDir: string
+let defaultDir: string
 let db: ReturnType<typeof makeDb>
 let done: Promise<void>
 let calls: string[]
@@ -124,9 +125,13 @@ beforeEach(() => {
   logger = () => {}
   runnerThrowsAfter = null
   // 預設輸出目錄也導到 tmp：FTP 目的地沒有 path，絕不能落到真實的 ~/backup
-  db.insert(appSchema.settings).values({ key: 'backupOutputDir', value: outDir }).run()
+  // 預設目錄與目的地目錄刻意不同：retention 要靠 getAllBackupDirs 才刪得到目的地目錄的檔案
+  defaultDir = path.join(tmp, 'default')
+  fs.mkdirSync(defaultDir)
+  db.insert(appSchema.settings).values({ key: 'backupOutputDir', value: defaultDir }).run()
   db.insert(backupDestinations).values({ id: 'd1', name: 'Local', type: 'local', config: JSON.stringify({ path: outDir }) }).run()
 })
+afterAll(() => { fs.rmSync(h.dataDir, { recursive: true, force: true }) })
 afterEach(() => {
   setRunningLogId(null)
   fs.rmSync(tmp, { recursive: true, force: true })
@@ -394,15 +399,18 @@ describe('startBackupRun', () => {
     expect(fs.readdirSync(outDir)).toEqual([])
   })
 
-  it('I1：runner 在 phase 之間丟錯（沒跑到 retention）→ onSettled 保底：解鎖、failed、無最終檔', async () => {
+  it('I1：runner 在 phase 之間丟錯（沒跑到 retention）→ onSettled 保底：解鎖、failed、保留最終檔', async () => {
     runnerThrowsAfter = 2 // package 之後、record result 之前中斷
     const r = startBackupRun({ destinationId: 'd1', triggeredBy: 'api' }, makeDeps())
     await done
     const log = row(r.logId)
     expect(log.status).toBe('failed')
     expect(log.error).toContain('job runner')
+    expect(log.error).toContain(log.filePath!) // 已 rename 的最終檔是有效資料：保留並在 error 指出路徑
+    expect(fs.existsSync(log.filePath!)).toBe(true)
+    expect(log.fileSize).toBe(fs.statSync(log.filePath!).size)
     expect(isBackupRunning()).toBe(false)
-    expect(fs.readdirSync(outDir)).toEqual([]) // 已 rename 的最終檔也被移除
+    expect(leftovers()).toEqual([])
   })
 
   it('runner 中斷發生在 completed 之後：row 維持 completed，仍解鎖', async () => {

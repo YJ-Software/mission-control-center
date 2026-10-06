@@ -586,7 +586,7 @@ function JobRow({ job, destinations, schedules, sources, backupToken }: JobRowPr
           'Content-Type': 'application/json',
           'X-Backup-Token': backupToken,
         },
-        body: JSON.stringify({ jobId: job.id }),
+        body: JSON.stringify({ jobId: job.id, triggeredBy: 'settings-card' }),
       })
       if (!res.ok) throw new Error('Run failed')
       return res.json()
