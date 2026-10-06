@@ -192,6 +192,44 @@ describe('pending 驗證與 staging', () => {
   })
 })
 
+describe('快照到套用的完整流程', () => {
+  const dbp = () => path.join(dir, 'db.sqlite')
+  it('快照為 delete 模式，stage + apply 後不留 restore-pending 檔', async () => {
+    const live = new Database(dbp())
+    live.pragma('journal_mode = WAL'); live.pragma('wal_autocheckpoint = 0')
+    live.exec('CREATE TABLE t (v TEXT)'); live.prepare('INSERT INTO t VALUES (?)').run('flow')
+    const snap = path.join(dir, 'snap.sqlite')
+    await snapshotMccDb(dbp(), snap)
+    live.close()
+    const chk = new Database(snap, { readonly: true })
+    expect(chk.pragma('journal_mode', { simple: true })).toBe('delete')
+    chk.close()
+    expect(fs.existsSync(snap + '-wal')).toBe(false)
+    expect(fs.existsSync(snap + '-shm')).toBe(false)
+    stagePendingDbRestore(snap, dbp())
+    expect(applyPendingDbRestore(dbp())).toBe('applied')
+    expect(fs.readdirSync(dir).filter(f => f.includes('restore-pending'))).toEqual([])
+    const d = new Database(dbp(), { readonly: true })
+    expect(d.prepare('SELECT v FROM t').all()).toEqual([{ v: 'flow' }])
+    d.close()
+  })
+  it('apply 會清掉 pending 旁殘留的 -wal/-shm', () => {
+    makeDb(dbp() + '.restore-pending')
+    fs.writeFileSync(dbp() + '.restore-pending-wal', 'junk')
+    fs.writeFileSync(dbp() + '.restore-pending-shm', 'junk')
+    expect(applyPendingDbRestore(dbp())).toBe('applied')
+    expect(fs.readdirSync(dir).filter(f => f.includes('restore-pending'))).toEqual([])
+  })
+  it('stage 走 tmp + rename：rename 失敗時沒有 pending，tmp 被清掉', () => {
+    const snap = path.join(dir, 'snap'); makeDb(snap)
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementation(() => { throw new Error('rename boom') })
+    try {
+      expect(() => stagePendingDbRestore(snap, dbp())).toThrow('rename boom')
+    } finally { spy.mockRestore() }
+    expect(fs.readdirSync(dir).filter(f => f.includes('restore-pending'))).toEqual([])
+  })
+})
+
 describe('applyPendingDbRestoreOnce', () => {
   it('每個行程只檢查一次：第二次即使有 pending 也不動作', () => {
     const dbp = path.join(dir, 'db.sqlite')

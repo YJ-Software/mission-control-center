@@ -40,6 +40,8 @@ export function applyPendingDbRestore(
     console.error(`[Backup] 待還原的資料庫未通過完整性檢查，已拒絕並保留現有資料庫；問題檔案移至 ${rejected}`)
     return 'rejected'
   }
+  // 清掉 pending 旁殘留的 -wal/-shm，避免換進來後被當成 db 的日誌
+  for (const suf of ['-wal', '-shm']) fs.rmSync(`${pending}${suf}`, { force: true })
   const moved: Array<[string, string]> = []
   try {
     for (const suf of SUFFIXES) {

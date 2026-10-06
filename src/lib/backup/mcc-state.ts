@@ -11,6 +11,13 @@ export async function snapshotMccDb(srcPath: string, destPath: string): Promise<
   } finally {
     src.close()
   }
+  // 轉成 DELETE 模式，讓快照是單一自足檔案，不會帶 -wal/-shm
+  const snap = new Database(destPath)
+  try {
+    snap.pragma('journal_mode = DELETE')
+  } finally {
+    snap.close()
+  }
   fs.chmodSync(destPath, 0o600)
 }
 
@@ -33,7 +40,12 @@ export function stagePendingDbRestore(snapshotPath: string, dbPath: string): voi
   }
   const pending = `${dbPath}.restore-pending`
   const tmp = `${pending}.tmp`
-  fs.copyFileSync(snapshotPath, tmp)
-  fs.chmodSync(tmp, 0o600)
-  fs.renameSync(tmp, pending)
+  try {
+    fs.copyFileSync(snapshotPath, tmp)
+    fs.chmodSync(tmp, 0o600)
+    fs.renameSync(tmp, pending)
+  } catch (err) {
+    fs.rmSync(tmp, { force: true })
+    throw err
+  }
 }
