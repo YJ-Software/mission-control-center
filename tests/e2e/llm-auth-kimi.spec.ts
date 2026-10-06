@@ -90,17 +90,22 @@ test.describe('LLM 管理 — kimi auth + per-agent override + chat', () => {
     await expect(newProfileRow).toBeVisible({ timeout: 10_000 })
 
     // ── Phase 2: Models tab → main agent — override primary ────────────
-    await page.getByRole('tab', { name: /^模型$|^Models$/i }).click()
-    await page.getByRole('button', { name: /^main$/ }).click()
-
     // The override editor's primary <select> — pick the Kimi coding model
     const primarySelect = page
       .locator('label')
       .filter({ hasText: /主要模型|Primary model/i })
       .locator('xpath=following-sibling::select[1]')
-    await expect(primarySelect).toBeVisible({ timeout: 10_000 })
-    // Options load after the credential lands; wait for any kimi entry first.
-    await expect(primarySelect.locator('option[value^="kimi/"]').first()).toBeAttached({ timeout: SAVE_TIMEOUT })
+    // The model list is fetched once when the tab mounts and is not polled.
+    // Right after the login, OpenClaw is still hot-reloading the config (17s
+    // measured 2026-10-06 on 2026.9.8 under load), so a list fetched in that
+    // window has no kimi models and never will. Re-open the tab until it does.
+    await expect(async () => {
+      await page.goto(`${baseURL}/llm-auth`)
+      await page.getByRole('tab', { name: /^模型$|^Models$/i }).click()
+      await page.getByRole('button', { name: /^main$/ }).click()
+      await expect(primarySelect).toBeVisible({ timeout: 10_000 })
+      await expect(primarySelect.locator('option[value^="kimi/"]').first()).toBeAttached({ timeout: 10_000 })
+    }).toPass({ timeout: LOGIN_JOB_TIMEOUT, intervals: [2_000, 5_000] })
     const offered = await primarySelect.locator('option').evaluateAll((els) =>
       els.map((el) => (el as HTMLOptionElement).value),
     )

@@ -2,7 +2,11 @@ import { expect, type Page } from '@playwright/test'
 
 const REPLY_TIMEOUT = 90_000
 /** Texts that mean the turn failed even though a bubble rendered. */
-export const CHAT_TURN_FAILED = /LLM request failed|ended before a reply|No API key found|^Failed to send:/i
+// OpenClaw 2026.9.8 words it "⚠️ <provider>/<model> request failed (authentication failed, HTTP 401) …";
+// older releases said "LLM request failed …". Match both.
+export const CHAT_TURN_FAILED = /request failed \(|LLM request failed|ended before a reply|No API key found|^Failed to send:/i
+
+interface TurnResult { state: string | null; text: string }
 
 /**
  * Send one message on /chat and assert the assistant turn really succeeded.
@@ -14,24 +18,42 @@ export const CHAT_TURN_FAILED = /LLM request failed|ended before a reply|No API 
  *    provider …" from a chat error event, or "Failed to send: …";
  *  - OpenClaw's own failure text delivered as an ordinary reply, e.g.
  *    "⚠️ LLM request failed (authentication failed, HTTP 401) …".
+ *
+ * The reply checked must be the one answering THIS message. Taking "the last
+ * assistant bubble on the page" passed falsely on 2026-10-06: after a restore
+ * the session history already held an older successful reply, which matched
+ * before the new (failed, HTTP 401) turn rendered. So the message carries a
+ * unique marker, and the check waits for the assistant bubble that follows it
+ * and for that bubble to leave the streaming state.
  */
 export async function sendChatAndExpectReply(page: Page, baseURL: string, text: string) {
   await page.goto(`${baseURL}/chat`)
 
   const input = page.locator('textarea').first()
   await expect(input).toBeVisible({ timeout: 15_000 })
-  await input.fill(text)
+  const marker = `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  await input.fill(`${text} (${marker})`)
   await input.press('Enter')
 
-  // chat-message.tsx tags each message with data-role={message.role}; the
-  // assistant streams character by character, so wait for non-empty text too.
-  const lastAssistant = page.locator('[data-role="assistant"]').last()
-  await expect(lastAssistant).toBeVisible({ timeout: REPLY_TIMEOUT })
+  // chat-message.tsx tags each message with data-role and data-state
+  // ('streaming' | 'complete' | 'error' | 'aborted').
+  let turn: TurnResult | null = null
   await expect(async () => {
-    expect((await lastAssistant.innerText()).trim().length).toBeGreaterThan(0)
+    turn = await page.evaluate((m) => {
+      const els = Array.from(document.querySelectorAll<HTMLElement>('[data-role]'))
+      const userIdx = els.findIndex((e) => e.dataset.role === 'user' && (e.innerText || '').includes(m))
+      if (userIdx < 0) return null
+      const reply = els.slice(userIdx + 1).find((e) => e.dataset.role === 'assistant')
+      if (!reply) return null
+      return { state: reply.dataset.state ?? null, text: (reply.innerText || '').trim() }
+    }, marker)
+    expect(turn, 'no assistant reply after our message yet').not.toBeNull()
+    expect(turn!.state, 'assistant reply still streaming').not.toBe('streaming')
+    expect(turn!.text.length, 'assistant reply is empty').toBeGreaterThan(0)
   }).toPass({ timeout: REPLY_TIMEOUT, intervals: [500, 1_000, 2_000] })
 
-  await expect(lastAssistant, 'chat turn ended in an error state').not.toHaveAttribute('data-state', 'error')
-  const reply = (await lastAssistant.innerText()).trim()
+  const { state, text: reply } = turn! as TurnResult
+  expect(state, `chat turn ended in state ${state}: ${reply.slice(0, 300)}`).not.toBe('error')
+  expect(state, `chat turn was aborted: ${reply.slice(0, 300)}`).not.toBe('aborted')
   expect(reply, `chat turn failed: ${reply.slice(0, 300)}`).not.toMatch(CHAT_TURN_FAILED)
 }
