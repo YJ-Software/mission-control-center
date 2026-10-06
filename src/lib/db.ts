@@ -13,8 +13,11 @@ if (!fs.existsSync(DB_DIR)) {
   fs.mkdirSync(DB_DIR, { recursive: true })
 }
 
-if (applyPendingDbRestoreOnce(DB_PATH) === 'applied') {
+const restoreResult = applyPendingDbRestoreOnce(DB_PATH)
+if (restoreResult === 'applied') {
   console.log('[Backup] restored MCC database applied from backup')
+} else if (restoreResult === 'rejected') {
+  console.error('[Backup] pending MCC database restore was rejected (failed integrity check); keeping current database')
 }
 
 const sqlite = new Database(DB_PATH)
