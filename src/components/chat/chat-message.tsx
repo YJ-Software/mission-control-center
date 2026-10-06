@@ -63,7 +63,7 @@ export function ChatMessage({
   }
 
   return (
-    <div data-role={message.role} className={`group relative flex gap-3 px-4 py-1.5 hover:bg-white/[0.02] transition-colors ${isUser ? 'flex-row-reverse' : ''}`}>
+    <div data-role={message.role} data-state={message.state} className={`group relative flex gap-3 px-4 py-1.5 hover:bg-white/[0.02] transition-colors ${isUser ? 'flex-row-reverse' : ''}`}>
       {/* Avatar column */}
       <div className="w-9 shrink-0">
         {isFirstInGroup && (

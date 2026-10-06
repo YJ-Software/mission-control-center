@@ -1,6 +1,8 @@
 import { test, expect } from './fixtures/login'
 
 const REPLY_TIMEOUT = 90_000
+/** Texts that mean the turn failed even though a bubble rendered. */
+const CHAT_TURN_FAILED = /LLM request failed|ended before a reply|No API key found|^Failed to send:/i
 
 test('chat: send a message and receive a reply', async ({ loggedInPage: page, baseURL }) => {
   await page.goto(`${baseURL}/chat`)
@@ -21,4 +23,15 @@ test('chat: send a message and receive a reply', async ({ loggedInPage: page, ba
   await expect(async () => {
     expect((await lastAssistant.innerText()).trim().length).toBeGreaterThan(0)
   }).toPass({ timeout: REPLY_TIMEOUT, intervals: [500, 1_000, 2_000] })
+
+  // A failed turn ALSO renders as a non-empty assistant bubble, in two ways —
+  // both passed this spec while chat was broken (seen 2026-10-06 on OpenClaw
+  // 2026.9.8):
+  //  - MCC's error state (data-state="error"), e.g. "No API key found for
+  //    provider …" from a chat error event, or "Failed to send: …";
+  //  - OpenClaw's own failure text delivered as an ordinary reply, e.g.
+  //    "⚠️ LLM request failed (authentication failed, HTTP 401) …".
+  await expect(lastAssistant, 'chat turn ended in an error state').not.toHaveAttribute('data-state', 'error')
+  const reply = (await lastAssistant.innerText()).trim()
+  expect(reply, `chat turn failed: ${reply.slice(0, 300)}`).not.toMatch(CHAT_TURN_FAILED)
 })

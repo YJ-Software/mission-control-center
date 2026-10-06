@@ -176,5 +176,19 @@ test.describe('LLM 管理 — kimi auth + per-agent override + chat', () => {
     expect(
       mainAfter?.profiles.filter((p) => p.profileId.startsWith(PROVIDER_PROFILE_PREFIX)) ?? [],
     ).toHaveLength(0)
+
+    // The override must really be gone, not merely "cleared" with a 200.
+    // 2026-10-06: after a full-suite run on OpenClaw 2026.9.8 the config still
+    // held agents.entries.main.model = kimi/kimi-for-coding with no kimi key,
+    // so every later chat on `main` failed — and it did not reproduce when this
+    // spec ran alone. Fail here, with the config in the message, if it recurs.
+    const overrides = await api(baseURL, cookieHeader, 'GET', '/api/openclaw/models/overrides')
+    const mainOverride = (
+      overrides.body as { agents: { id: string; model?: { primary?: string } | null }[] }
+    ).agents.find((a) => a.id === 'main')?.model
+    expect(
+      mainOverride?.primary ?? null,
+      `main agent still pinned after cleanup: ${JSON.stringify(overrides.body)}`,
+    ).toBeNull()
   })
 })
