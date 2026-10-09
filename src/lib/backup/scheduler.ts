@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { eq } from 'drizzle-orm'
 import { backupJobs, backupSchedules } from './schema'
+import { settings } from '@/lib/schema'
 import { isDue, nextRunAt } from './next-run'
 import { isBackupRunning, BackupBusyError } from './lock'
 import type { ScheduleConfig } from './helpers'
@@ -89,7 +90,10 @@ export function tickBackupScheduler(
 // 舊版 agent cron 清理
 // ---------------------------------------------------------------------------
 
-const LEGACY_PREFIX = '💾'
+/** 舊 sync-cron.ts 產生的名稱是 `💾 Backup: <job 名稱>`；只認這個前綴，使用者自己以 💾 開頭的 cron 不動 */
+const LEGACY_PREFIX = '💾 Backup:'
+/** settings 旗標：舊 cron 已清理完成（removed / none），之後的開機不再 list cron */
+export const LEGACY_CRON_CLEANED_KEY = 'backup.legacyCronCleaned'
 
 export async function removeLegacyBackupCron(deps: {
   list(): Promise<Array<{ id: string; name?: string }>>
@@ -120,6 +124,32 @@ export async function removeLegacyBackupCron(deps: {
   return ok === legacy.length ? 'removed' : 'deferred'
 }
 
+/**
+ * 開機時的舊 cron 清理：已記旗標就直接完成；removed / none 後記旗標。
+ * 回傳 true = 完成，false = 稍後重試（deferred）。
+ */
+export async function cleanLegacyBackupCron(deps: {
+  isCleaned(): boolean
+  markCleaned(): void
+  list(): Promise<Array<{ id: string; name?: string }>>
+  remove(id: string): Promise<void>
+  /** 清理完成（removed / none）時呼叫，例如清掉 backup_jobs.cronJobId */
+  onDone?(): void
+  log?(msg: string): void
+}): Promise<boolean> {
+  if (deps.isCleaned()) return true
+  const r = await removeLegacyBackupCron(deps)
+  if (r === 'deferred') return false
+  deps.onDone?.()
+  if (r === 'removed') deps.log?.('已移除舊版 AI agent 備份 cron')
+  try {
+    deps.markCleaned()
+  } catch (err) {
+    deps.log?.(`無法記錄舊 cron 已清理（下次開機會再檢查一次）：${err instanceof Error ? err.message : String(err)}`)
+  }
+  return true
+}
+
 // ---------------------------------------------------------------------------
 // 排程器（進程內）
 // ---------------------------------------------------------------------------
@@ -148,15 +178,18 @@ function readJobs(): SchedulerJob[] {
 
 async function cleanLegacyOnce(): Promise<boolean> {
   const { cronList, cronRemove } = await import('@/lib/morning-report/cron-cli')
-  const r = await removeLegacyBackupCron({
+  return cleanLegacyBackupCron({
+    isCleaned: () =>
+      db.select().from(settings).where(eq(settings.key, LEGACY_CRON_CLEANED_KEY)).get()?.value === '1',
+    markCleaned: () => {
+      db.insert(settings).values({ key: LEGACY_CRON_CLEANED_KEY, value: '1' })
+        .onConflictDoUpdate({ target: settings.key, set: { value: '1' } }).run()
+    },
     list: () => cronList(),
     remove: (id) => cronRemove(id),
+    onDone: () => { db.update(backupJobs).set({ cronJobId: null }).run() },
     log: (m) => console.warn('[backup-scheduler]', m),
   })
-  if (r === 'deferred') return false
-  db.update(backupJobs).set({ cronJobId: null }).run()
-  if (r === 'removed') console.log('[backup-scheduler] 已移除舊版 AI agent 備份 cron')
-  return true
 }
 
 /** 供測試注入；正式呼叫不帶參數 */

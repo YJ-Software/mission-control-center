@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { tickBackupScheduler, removeLegacyBackupCron, startBackupScheduler, type SchedulerJob } from '@/lib/backup/scheduler'
+import { tickBackupScheduler, removeLegacyBackupCron, cleanLegacyBackupCron, startBackupScheduler, LEGACY_CRON_CLEANED_KEY, type SchedulerJob } from '@/lib/backup/scheduler'
 
 const daily = (id: string, time = '03:00', enabled = 1): SchedulerJob => ({
   id, enabled, scheduleType: 'daily', scheduleConfig: { days: [0, 1, 2, 3, 4, 5, 6], time } as never,
@@ -92,37 +92,94 @@ describe('removeLegacyBackupCron', () => {
     expect(r).toBe('deferred')
     expect(remove).not.toHaveBeenCalled()
   })
-  it('只刪 💾 開頭的', async () => {
+  it('只刪舊 sync-cron 產生的「💾 Backup:」開頭；使用者自己的 💾 cron 不動', async () => {
     const remove = vi.fn(async (_id: string) => {})
     const r = await removeLegacyBackupCron({
-      list: async () => [{ id: '1', name: '💾 Backup: x' }, { id: '2', name: '晨報' }, { id: '3' }, { id: '4', name: '💾 Backup: y' }],
+      list: async () => [
+        { id: '1', name: '💾 Backup: x' }, { id: '2', name: '晨報' }, { id: '3' }, { id: '4', name: '💾 Backup: y' },
+        { id: '5', name: '💾 相簿同步' }, { id: '6', name: '💾 Backups weekly' }, { id: '7', name: 'x 💾 Backup: z' },
+      ],
       remove,
     })
     expect(r).toBe('removed')
     expect(remove.mock.calls.map(c => c[0])).toEqual(['1', '4'])
   })
-  it('沒有 💾 → none', async () => {
-    expect(await removeLegacyBackupCron({ list: async () => [{ id: '2', name: 'x' }], remove: vi.fn() })).toBe('none')
+  it('沒有舊備份 cron（只有使用者的 💾 cron）→ none', async () => {
+    const remove = vi.fn()
+    expect(await removeLegacyBackupCron({ list: async () => [{ id: '2', name: 'x' }, { id: '5', name: '💾 相簿同步' }], remove })).toBe('none')
+    expect(remove).not.toHaveBeenCalled()
   })
   it('單一 remove 失敗不影響其他，且有記錄', async () => {
     const log = vi.fn()
     const remove = vi.fn(async (id: string) => { if (id === '1') throw new Error('x') })
-    await removeLegacyBackupCron({ list: async () => [{ id: '1', name: '💾 a' }, { id: '2', name: '💾 b' }], remove, log })
+    await removeLegacyBackupCron({ list: async () => [{ id: '1', name: '💾 Backup: a' }, { id: '2', name: '💾 Backup: b' }], remove, log })
     expect(remove).toHaveBeenCalledTimes(2)
     expect(log).toHaveBeenCalledTimes(1)
   })
   it('部分失敗 → deferred（會重試）', async () => {
     const r = await removeLegacyBackupCron({
-      list: async () => [{ id: '1', name: '💾 a' }, { id: '2', name: '💾 b' }],
+      list: async () => [{ id: '1', name: '💾 Backup: a' }, { id: '2', name: '💾 Backup: b' }],
       remove: async (id: string) => { if (id === '2') throw new Error('x') },
     })
     expect(r).toBe('deferred')
   })
   it('全部 remove 失敗 → deferred（之後重試）', async () => {
     const r = await removeLegacyBackupCron({
-      list: async () => [{ id: '1', name: '💾 a' }], remove: async () => { throw new Error('x') },
+      list: async () => [{ id: '1', name: '💾 Backup: a' }], remove: async () => { throw new Error('x') },
     })
     expect(r).toBe('deferred')
+  })
+})
+
+describe('cleanLegacyBackupCron（settings 旗標：清理成功後之後的開機不再處理）', () => {
+  const mkFlag = (initial: boolean) => {
+    const st = { cleaned: initial }
+    return { st, isCleaned: vi.fn(() => st.cleaned), markCleaned: vi.fn(() => { st.cleaned = true }) }
+  }
+  it('旗標 key 是 backup.legacyCronCleaned', () => {
+    expect(LEGACY_CRON_CLEANED_KEY).toBe('backup.legacyCronCleaned')
+  })
+  it('已清理過：不 list、不 remove，直接完成', async () => {
+    const f = mkFlag(true)
+    const list = vi.fn(async () => [{ id: '1', name: '💾 Backup: x' }])
+    const remove = vi.fn(async () => {})
+    const onDone = vi.fn()
+    expect(await cleanLegacyBackupCron({ ...f, list, remove, onDone })).toBe(true)
+    expect(list).not.toHaveBeenCalled()
+    expect(remove).not.toHaveBeenCalled()
+    expect(onDone).not.toHaveBeenCalled()
+  })
+  it('removed → 記旗標、onDone；下一次開機不再 list', async () => {
+    const f = mkFlag(false)
+    const list = vi.fn(async () => [{ id: '1', name: '💾 Backup: x' }])
+    const onDone = vi.fn()
+    expect(await cleanLegacyBackupCron({ ...f, list, remove: async () => {}, onDone })).toBe(true)
+    expect(f.markCleaned).toHaveBeenCalledTimes(1)
+    expect(onDone).toHaveBeenCalledTimes(1)
+    expect(await cleanLegacyBackupCron({ ...f, list, remove: async () => {}, onDone })).toBe(true)
+    expect(list).toHaveBeenCalledTimes(1)
+  })
+  it('none → 也記旗標', async () => {
+    const f = mkFlag(false)
+    expect(await cleanLegacyBackupCron({ ...f, list: async () => [], remove: async () => {} })).toBe(true)
+    expect(f.markCleaned).toHaveBeenCalledTimes(1)
+  })
+  it('deferred（list 失敗或部分刪除失敗）→ 不記旗標、回 false 以便重試', async () => {
+    const f = mkFlag(false)
+    expect(await cleanLegacyBackupCron({ ...f, list: async () => { throw new Error('gateway down') }, remove: async () => {} })).toBe(false)
+    expect(await cleanLegacyBackupCron({
+      ...f, list: async () => [{ id: '1', name: '💾 Backup: x' }], remove: async () => { throw new Error('x') },
+    })).toBe(false)
+    expect(f.markCleaned).not.toHaveBeenCalled()
+  })
+  it('旗標寫不進去也算完成（下次開機重跑一次無害）', async () => {
+    const log = vi.fn()
+    const r = await cleanLegacyBackupCron({
+      isCleaned: () => false, markCleaned: () => { throw new Error('SQLITE_BUSY') },
+      list: async () => [], remove: async () => {}, log,
+    })
+    expect(r).toBe(true)
+    expect(log).toHaveBeenCalled()
   })
 })
 
