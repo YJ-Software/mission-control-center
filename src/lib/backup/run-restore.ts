@@ -435,7 +435,9 @@ export function startRestore(
       if (release) {
         phases.push(phase('schedule MCC restart', async (log) => {
           const service = deps.getInstall().service
-          log('system', `2 秒後重啟 MCC（service: ${service}），重啟後此工作將標示完成`)
+          log('system', `2 秒後重啟 MCC（service: ${service}）`)
+          // runner 在這個 phase 回傳時就把工作標為 success，此時 MCC 還沒重啟、資料庫也還沒套用
+          log('system', '此工作在排程重啟後即標示完成；資料庫是否成功套用，請在 MCC 重啟後到備份頁查看還原結果')
           rmDir()
           // 重啟前持續持有鎖，避免備份或第二次還原闖進這 2 秒；行程若仍活著則在期限後釋放
           st.holdLock = true

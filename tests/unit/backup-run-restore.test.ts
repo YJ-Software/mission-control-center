@@ -112,6 +112,15 @@ describe('startRestore mcc（release 模式）', () => {
     expect(calls).toEqual(['prepare-db', 'preflight', 'verify-oc', 'restore-oc', 'commit-db', 'restart:mission-control'])
   })
 
+  it('M2：重啟訊息如實說明工作在排程重啟後即標示完成，資料庫是否套用要重啟後才知道', async () => {
+    startRestore(buildArchive(), 'api', deps())
+    await done
+    const log = logs.join('\n')
+    expect(log).not.toContain('重啟後此工作將標示完成')
+    expect(log).toContain('排程重啟後即標示完成')
+    expect(log).toContain('MCC 重啟後')
+  })
+
   it('執行中持有鎖；成功後解壓目錄已移除', async () => {
     const file = buildArchive()
     startRestore(file, 'api', deps())
