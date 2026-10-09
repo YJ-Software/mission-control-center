@@ -25,6 +25,8 @@ function recoverJob(
   opts: { now: number; currentVersion: string | null; knownDead: boolean },
 ): 'success' | 'failed' | null {
   if (job.status !== 'running' && job.status !== 'restarting') return null
+  // 本行程 runner 仍在執行的 job 不是孤兒，不論跑了多久（例如超過 10 分鐘的 openclaw update）
+  if (isJobLive(job.id)) return null
   const age = opts.now - Date.parse(job.startedAt)
 
   // Self-restart success path: MCC upgrade is 'restarting' and the running
