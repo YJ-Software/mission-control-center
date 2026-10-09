@@ -120,16 +120,19 @@ test('backup -> restore -> health, plugins, marker cron, chat', async ({ loggedI
     }
     expect(done, `restore job did not reach success within 10 min; last: ${last ? `${last.meta.status} ${logTail(last)}` : 'no response'}`).toBe(true)
 
-    // ── 5. Verify ────────────────────────────────────────────────────
-    await expect(async () => {
-      const h = await fetch(`${baseURL}/api/health`)
-      expect(h.status).toBe(200)
-    }).toPass({ timeout: 2 * 60_000, intervals: [2_000, 5_000] })
+    // ── 5. Wait for the actual MCC restart and the DB apply ─────────
+    // The runner marks the job 'success' as soon as the last phase has
+    // *scheduled* the restart (~2 s before it happens), so 'success' alone
+    // proves neither the restart nor the DB swap. No API exposes the process
+    // start time, so the restart is detected by the boot-time DB apply itself:
+    // a lastDbRestore whose `at` is later than the restore job's start (both
+    // server clock) can only have been written by the new process.
+    const restoreStartedAt = Date.parse(last.meta.startedAt)
+    expect(Number.isNaN(restoreStartedAt), `restore job startedAt: ${last.meta.startedAt}`).toBe(false)
 
     // The restored DB holds the sessions as of backup time. That probably
     // includes ours, but do not assume: re-login if the cookie is rejected.
-    const authed = async () => (await api('GET', '/api/cron')).status !== 401
-    if (!(await authed())) {
+    const relogin = async () => {
       const password = process.env.AUTH_PASSWORD
       if (!password) throw new Error('AUTH_PASSWORD not set')
       const r = await fetch(`${baseURL}/api/auth`, {
@@ -141,6 +144,42 @@ test('backup -> restore -> health, plugins, marker cron, chat', async ({ loggedI
       cookie = setCookie
       await page.context().addCookies([{ name: 'mc_session', value: setCookie.split('mc_session=')[1].split(';')[0], url: baseURL }])
     }
+
+    const seen: { lastDbRestore?: { result: string; at: string; detail: string } } = {}
+    await expect(async () => {
+      let d: { status: number; body: any }
+      try {
+        d = await api('GET', '/api/backup?type=dashboard')
+      } catch (e) {
+        throw new Error(`dashboard API unreachable (MCC restarting?): ${(e as Error).message}`)
+      }
+      if (d.status === 401) {
+        await relogin()
+        d = await api('GET', '/api/backup?type=dashboard')
+      }
+      expect(d.status, 'GET /api/backup?type=dashboard').toBe(200)
+      const ldr = d.body.lastDbRestore
+      expect(ldr, 'lastDbRestore not written yet (MCC has not restarted)').toBeTruthy()
+      expect(Date.parse(ldr.at), `lastDbRestore.at ${ldr.at} must be after restore start ${last.meta.startedAt}`)
+        .toBeGreaterThan(restoreStartedAt)
+      seen.lastDbRestore = ldr
+    }).toPass({ timeout: 3 * 60_000, intervals: [2_000, 3_000, 5_000] })
+    expect(seen.lastDbRestore?.result, `MCC DB restore on boot: ${JSON.stringify(seen.lastDbRestore)}`).toBe('applied')
+
+    await expect(async () => {
+      const h = await fetch(`${baseURL}/api/health`)
+      expect(h.status).toBe(200)
+    }).toPass({ timeout: 2 * 60_000, intervals: [2_000, 5_000] })
+
+    const authed = async () => (await api('GET', '/api/cron')).status !== 401
+    if (!(await authed())) await relogin()
+
+    // The restored DB is the snapshot inside the archive, in which this very
+    // backup was already recorded as completed with its final path (fa3ca7b).
+    const restoredLog = await api('GET', `/api/backup/logs?logId=${logId}`)
+    expect(restoredLog.status).toBe(200)
+    expect(restoredLog.body?.status, `backup row in restored DB: ${JSON.stringify(restoredLog.body)}`).toBe('completed')
+    expect(restoredLog.body?.filePath).toBe(archivePath)
 
     // Gateway comes back after the OpenClaw dir swap; cron list throws (503)
     // rather than returning [] while it is unreachable, so retrying is safe.
