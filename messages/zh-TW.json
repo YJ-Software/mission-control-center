@@ -1786,6 +1786,7 @@
       "title": "備份目的",
       "addNew": "新增目的",
       "ftp": "FTP 伺服器",
+      "ftpInsecureWarning": "FTP 不加密：備份檔與 FTP 密碼都會以明文在網路上傳輸。備份檔內含 MCC 登入密碼與 OpenClaw 的憑證（API 金鑰、token），請只在可信任的網路（例如內網或 VPN）使用 FTP。",
       "local": "本機儲存",
       "ip": "IP 位址",
       "port": "連接埠",

@@ -1786,6 +1786,7 @@
       "title": "备份目标",
       "addNew": "添加目标",
       "ftp": "FTP 服务器",
+      "ftpInsecureWarning": "FTP 不加密：备份文件与 FTP 密码都会以明文在网络上传输。备份文件内含 MCC 登录密码与 OpenClaw 的凭据（API 密钥、token），请只在可信任的网络（例如内网或 VPN）使用 FTP。",
       "local": "本地存储",
       "ip": "IP 地址",
       "port": "端口",

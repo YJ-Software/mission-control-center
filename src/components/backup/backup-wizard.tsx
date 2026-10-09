@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import {
   Wand2, HardDrive, Globe, FolderOpen, Calendar, Briefcase,
-  ChevronRight, ChevronLeft, Check, Plus, Shield, X,
+  ChevronRight, ChevronLeft, Check, Plus, Shield, X, AlertTriangle,
 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -141,6 +141,10 @@ function StepDest({ value, onChange, t }: {
             <input placeholder="~/backup" value={value.localPath} onChange={e => onChange({ ...value, localPath: e.target.value })} className={inputClass} />
           ) : (
             <div className="grid grid-cols-2 gap-2">
+              <div role="alert" className="col-span-2 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>{t('destinations.ftpInsecureWarning')}</span>
+              </div>
               <input placeholder={t('destinations.ip')} value={value.ftpIp} onChange={e => onChange({ ...value, ftpIp: e.target.value })} className={inputClass} />
               <input placeholder={t('destinations.port')} value={value.ftpPort} onChange={e => onChange({ ...value, ftpPort: e.target.value })} className={inputClass} />
               <input placeholder={t('destinations.username')} value={value.ftpUser} onChange={e => onChange({ ...value, ftpUser: e.target.value })} className={inputClass} />

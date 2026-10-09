@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import {
   HardDrive, Globe, Plus, Trash2, ChevronDown, ChevronUp,
-  Loader2, CheckCircle2,
+  Loader2, CheckCircle2, AlertTriangle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 
@@ -178,6 +178,10 @@ function DestForm({ initial, onSave, onCancel, saving }: DestFormProps) {
       {/* FTP fields */}
       {form.type === 'ftp' && (
         <>
+          <div role="alert" className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>{t('destinations.ftpInsecureWarning')}</span>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-mono text-white/50 mb-1">{t('destinations.ip')}</label>

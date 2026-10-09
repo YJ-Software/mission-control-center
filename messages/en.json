@@ -1786,6 +1786,7 @@
       "title": "Backup Destinations",
       "addNew": "Add Destination",
       "ftp": "FTP Server",
+      "ftpInsecureWarning": "FTP is unencrypted: the backup archive and your FTP password travel over the network in plain text. The archive contains the MCC login password and OpenClaw credentials (API keys, tokens). Only use FTP over a trusted network such as a LAN or VPN.",
       "local": "Local Storage",
       "ip": "IP Address",
       "port": "Port",
