@@ -179,35 +179,39 @@ export function startBackupRun(
   const safeLog = (log?: Log): Log => (stream, text) => {
     try { log?.(stream, text) } catch { /* job log I/O（例如 ENOSPC）不可打斷清理 */ }
   }
-  /** keep=true：保留本機封存檔與已完成的 extra（例如上傳失敗），並記錄路徑 */
-  const failRun = (phaseName: string, err: unknown, log?: Log, keep = false) => {
+  /**
+   * 封存檔一旦 rename 成最終名稱（st.finalWritten）就是有效資料：之後任何 phase 失敗
+   * （extra、上傳、記錄結果、runner 中斷…）都保留它與已完成的 extra，row 記 failed 並在 error 指出路徑。
+   * 只有尚未就位時才清掉。
+   */
+  const failRun = (phaseName: string, err: unknown, log?: Log) => {
     const msg = `${phaseName}: ${errText(err)}`
     safeLog(log)('stderr', msg)
+    try { cleanupTemp() } catch { /* ignore */ }
+    const values: Record<string, unknown> = {
+      status: 'failed',
+      completedAt: Math.floor(Date.now() / 1000),
+      error: msg,
+    }
+    if (st.finalWritten) {
+      values.filePath = finalPath
+      try { values.fileSize = fs.statSync(finalPath).size } catch { /* 大小未知不影響保留 */ }
+      values.extraFilePaths = st.extras.length > 0 ? JSON.stringify(st.extras) : null
+      values.error = `${msg}（本機備份檔已保留：${finalPath}）`
+      safeLog(log)('stderr', `本機備份檔已保留：${finalPath}`)
+    } else {
+      for (const f of st.extras) rmQuiet(f)
+    }
     try {
-      cleanupTemp()
-      const values: Record<string, unknown> = {
-        status: 'failed',
-        completedAt: Math.floor(Date.now() / 1000),
-        error: msg,
-      }
-      if (keep && st.finalWritten) {
-        values.filePath = finalPath
-        values.fileSize = fs.statSync(finalPath).size
-        values.extraFilePaths = st.extras.length > 0 ? JSON.stringify(st.extras) : null
-        values.error = `${msg}（本機備份檔已保留：${finalPath}）`
-      } else {
-        if (st.finalWritten) rmQuiet(finalPath)
-        for (const f of st.extras) rmQuiet(f)
-      }
       db.update(backupLogs).set(values).where(eq(backupLogs.id, logId)).run()
-    } catch { /* 清理失敗不可擋住解鎖 */ }
+    } catch { /* 寫不進 DB 也不可擋住解鎖；檔案已保留 */ }
     finalize()
   }
-  const phase = (name: string, fn: (log: Log) => Promise<void>, keepOnFail = false) => ({
+  const phase = (name: string, fn: (log: Log) => Promise<void>) => ({
     name,
     inline: async (rawLog: Log) => {
       const log = safeLog(rawLog)
-      try { await fn(log); return 0 } catch (e) { failRun(name, e, log, keepOnFail); return 1 }
+      try { await fn(log); return 0 } catch (e) { failRun(name, e, log); return 1 }
     },
   })
   const ensureStaging = () => {
@@ -295,7 +299,15 @@ export function startBackupRun(
     if (sourceIds.length > 0) {
       // extra 資料夾失敗只是警告：主備份檔是有效資料，不可因此丟棄
       phases.push(phase('extra folders', async (log) => {
-        st.extraDir = makePrivateDir('extra')
+        try {
+          st.extraDir = makePrivateDir('extra')
+        } catch (e) {
+          // 例如磁碟滿（ENOSPC）：主封存檔已就位，只記警告、略過所有 extra
+          const w = `extra 資料夾暫存目錄建立失敗，已略過所有 extra 資料夾：${errText(e)}`
+          st.warnings.push(w)
+          log('stderr', w)
+          return
+        }
         for (const sourceId of sourceIds) {
           const source = db.select().from(backupSources).where(eq(backupSources.id, sourceId)).get()
           if (!source?.enabled) continue
@@ -320,7 +332,7 @@ export function startBackupRun(
     if (destType === 'ftp' && destConfig.ip) {
       phases.push(phase('upload', async () => {
         await deps.uploadToFtp(finalPath, destConfig as Parameters<typeof uploadToFtp>[1])
-      }, true))
+      }))
     }
 
     phases.push(phase('record result', async () => {
@@ -394,7 +406,7 @@ export function startBackupRun(
         try {
           const cur = db.select().from(backupLogs).where(eq(backupLogs.id, logId)).get()
           // 封存檔已 rename 成最終名稱就是有效資料：保留並在 error 指出路徑
-          if (cur?.status === 'processing') failRun('job runner', '工作在完成前中斷', undefined, true)
+          if (cur?.status === 'processing') failRun('job runner', '工作在完成前中斷')
           else finalize()
         } catch {
           finalize()

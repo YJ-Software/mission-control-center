@@ -267,6 +267,50 @@ describe('startBackupRun', () => {
     expect(isBackupRunning()).toBe(false)
   })
 
+  it('I1：封存檔就位後 record result 丟錯 → 保留封存檔，row failed 並記錄 filePath、error 指出保留路徑', async () => {
+    const realStat = fs.statSync
+    let thrown = false
+    const spy = vi.spyOn(fs, 'statSync').mockImplementation(((p: fs.PathLike, o?: fs.StatSyncOptions) => {
+      if (!thrown && String(p).endsWith('.tar.gz') && path.dirname(String(p)) === outDir) {
+        thrown = true
+        throw new Error('EIO: stat failed')
+      }
+      return realStat(p, o)
+    }) as typeof fs.statSync)
+    try {
+      const r = startBackupRun({ destinationId: 'd1', triggeredBy: 'api' }, makeDeps())
+      await done
+      expect(thrown).toBe(true)
+      const log = row(r.logId)
+      const kept = path.join(outDir, 'mcc-backup_openclaw_host1_20261006_120000.tar.gz')
+      expect(fs.existsSync(kept)).toBe(true)
+      expect(log.status).toBe('failed')
+      expect(log.filePath).toBe(kept)
+      expect(log.error).toContain('record result')
+      expect(log.error).toContain(kept)
+      expect(isBackupRunning()).toBe(false)
+    } finally { spy.mockRestore() }
+  })
+
+  it('I1：封存檔就位後 extra 資料夾的暫存目錄建不起來 → 主封存檔保留、row completed 並帶警告', async () => {
+    db.insert(backupSources).values({ id: 's1', name: 'src', path: tmp }).run()
+    const realMkdtemp = fs.mkdtempSync
+    const spy = vi.spyOn(fs, 'mkdtempSync').mockImplementation(((prefix: string, o?: unknown) => {
+      if (String(prefix).includes('extra')) throw new Error('ENOSPC: no space left on device')
+      return realMkdtemp(prefix, o as never)
+    }) as typeof fs.mkdtempSync)
+    try {
+      const r = startBackupRun({ destinationId: 'd1', sourceIds: ['s1'], triggeredBy: 'api' }, makeDeps())
+      await done
+      const log = row(r.logId)
+      expect(log.status).toBe('completed')
+      expect(fs.existsSync(log.filePath!)).toBe(true)
+      expect(log.error).toContain('ENOSPC')
+      expect(leftovers()).toEqual([])
+      expect(isBackupRunning()).toBe(false)
+    } finally { spy.mockRestore() }
+  })
+
   it('extra 成功：記錄 extraFilePaths，warning 寫入 completed 的 error', async () => {
     db.insert(backupSources).values({ id: 's1', name: 'src', path: tmp }).run()
     const r = startBackupRun({ destinationId: 'd1', sourceIds: ['s1'], triggeredBy: 'api' }, makeDeps({
