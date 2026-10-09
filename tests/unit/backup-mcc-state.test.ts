@@ -3,7 +3,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import Database from 'better-sqlite3'
-import { snapshotMccDb, copyEnvFile, stagePendingDbRestore } from '@/lib/backup/mcc-state'
+import { snapshotMccDb, copyEnvFile, stagePendingDbRestore, markBackupRowInSnapshot } from '@/lib/backup/mcc-state'
 import { applyPendingDbRestore, applyPendingDbRestoreOnce } from '@/lib/backup/pending-db-restore'
 
 let dir: string
@@ -326,5 +326,31 @@ describe('prepare / commit 兩段式', () => {
     expect(fs.existsSync(dbp() + '.restore-pending.tmp')).toBe(false)
     stagePendingDbRestore(good, dbp()); discardPendingDbRestore(dbp())
     expect(fs.existsSync(dbp() + '.restore-pending')).toBe(false)
+  })
+})
+
+describe('markBackupRowInSnapshot', () => {
+  // 備份檔內的資料庫快照是在備份進行中拍的，所以這筆備份自己的 backup_logs 是 processing；
+  // 還原後啟動時會被修復成「中斷」的 failed（實測 2026-10-09：每次還原都多一筆假的失敗）。
+  // 能被拿來還原就代表這個備份檔存在，所以快照內應記為 completed 並指向它。
+  it('把快照內該筆 processing 改為 completed 並記下最終路徑，其他列不動', () => {
+    const snap = path.join(dir, 'snap.sqlite')
+    const db = new Database(snap)
+    db.exec(`CREATE TABLE backup_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT, status TEXT NOT NULL DEFAULT 'pending',
+      started_at INTEGER NOT NULL DEFAULT (unixepoch()), completed_at INTEGER, file_size INTEGER, file_path TEXT,
+      extra_file_paths TEXT, destination TEXT, notes TEXT, error TEXT)`)
+    db.prepare("INSERT INTO backup_logs (status) VALUES ('completed')").run()
+    db.prepare("INSERT INTO backup_logs (status) VALUES ('processing')").run()
+    db.close()
+
+    markBackupRowInSnapshot(snap, 2, '/b/mcc-backup_x.tar.gz', 1791535407)
+
+    const r = new Database(snap, { readonly: true })
+    const rows = r.prepare('SELECT id, status, file_path, completed_at, error FROM backup_logs ORDER BY id').all()
+    r.close()
+    expect(rows).toEqual([
+      { id: 1, status: 'completed', file_path: null, completed_at: null, error: null },
+      { id: 2, status: 'completed', file_path: '/b/mcc-backup_x.tar.gz', completed_at: 1791535407, error: null },
+    ])
   })
 })

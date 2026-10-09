@@ -53,6 +53,7 @@ let done: Promise<void>
 let calls: string[]
 let manifestAtTar: string | null
 let stagingAtTar: string[]
+let marked: { snap: string; id: number; fp: string } | null
 
 let logger: (stream: 'stdout' | 'stderr' | 'phase' | 'system', text: string) => void = () => {}
 let runnerThrowsAfter: number | null = null
@@ -84,6 +85,7 @@ function makeDeps(over: Partial<BackupRunDeps> = {}): BackupRunDeps {
       return { archivePath: p, version: '2026.9.8', warnings: [] }
     },
     snapshotMccDb: async (_s, dest) => { calls.push('snapshot'); fs.writeFileSync(dest, 'db', { mode: 0o600 }) },
+    markSnapshotRow: (snap, id, fp) => { calls.push('mark'); marked = { snap: path.basename(snap), id, fp } },
     copyEnvFile: (_s, dest) => { calls.push('env'); fs.writeFileSync(dest, 'K=V'); return true },
     tar: async (args) => {
       calls.push('tar')
@@ -119,6 +121,7 @@ beforeEach(() => {
   db = makeDb()
   h.holder.db = db
   calls = []
+  marked = null
   manifestAtTar = null
   stagingAtTar = []
   setRunningLogId(null)
@@ -184,6 +187,14 @@ describe('startBackupRun', () => {
     const log = row(r.logId)
     expect(log.status).toBe('completed')
     expect(log.error).toBeNull()
+  })
+  it('快照內這筆備份記為 completed 並指向最終檔案（還原後不會多一筆假的失敗）', async () => {
+    const r = startBackupRun({ destinationId: 'd1', triggeredBy: 'api' }, makeDeps())
+    await done
+    const log = row(r.logId)
+    expect(log.status).toBe('completed')
+    expect(marked).toEqual({ snap: 'mcc.sqlite', id: r.logId, fp: log.filePath })
+    expect(calls.indexOf('mark')).toBe(calls.indexOf('snapshot') + 1)
   })
   it('.env.local 不存在：manifest.parts.mccEnv 為 null', async () => {
     startBackupRun({ destinationId: 'd1', triggeredBy: 'api' }, makeDeps({ copyEnvFile: () => false }))

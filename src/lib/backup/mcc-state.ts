@@ -21,6 +21,22 @@ export async function snapshotMccDb(srcPath: string, destPath: string): Promise<
   fs.chmodSync(destPath, 0o600)
 }
 
+/**
+ * 快照是在備份進行中拍的，這筆備份自己的 backup_logs 在快照裡仍是 processing；
+ * 還原後啟動時的殘留修復會把它標成「中斷」的 failed，每次還原都多一筆假的失敗。
+ * 能拿來還原就代表最終備份檔存在，所以在快照內把它記為 completed 並指向最終路徑。
+ */
+export function markBackupRowInSnapshot(snapshotPath: string, logId: number, finalPath: string, completedAt: number): void {
+  const snap = new Database(snapshotPath)
+  try {
+    snap.prepare(
+      "UPDATE backup_logs SET status = 'completed', file_path = ?, completed_at = ?, error = NULL WHERE id = ? AND status = 'processing'",
+    ).run(finalPath, completedAt, logId)
+  } finally {
+    snap.close()
+  }
+}
+
 /** 來源存在才複製，權限 600；回傳是否有複製。 */
 export function copyEnvFile(src: string, dest: string): boolean {
   if (!fs.existsSync(src)) return false

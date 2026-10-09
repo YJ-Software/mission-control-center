@@ -10,7 +10,7 @@ import { getVersionInfo } from '@/lib/version'
 import { backupJobs, backupDestinations, backupSources, backupLogs } from './schema'
 import { buildArchiveName, type BackupManifest } from './archive-format'
 import { createOpenClawBackup, defaultOpenClawBackendRun } from './openclaw-backend'
-import { snapshotMccDb, copyEnvFile } from './mcc-state'
+import { snapshotMccDb, copyEnvFile, markBackupRowInSnapshot } from './mcc-state'
 import { expandHome, getBackupOutputDir, getAllBackupDirs } from './helpers'
 import { BackupBusyError, isBackupOrRestoreBusy, acquireLock, releaseLock } from './lock'
 import { assertNoBlockingJob } from './job-guard'
@@ -29,6 +29,8 @@ export interface BackupRunDeps {
   startJob: (spec: Parameters<typeof startJob>[0]) => JobMeta
   openclawCreate: (outDir: string, log: Log) => Promise<{ archivePath: string; version: string | null; warnings: string[] }>
   snapshotMccDb: (src: string, dest: string) => Promise<void>
+  /** 把快照內這筆備份的 backup_logs 記為 completed（見 markBackupRowInSnapshot） */
+  markSnapshotRow: (snapshotPath: string, logId: number, finalPath: string, completedAt: number) => void
   copyEnvFile: (src: string, dest: string) => boolean
   tar: (args: string[]) => Promise<void>
   uploadToFtp: typeof uploadToFtp
@@ -64,6 +66,7 @@ const defaultDeps = (): BackupRunDeps => ({
     })
   },
   snapshotMccDb,
+  markSnapshotRow: markBackupRowInSnapshot,
   copyEnvFile,
   tar: defaultTar,
   uploadToFtp,
@@ -256,6 +259,7 @@ export function startBackupRun(
     phases.push(phase('snapshot MCC database', async (log) => {
       ensureStaging()
       await deps.snapshotMccDb(deps.dbPath, path.join(stagingDir, 'mcc.sqlite'))
+      deps.markSnapshotRow(path.join(stagingDir, 'mcc.sqlite'), logId, finalPath, Math.floor(deps.now().getTime() / 1000))
       st.envCopied = deps.copyEnvFile(deps.envPath, path.join(stagingDir, 'mcc.env'))
       if (!st.envCopied) log('system', '.env.local 不存在，略過')
     }))
