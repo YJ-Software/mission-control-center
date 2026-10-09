@@ -98,19 +98,44 @@ export function writeLastDbRestore(
   } catch { /* ignore */ }
 }
 
-/** 每個行程只檢查一次（server.ts 與 Next bundle 各會載入 db.ts，HMR 也會重跑）。 */
-export function applyPendingDbRestoreOnce(dbPath: string): 'applied' | 'none' | 'rejected' {
+/**
+ * 每個行程只檢查一次（server.ts 與 Next bundle 各會載入 db.ts，HMR 也會重跑）。
+ * 絕不丟錯：db.ts 在模組載入時呼叫，丟錯會讓 MCC 開機失敗、被 systemd 每 3 秒重啟、
+ * 而 pending 檔還在，每次都再失敗（crash-loop）。意外錯誤時把 pending 移到
+ * .restore-rejected-<ts>、記錄 error，繼續以現行資料庫開機。
+ */
+export function applyPendingDbRestoreOnce(
+  dbPath: string,
+  fsImpl: FsLike = fs,
+  now: Date = new Date(),
+): 'applied' | 'none' | 'rejected' | 'error' {
   const g = globalThis as any
   if (g.__mccPendingDbRestoreChecked) return 'none'
   g.__mccPendingDbRestoreChecked = true
   const report: { detail?: string } = {}
   try {
-    const r = applyPendingDbRestore(dbPath, fs, new Date(), report)
+    const r = applyPendingDbRestore(dbPath, fsImpl, now, report)
     if (r !== 'none') writeLastDbRestore(dbPath, r, report.detail ?? '')
     return r
   } catch (err) {
-    writeLastDbRestore(dbPath, 'error', `套用待還原資料庫時發生錯誤：${err instanceof Error ? err.message : String(err)}`)
-    throw err
+    const reason = err instanceof Error ? err.message : String(err)
+    const pending = `${dbPath}.restore-pending`
+    let aside: string
+    try {
+      if (fsImpl.existsSync(pending)) {
+        const rejected = `${dbPath}.restore-rejected-${now.toISOString().replace(/[:.]/g, '-')}`
+        fsImpl.renameSync(pending, rejected)
+        aside = `待還原檔已移至 ${rejected}`
+      } else {
+        aside = '待還原檔已不存在'
+      }
+    } catch (e) {
+      aside = `待還原檔也無法移開（${e instanceof Error ? e.message : String(e)}），仍在 ${pending}`
+    }
+    const detail = `套用待還原資料庫時發生錯誤：${reason}；繼續使用現行資料庫開機，${aside}`
+    try { console.error(`[Backup] ${detail}`) } catch { /* ignore */ }
+    writeLastDbRestore(dbPath, 'error', detail, now)
+    return 'error'
   }
 }
 

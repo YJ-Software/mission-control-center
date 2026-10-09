@@ -15,11 +15,19 @@ if (!fs.existsSync(DB_DIR)) {
 }
 
 // 測試行程絕不可替換或改動開發者的真實 DB（多個單元測試會間接 import 本檔並開啟真實 db.sqlite）
-const restoreResult = process.env.VITEST ? 'none' : applyPendingDbRestoreOnce(DB_PATH)
+// applyPendingDbRestoreOnce 本身不丟錯；外層 try 是最後一道保險：模組載入時丟錯會讓 MCC 開機 crash-loop
+let restoreResult: ReturnType<typeof applyPendingDbRestoreOnce> = 'none'
+try {
+  restoreResult = process.env.VITEST ? 'none' : applyPendingDbRestoreOnce(DB_PATH)
+} catch (err) {
+  console.error('[Backup] pending MCC database restore check failed; keeping current database:', err)
+}
 if (restoreResult === 'applied') {
   console.log('[Backup] restored MCC database applied from backup')
 } else if (restoreResult === 'rejected') {
-  console.error('[Backup] pending MCC database restore was rejected (failed integrity check); keeping current database')
+  console.error('[Backup] pending MCC database restore was rejected (expired or failed integrity check); keeping current database')
+} else if (restoreResult === 'error') {
+  console.error('[Backup] pending MCC database restore failed; moved aside and keeping current database (see last-db-restore.json)')
 }
 
 const sqlite = new Database(DB_PATH)

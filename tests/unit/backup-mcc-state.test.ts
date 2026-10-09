@@ -246,6 +246,49 @@ describe('applyPendingDbRestoreOnce', () => {
     makeDb(dbp + '.restore-pending')
     expect(applyPendingDbRestoreOnce(dbp)).toBe('applied')
   })
+  it('M1：套用中途意外出錯不丟出（不可讓開機 crash-loop）：pending 移到 .restore-rejected-、記 error、現行 db 保留', () => {
+    const dbp = path.join(dir, 'db.sqlite')
+    makeDb(dbp, 'keep'); makeDb(dbp + '.restore-pending', 'new')
+    const realRename = fs.renameSync
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (String(to) === dbp && String(from).endsWith('.restore-pending')) throw new Error('EBUSY: rename failed')
+      return realRename(from, to)
+    })
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let r: string | undefined
+    try {
+      expect(() => { r = applyPendingDbRestoreOnce(dbp) }).not.toThrow()
+    } finally { spy.mockRestore() }
+    expect(r).toBe('error')
+    expect(err).toHaveBeenCalled(); err.mockRestore()
+    expect(fs.existsSync(dbp + '.restore-pending')).toBe(false)
+    const rejected = fs.readdirSync(dir).filter(f => f.startsWith('db.sqlite.restore-rejected-'))
+    expect(rejected).toHaveLength(1)
+    const d = new Database(dbp, { readonly: true })
+    expect(d.prepare('SELECT v FROM t').all()).toEqual([{ v: 'keep' }]); d.close()
+    const j = JSON.parse(fs.readFileSync(path.join(dir, 'last-db-restore.json'), 'utf8'))
+    expect(j.result).toBe('error')
+    expect(j.detail).toContain('EBUSY')
+    expect(j.detail).toContain(rejected[0])
+  })
+  it('M1：連 pending 都移不走也不丟出，仍記 error', () => {
+    const dbp = path.join(dir, 'db.sqlite')
+    makeDb(dbp, 'keep'); makeDb(dbp + '.restore-pending', 'new')
+    const realRename = fs.renameSync
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (String(from).includes('restore-pending')) throw new Error('EROFS')
+      return realRename(from, to)
+    })
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let r: string | undefined
+    try {
+      expect(() => { r = applyPendingDbRestoreOnce(dbp) }).not.toThrow()
+    } finally { spy.mockRestore(); err.mockRestore() }
+    expect(r).toBe('error')
+    const j = JSON.parse(fs.readFileSync(path.join(dir, 'last-db-restore.json'), 'utf8'))
+    expect(j.result).toBe('error')
+    expect(j.detail).toContain('EROFS')
+  })
 })
 
 import { PENDING_MAX_AGE_MS, writeLastDbRestore } from '@/lib/backup/pending-db-restore'
