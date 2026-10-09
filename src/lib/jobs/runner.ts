@@ -5,6 +5,7 @@ import path from 'node:path'
 import type { JobKind, JobMeta, JobPhase, LogLine, LogStream, TriggerSource } from './types'
 import { appendLogLine, newJobId, upsertJobMeta } from './store'
 import { emitJobEvent } from './sse'
+import { markJobLive, markJobDone } from './live'
 
 // Augment PATH for spawned shells. systemd user units inherit a slim PATH and
 // `bash -lc` is unreliable on Ubuntu (~/.bashrc returns early when non-interactive,
@@ -133,7 +134,8 @@ export function startJob(spec: JobSpec): JobMeta {
   emitMeta(meta)
   logTo(id, undefined, 'system', `▶ ${spec.label}`)
 
-  // Detach the async work.
+  // Detach the async work. 從這裡起直到 finally，本行程都視這個 job 為執行中（見 live.ts）
+  markJobLive(id)
   void (async () => {
    try {
     let overallFailed = false
@@ -207,6 +209,7 @@ export function startJob(spec: JobSpec): JobMeta {
     emitJobEvent({ type: 'end', jobId: id, meta })
     logTo(id, undefined, 'system', overallFailed ? '✗ failed' : '✓ done')
    } finally {
+    markJobDone(id)
     try { spec.onSettled?.() } catch { /* 保底清理不可再丟錯 */ }
    }
   })().catch((err) => console.error('[jobs] runner failed', err))

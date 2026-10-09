@@ -29,6 +29,7 @@ import { startBackupRun, BackupBusyError, type BackupRunDeps } from '@/lib/backu
 import { parseManifest } from '@/lib/backup/archive-format'
 import { isBackupRunning, isBackupOrRestoreBusy, setRunningLogId } from '@/lib/backup/scripts'
 import { startJob, type JobSpec } from '@/lib/jobs/runner'
+import { upsertJobMeta } from '@/lib/jobs/store'
 import { reconcileStaleBackupLogs, STALE_PROCESSING_ERROR } from '@/lib/backup/reconcile'
 
 const { backupLogs, backupJobs, backupDestinations, backupSources } = backupSchema
@@ -419,6 +420,31 @@ describe('startBackupRun', () => {
       .toThrow(/Upgrade MCC/)
     expect(db.select().from(backupLogs).all()).toHaveLength(0)
     expect(isBackupRunning()).toBe(false)
+  })
+
+  it('I2：前一個 MCC 行程留下的升級 job 不擋排程備份；本行程真正執行中的升級 job 會擋', async () => {
+    addJob()
+    // 前一個行程（已死）留下的 running 升級：未滿 10 分鐘，舊規則不會回收
+    upsertJobMeta({
+      id: 'orphan-upgrade', kind: 'upgrade-openclaw', label: 'Update OpenClaw', status: 'running',
+      startedAt: new Date().toISOString(), finishedAt: null, exitCode: null, triggeredBy: 'header-button', phases: [],
+    })
+    const r = startBackupRun({ jobId: 'j1', triggeredBy: 'cron' }, makeDeps())
+    await done
+    expect(row(r.logId).status).toBe('completed')
+
+    // 本行程 runner 正在跑的升級：必須擋
+    let release!: () => void
+    const gate = new Promise<void>((res) => { release = res })
+    let settled!: () => void
+    const ended = new Promise<void>((res) => { settled = res })
+    startJob({
+      kind: 'upgrade-openclaw', label: 'Update OpenClaw', triggeredBy: 'header-button',
+      phases: [{ name: 'npm', inline: async () => { await gate; return 0 } }],
+      onSettled: () => settled(),
+    })
+    expect(() => startBackupRun({ jobId: 'j1', triggeredBy: 'cron' }, makeDeps())).toThrow(BackupBusyError)
+    release(); await ended
   })
 
   it('I1：logger 一直丟錯，仍解鎖、row 不停在 processing、暫存清掉', async () => {
