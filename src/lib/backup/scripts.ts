@@ -5,6 +5,7 @@ import path from 'path'
 import { backupExtraFolder } from './extra-folder'
 import { getScriptsDir, getBackupOutputDir, formatBytes, checkScriptsAvailable } from './helpers'
 import { classifyBackupFile, type BackupKind } from './archive-format'
+import { resolveInsideDirs } from './path-guard'
 
 const execFileAsync = promisify(execFile)
 
@@ -129,15 +130,21 @@ export function listBackupFiles(dir?: string): BackupFile[] {
 }
 
 // --- Delete backup file (with path traversal protection) ---
+/**
+ * 與還原路由同一套範圍檢查（resolveInsideDirs：解開 symlink 後必須在允許目錄「底下」），
+ * 不用字串前綴比對（/a/backup 會誤含 /a/backup-old）。刪除的是解析後的真實檔案。
+ */
 export function deleteBackupFile(filePath: string, allowedDirs?: string[]): void {
-  const resolved = path.resolve(filePath)
-  if (!resolved.endsWith('.tar.gz')) {
+  if (!path.resolve(filePath).endsWith('.tar.gz')) {
     throw new Error('Can only delete .tar.gz files')
   }
   const dirs = allowedDirs || [getBackupOutputDir()]
-  const inAllowed = dirs.some(d => resolved.startsWith(path.resolve(d)))
-  if (!inAllowed) {
+  let target: string
+  try {
+    target = resolveInsideDirs(filePath, dirs)
+  } catch {
     throw new Error('Cannot delete files outside backup directories')
   }
-  if (fs.existsSync(resolved)) fs.unlinkSync(resolved)
+  if (!target.endsWith('.tar.gz')) throw new Error('Can only delete .tar.gz files')
+  if (fs.existsSync(target)) fs.unlinkSync(target)
 }

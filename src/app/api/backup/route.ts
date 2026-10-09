@@ -6,6 +6,7 @@ import { listBackupFiles, deleteBackupFile } from '@/lib/backup/scripts'
 import { getBackupAvailability } from '@/lib/backup/availability'
 import { readLastDbRestore } from '@/lib/backup/pending-db-restore'
 import { getOrCreateBackupToken, formatBytes, getAllBackupDirs } from '@/lib/backup/helpers'
+import { resolveInsideDirs } from '@/lib/backup/path-guard'
 
 initDb()
 
@@ -64,9 +65,20 @@ export async function POST(req: NextRequest) {
 
   if (action === 'delete') {
     const { file } = await req.json()
-    if (!file) return NextResponse.json({ error: 'Missing file' }, { status: 400 })
+    if (!file || typeof file !== 'string') return NextResponse.json({ error: 'Missing file' }, { status: 400 })
+    const dirs = getAllBackupDirs()
+    // 與還原路由相同的 realpath 範圍檢查：symlink、..、同前綴兄弟目錄都擋
+    let target: string
     try {
-      deleteBackupFile(file, getAllBackupDirs())
+      target = resolveInsideDirs(file, dirs)
+    } catch (err) {
+      return NextResponse.json({ error: String(err) }, { status: 400 })
+    }
+    if (!file.endsWith('.tar.gz') || !target.endsWith('.tar.gz')) {
+      return NextResponse.json({ error: 'Can only delete .tar.gz files' }, { status: 400 })
+    }
+    try {
+      deleteBackupFile(target, dirs)
       return NextResponse.json({ ok: true })
     } catch (err) {
       return NextResponse.json({ error: String(err) }, { status: 500 })
