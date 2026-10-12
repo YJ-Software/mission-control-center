@@ -4,7 +4,8 @@ const REPLY_TIMEOUT = 90_000
 /** Texts that mean the turn failed even though a bubble rendered. */
 // OpenClaw 2026.9.8 words it "⚠️ <provider>/<model> request failed (authentication failed, HTTP 401) …";
 // older releases said "LLM request failed …". Match both.
-export const CHAT_TURN_FAILED = /request failed \(|LLM request failed|ended before a reply|No API key found|^Failed to send:/i
+// OpenClaw 2026.10.2 words an auth failure "⚠️ Couldn't sign in to the AI service" (apostrophe may be ’).
+export const CHAT_TURN_FAILED = /request failed \(|LLM request failed|Couldn['’]t sign in|ended before a reply|No API key found|^Failed to send:/i
 
 interface TurnResult { state: string | null; text: string }
 

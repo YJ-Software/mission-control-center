@@ -4,6 +4,7 @@ import { writeFileSync, mkdirSync } from 'node:fs'
 import { updateEnvFile } from '../../../scripts/e2e/twnoc/lib/env-writer.mjs'
 import { ackLeftoverDeploys } from '../../../scripts/e2e/twnoc/lib/whmcs-deploy-list.mjs'
 import { sshExec } from '../../../scripts/e2e/twnoc/lib/ssh.mjs'
+import { CHAT_TURN_FAILED } from '../utils/chat-turn'
 
 // 20 min, not 10. OpenClaw 2026.7.1 added a 5-minute startup-migration lease that
 // the deployer's start→restart sequence strands, so the gateway sits failed until
@@ -142,6 +143,9 @@ test('whmcs deploy → capture AUTH_PASSWORD → open /talk from the deploy page
   await expect(async () => {
     expect((await assistant.last().innerText()).trim().length).toBeGreaterThan(0)
   }).toPass({ timeout: TALK_REPLY_TIMEOUT, intervals: [1_000, 2_000, 5_000] })
+  // A failed turn also renders as a non-empty reply (e.g. "Couldn't sign in to the AI service").
+  const talkReply = (await assistant.last().innerText()).trim()
+  expect(talkReply, `/talk chat turn failed: ${talkReply.slice(0, 300)}`).not.toMatch(CHAT_TURN_FAILED)
   await talk.screenshot({ path: resolve(dir, 'phase-2-talk.png') })
 
   // The broker URL carries a signed one-time token; record where we landed, not how.
