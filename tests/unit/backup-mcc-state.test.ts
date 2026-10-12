@@ -98,8 +98,43 @@ describe('applyPendingDbRestore', () => {
     expect(fs.existsSync(dbp() + '.restore-pending')).toBe(false)
     const ts = '2026-10-06T01-02-03-456Z'
     expect(fs.readFileSync(`${dbp()}.pre-restore-${ts}`, 'utf8')).toBe('old')
-    expect(fs.readFileSync(`${dbp()}-wal.pre-restore-${ts}`, 'utf8')).toBe('w')
-    expect(fs.readFileSync(`${dbp()}-shm.pre-restore-${ts}`, 'utf8')).toBe('s')
+    expect(fs.readFileSync(`${dbp()}.pre-restore-${ts}-wal`, 'utf8')).toBe('w')
+    expect(fs.readFileSync(`${dbp()}.pre-restore-${ts}-shm`, 'utf8')).toBe('s')
+  })
+  it('舊資料在未 checkpoint 的 WAL 裡：pre-restore 複本可直接打開並看到資料', () => {
+    // 重現實機：舊行程關機時沒關 DB 連線，資料全在 -wal，主檔只有表頭頁
+    const srcDir = path.join(dir, 'src'); fs.mkdirSync(srcDir)
+    const liveDir = path.join(dir, 'live'); fs.mkdirSync(liveDir)
+    const src = path.join(srcDir, 'db.sqlite')
+    const live = path.join(liveDir, 'db.sqlite')
+    const conn = new Database(src)
+    conn.pragma('journal_mode = WAL'); conn.pragma('wal_autocheckpoint = 0')
+    conn.exec('CREATE TABLE old_t (v TEXT)')
+    for (const v of ['a', 'b', 'c']) conn.prepare('INSERT INTO old_t VALUES (?)').run(v)
+    // 不關連線就複製（關閉會 checkpoint）
+    for (const suf of ['', '-wal', '-shm']) fs.copyFileSync(src + suf, live + suf)
+    conn.close()
+    expect(fs.statSync(live + '-wal').size).toBeGreaterThan(0)
+    makeDb(live + '.restore-pending', 'new')
+
+    const now = new Date()
+    const ts = now.toISOString().replace(/[:.]/g, '-')
+    expect(applyPendingDbRestore(live, fs, now)).toBe('applied')
+
+    const saved = `${live}.pre-restore-${ts}`
+    expect(fs.existsSync(`${saved}-wal`)).toBe(true)
+    expect(fs.existsSync(`${saved}-shm`)).toBe(true)
+    expect(fs.existsSync(`${live}-wal.pre-restore-${ts}`)).toBe(false)
+    expect(fs.existsSync(`${live}-shm.pre-restore-${ts}`)).toBe(false)
+    // 讀寫模式開啟：SQLite 需要讀寫 -shm 才能帶入 WAL
+    const old = new Database(saved)
+    expect(old.prepare('SELECT v FROM old_t ORDER BY v').all()).toEqual([{ v: 'a' }, { v: 'b' }, { v: 'c' }])
+    old.close()
+
+    expect(fs.existsSync(live + '-wal')).toBe(false)
+    const cur = new Database(live, { readonly: true })
+    expect(cur.prepare('SELECT v FROM t').all()).toEqual([{ v: 'new' }])
+    cur.close()
   })
   it('舊 db 不存在（首次）也能套用，只改名存在的檔', () => {
     makeDb(dbp() + '.restore-pending')

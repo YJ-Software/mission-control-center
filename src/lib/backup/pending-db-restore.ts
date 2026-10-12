@@ -63,7 +63,9 @@ export function applyPendingDbRestore(
     for (const suf of SUFFIXES) {
       const from = `${dbPath}${suf}`
       if (!fsImpl.existsSync(from)) continue
-      const to = `${from}.pre-restore-${ts}`
+      // 後綴放在標記之後（db.sqlite.pre-restore-<ts>-wal）：SQLite 只靠「<主檔>-wal」命名配對日誌，
+      // 否則未 checkpoint 的資料留在改名後的 wal 裡，複本打開是空的
+      const to = `${dbPath}.pre-restore-${ts}${suf}`
       fsImpl.renameSync(from, to)
       moved.push([from, to])
     }
