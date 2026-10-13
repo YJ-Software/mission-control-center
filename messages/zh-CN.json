@@ -53,6 +53,7 @@
     "gatewayStatus": {
       "linked": "Gateway 已连接",
       "connecting": "Gateway 连接中…",
+      "starting": "Gateway 启动中…",
       "pairing": "Gateway 配对中…",
       "pairingRetry": "配对失败 · 第 {n} 次重试",
       "authFailed": "Gateway 验证失败",

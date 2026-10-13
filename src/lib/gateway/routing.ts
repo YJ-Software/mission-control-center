@@ -51,6 +51,11 @@ export type GatewayCloseKind =
   | 'pairing'
   /** Credentials rejected (token mismatch etc.) — slow 30s retry. */
   | 'auth'
+  /**
+   * `1013 gateway starting` — the gateway is up but not ready yet. Short
+   * fixed retry that does not grow the normal backoff.
+   */
+  | 'starting'
   /** Anything else — normal reconnect backoff. */
   | 'disconnect'
 
@@ -60,6 +65,10 @@ export function classifyGatewayClose(code: number, reason: string): GatewayClose
   // connect") is not a credential problem: reconnect normally instead of
   // showing "auth failed" and waiting 30s.
   if (reason.includes('invalid handshake')) return 'disconnect'
+  // 1013 = "try again later"; OpenClaw sends it with "gateway starting" while
+  // it boots. Checked before the 1008/auth rule only for code 1013 itself.
+  if (code === 1013) return 'starting'
   if (code === 1008 || reason.includes('identity required') || reason.includes('unauthorized')) return 'auth'
+  if (/\bstarting\b/i.test(reason)) return 'starting'
   return 'disconnect'
 }

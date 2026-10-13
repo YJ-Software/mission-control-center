@@ -18,7 +18,7 @@ import next from 'next'
 import { loadEnvConfig } from '@next/env'
 import { WebSocketServer, WebSocket } from 'ws'
 import { resolveSecretRef } from './src/lib/openclaw/secret-ref'
-import { reconnectDelayMs } from './src/lib/gateway-reconnect-backoff'
+import { GatewayReconnectBackoff } from './src/lib/gateway-reconnect-backoff'
 import { PairingRetry, type PairingSnapshot } from './src/lib/gateway/pairing-retry'
 import {
   gatewayStatusFrame,
@@ -292,9 +292,10 @@ function broadcast(wss: WebSocketServer, message: string) {
 // Connect to OpenClaw gateway and relay events
 let gatewayWs: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-// Consecutive plain-disconnect retries since the last successful auth; drives
-// the backoff in reconnectDelayMs().
-let reconnectFailures = 0
+// Plain-disconnect backoff (5s→60s), reset whenever the socket opens; plus the
+// short fixed retry for `1013 gateway starting`. Pairing and auth failures
+// have their own schedules and do not go through this.
+const reconnectBackoff = new GatewayReconnectBackoff()
 
 // RPC pending requests for gateway JSON-RPC calls
 const pendingRequests = new Map<string, { resolve: (value: unknown) => void; reject: (reason: unknown) => void; timer: ReturnType<typeof setTimeout> }>()
@@ -374,7 +375,12 @@ function connectGateway(wss: WebSocketServer) {
 
     ws.on('open', () => {
       console.log('[Gateway] Connected to OpenClaw, waiting for challenge...')
-      setGatewayLink('connecting')
+      // Reachable again: a backoff that grew while it was down must not delay
+      // the next reconnect (e.g. after a `1013 gateway starting` close).
+      reconnectBackoff.onOpen()
+      // While it keeps answering "starting", don't flicker the sidebar to
+      // "connecting" on every short retry.
+      if (gatewayLink.state !== 'starting') setGatewayLink('connecting')
     })
 
     ws.on('message', (data) => {
@@ -471,7 +477,7 @@ function connectGateway(wss: WebSocketServer) {
         // Log auth result
         if (msg.type === 'res' && msg.ok && msg.payload?.type === 'hello-ok') {
           console.log('[Gateway] Authenticated successfully ✓')
-          reconnectFailures = 0
+          reconnectBackoff.onLinked()
           pairing.onAuthenticated()
           setGatewayLink('linked')
         }
@@ -520,8 +526,18 @@ function connectGateway(wss: WebSocketServer) {
         return
       }
 
+      // Gateway up but still booting: short fixed retry, not the growing
+      // backoff (that made MCC link 18–60s after the gateway was ready).
+      if (closeKind === 'starting') {
+        setGatewayLink('starting', { lastClose })
+        const delay = reconnectBackoff.next('starting')
+        console.log(`[Gateway] Gateway starting (${code} ${reasonStr}), retrying in ${delay / 1000}s...`)
+        reconnectTimer = setTimeout(() => connectGateway(wss), delay)
+        return
+      }
+
       setGatewayLink('offline', { lastClose })
-      const delay = reconnectDelayMs(reconnectFailures++)
+      const delay = reconnectBackoff.next('disconnect')
       console.log(`[Gateway] Disconnected (${code} ${reasonStr}), reconnecting in ${delay / 1000}s...`)
       reconnectTimer = setTimeout(() => connectGateway(wss), delay)
     })
@@ -532,7 +548,7 @@ function connectGateway(wss: WebSocketServer) {
   } catch (err) {
     console.error('[Gateway] Connection failed:', err)
     setGatewayLink('offline')
-    reconnectTimer = setTimeout(() => connectGateway(wss), reconnectDelayMs(reconnectFailures++))
+    reconnectTimer = setTimeout(() => connectGateway(wss), reconnectBackoff.next('disconnect'))
   }
 }
 

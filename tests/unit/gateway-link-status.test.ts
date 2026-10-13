@@ -36,7 +36,7 @@ describe('gatewayStatusView', () => {
 
   it('does not claim Linked just because this tab reached MCC (the original bug)', () => {
     expect(gatewayStatusView(null, true).labelKey).toBe('connecting')
-    for (const state of ['connecting', 'pairing', 'pairing-retry', 'auth-failed', 'offline'] as const) {
+    for (const state of ['connecting', 'starting', 'pairing', 'pairing-retry', 'auth-failed', 'offline'] as const) {
       expect(gatewayStatusView({ ...base, state }, true).labelKey).not.toBe('linked')
     }
   })
@@ -49,6 +49,12 @@ describe('gatewayStatusView', () => {
     expect(gatewayStatusView({ ...base, state: 'auth-failed' }, true)).toEqual({ tone: 'error', labelKey: 'authFailed' })
   })
 
+  it('shows a booting gateway as starting (pending), not offline', () => {
+    expect(gatewayStatusView({ ...base, state: 'starting' }, true)).toEqual({ tone: 'pending', labelKey: 'starting' })
+    const frame = gatewayStatusFrame({ ...base, state: 'starting', lastClose: { code: 1013, reason: 'gateway starting' } })
+    expect(parseGatewayStatusFrame(JSON.parse(frame))?.state).toBe('starting')
+  })
+
   it('says the dashboard is disconnected when the tab lost MCC, whatever the last status was', () => {
     expect(gatewayStatusView(base, false)).toEqual({ tone: 'error', labelKey: 'dashboardOffline' })
   })
@@ -58,7 +64,7 @@ describe('gatewayStatusView', () => {
   })
 
   it('has a label for every view key in all three locales', () => {
-    const keys = ['linked', 'connecting', 'pairing', 'pairingRetry', 'authFailed', 'offline', 'dashboardOffline', 'hermes']
+    const keys = ['linked', 'connecting', 'starting', 'pairing', 'pairingRetry', 'authFailed', 'offline', 'dashboardOffline', 'hermes']
     for (const locale of ['en', 'zh-TW', 'zh-CN']) {
       const msgs = JSON.parse(readFileSync(join(__dirname, `../../messages/${locale}.json`), 'utf8'))
       for (const k of keys) {

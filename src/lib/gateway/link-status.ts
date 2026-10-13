@@ -24,6 +24,8 @@ export type GatewayLinkState =
   | 'auth-failed'
   /** Socket closed / Gateway unreachable; reconnecting with backoff. */
   | 'offline'
+  /** Gateway closed us with `1013 gateway starting`; short retry until ready. */
+  | 'starting'
 
 export interface GatewayLinkStatus {
   state: GatewayLinkState
@@ -42,7 +44,7 @@ export interface GatewayLinkStatus {
 export const GATEWAY_STATUS_FRAME_TYPE = 'mcc:gateway-status'
 
 const STATES: ReadonlySet<string> = new Set<GatewayLinkState>([
-  'connecting', 'linked', 'pairing', 'pairing-retry', 'auth-failed', 'offline',
+  'connecting', 'linked', 'pairing', 'pairing-retry', 'auth-failed', 'offline', 'starting',
 ])
 
 export function gatewayStatusFrame(status: GatewayLinkStatus): string {
@@ -76,7 +78,7 @@ export interface GatewayStatusView {
   tone: GatewayStatusTone
   /** Key under the `nav.gatewayStatus` i18n namespace. */
   labelKey:
-    | 'linked' | 'connecting' | 'pairing' | 'pairingRetry'
+    | 'linked' | 'connecting' | 'starting' | 'pairing' | 'pairingRetry'
     | 'authFailed' | 'offline' | 'dashboardOffline' | 'hermes'
   /** Interpolation values for the label. */
   values?: Record<string, number>
@@ -97,6 +99,7 @@ export function gatewayStatusView(
   switch (status.state) {
     case 'linked': return { tone: 'active', labelKey: 'linked' }
     case 'connecting': return { tone: 'pending', labelKey: 'connecting' }
+    case 'starting': return { tone: 'pending', labelKey: 'starting' }
     case 'pairing': return { tone: 'pending', labelKey: 'pairing' }
     case 'pairing-retry':
       return { tone: 'error', labelKey: 'pairingRetry', values: { n: Math.max(1, status.pairingFailures ?? 1) } }

@@ -57,7 +57,19 @@ describe('classifyGatewayClose', () => {
   it('treats restarts and drops as plain disconnects', () => {
     expect(classifyGatewayClose(1006, '')).toBe('disconnect')
     expect(classifyGatewayClose(1012, 'service restart')).toBe('disconnect')
-    expect(classifyGatewayClose(1013, 'gateway starting')).toBe('disconnect')
+    expect(classifyGatewayClose(1001, 'going away')).toBe('disconnect')
+  })
+
+  it('recognises a gateway that is still booting (1013 / "starting")', () => {
+    expect(classifyGatewayClose(1013, 'gateway starting')).toBe('starting')
+    expect(classifyGatewayClose(1013, '')).toBe('starting')
+    expect(classifyGatewayClose(1011, 'gateway starting')).toBe('starting')
+    expect(classifyGatewayClose(1000, 'Starting up')).toBe('starting')
+    // Pairing / credential rejections keep priority over a stray "starting".
+    expect(classifyGatewayClose(1008, 'pairing required: starting')).toBe('pairing')
+    expect(classifyGatewayClose(1008, 'unauthorized while starting')).toBe('auth')
+    // Word match only: "restarting" is a plain restart, not the boot state.
+    expect(classifyGatewayClose(1012, 'restarting')).toBe('disconnect')
   })
 })
 
