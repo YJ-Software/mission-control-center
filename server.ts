@@ -19,7 +19,8 @@ import { loadEnvConfig } from '@next/env'
 import { WebSocketServer, WebSocket } from 'ws'
 import { resolveSecretRef } from './src/lib/openclaw/secret-ref'
 import { reconnectDelayMs } from './src/lib/gateway-reconnect-backoff'
-import { initDb, db } from './src/lib/db'
+import { initDb, db, closeDb } from './src/lib/db'
+import { createGracefulShutdown, trackConnections } from './src/lib/shutdown'
 import { morningReportConfig } from './src/lib/schema'
 import { eq } from 'drizzle-orm'
 import { startTunnel, stopTunnel } from './src/lib/morning-report/tunnel'
@@ -531,6 +532,9 @@ app.prepare().then(async () => {
     handle(req, res, parsedUrl)
   })
 
+  // 所有 TCP 連線（含升級後的 WebSocket）——關機時切斷，見 gracefulShutdown
+  const openSockets = trackConnections(server)
+
   // WebSocket server for browser clients — noServer mode so we don't
   // intercept Next.js HMR upgrade requests (/_next/webpack-hmr).
   const wss = new WebSocketServer({ noServer: true })
@@ -720,14 +724,18 @@ app.prepare().then(async () => {
   // Export terminal manager for API routes
   ;(globalThis as Record<string, unknown>).__terminalManager = terminalManager
 
-  function gracefulShutdown() {
-    console.log('[Server] Shutting down...')
-    stopTunnel()
-    terminalManager?.shutdown()
-    server.close(() => process.exit(0))
-    // Force exit after 5 seconds if close hangs
-    setTimeout(() => process.exit(1), 5000).unref()
-  }
+  // SSE/WebSocket 長連線會讓 server.close() 永遠等不到；關機時由 createGracefulShutdown 在寬限期後切斷，
+  // 並在 exit 之前關閉 DB（否則資料一直留在 db.sqlite-wal）
+  const gracefulShutdown = createGracefulShutdown({
+    server,
+    sockets: openSockets,
+    cleanups: [
+      () => stopTunnel(),
+      () => terminalManager?.shutdown(),
+    ],
+    closeDb,
+    exit: (code) => process.exit(code),
+  })
   process.on('SIGTERM', gracefulShutdown)
   process.on('SIGINT', gracefulShutdown)
 

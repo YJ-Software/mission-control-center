@@ -6,6 +6,9 @@ import os from 'os'
 import fs from 'fs'
 import { applyPendingDbRestoreOnce } from './backup/pending-db-restore'
 import { reconcileStaleBackupLogs } from './backup/reconcile'
+import { registerDbConnection } from './db-close'
+
+export { closeDb } from './db-close'
 
 const DB_DIR = path.join(os.homedir(), '.mission-control')
 export const DB_PATH = path.join(DB_DIR, 'db.sqlite')
@@ -33,6 +36,8 @@ if (restoreResult === 'applied') {
 const sqlite = new Database(DB_PATH)
 sqlite.pragma('journal_mode = WAL')
 sqlite.pragma('foreign_keys = ON')
+// 關機時由 closeDb() 關閉（server.ts 的 gracefulShutdown），否則 WAL 永遠不會 checkpoint
+registerDbConnection(sqlite)
 
 export const db = drizzle(sqlite, { schema })
 
