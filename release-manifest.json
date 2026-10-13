@@ -1,7 +1,7 @@
 {
   "latest": {
-    "version": "0.4.0",
-    "mccVersion": "0.4.0",
+    "version": "0.4.1",
+    "mccVersion": "0.4.1",
     "openclawVersion": "2026.10.2",
     "validated": {
       "openclaw": [
@@ -9,19 +9,31 @@
         "2026.10.2"
       ]
     },
-    "releaseDate": "2026-10-13T06:43:29.613Z",
-    "notes": "- feat(backup): 備份與還原整合進 MCC：備份改由 MCC 自己執行（OpenClaw 原生備份＋MCC 資料庫快照打包成單一檔案），排程由 MCC 內建執行，不再經由 AI agent 的 cron；舊的「💾 Backup:」cron 會在升級後自動移除（退避重試）\n- feat(backup): 還原改由 MCC 執行：驗證、交換式還原含回滾、OpenClaw 資料與 MCC 資料庫在重啟時套用；備份頁顯示新舊格式、還原進度與上次還原結果\n- feat(backup): 額外資料夾備份改為程式內建（release 版本原本無法使用）；FTP 目的地顯示明文傳輸警告\n- fix(backup): 還原時舊資料庫的 -wal/-shm 與主檔一起改名，pre-restore 複本可直接打開；還原回來的備份列補上檔案大小\n- fix(server): 關機時一定關閉 SQLite 連線（WAL 正常 checkpoint），並切斷殘留的瀏覽器長連線，stop 不再等 5 秒後以失敗結束\n- fix(jobs): 開機孤兒回收不再把仍在執行的長時間 job 標為失敗；重啟類 job 與備份／還原互鎖\n- fix(llm-auth): 設定寫入後確認生效，刪除憑證時保護 agent 覆寫不被蓋回\n- 已在 OpenClaw 2026.9.9 與 2026.10.2 以完整 E2E 驗證",
+    "releaseDate": "2026-10-13T12:47:02.365Z",
+    "notes": "- fix(backup): **還原自救**。套用待還原資料庫失敗、且回滾也失敗時，自動把 pre-restore 複本搬回原位（主檔先搬，-wal/-shm 跟著搬，不覆寫既有複本），不再留下一個空的資料庫開機；搬不回時明確寫出資料所在的檔案位置\n- fix(backup): **舊版「💾 Backup:」cron 不再復活**。還原（新版還原、舊版 restore.sh 還原、套用待還原資料庫）後會清掉「舊 cron 已清理」旗標並重新檢查，先前還原回舊快照會讓舊排程復活、與內建排程器重複備份。清理只採信 gateway RPC，取不到就延後重試（約 1 分鐘）\n- 實機驗證：OpenClaw 2026.10.2 上重現 0.4.0 的舊 cron 復活問題，升級 0.4.1 後還原約 1 分鐘內自動移除；停機 1.5 秒、exit 0",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.0/mission-control-v0.4.0-linux-x64.tar.gz",
-        "sha256": "302780cff283a5663e45b0f41b76b507110b19eade3e7fff715e50a79933c9fd",
-        "size": 26551475
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.1/mission-control-v0.4.1-linux-x64.tar.gz",
+        "sha256": "fac0aba01583c76d92ed406ba0426695a8a3a73820dc935dbb9b711c6d97eb6d",
+        "size": 26567893
       }
     ]
   },
   "history": [
+    {
+      "version": "0.4.0",
+      "mccVersion": "0.4.0",
+      "openclawVersion": "2026.10.2",
+      "validated": {
+        "openclaw": [
+          "2026.9.9",
+          "2026.10.2"
+        ]
+      },
+      "releaseDate": "2026-10-13T06:43:29.613Z"
+    },
     {
       "version": "0.3.93",
       "mccVersion": "0.3.93",
@@ -82,12 +94,6 @@
       "mccVersion": "0.3.85",
       "openclawVersion": "2026.8.2",
       "releaseDate": "2026-09-03T10:26:29.482Z"
-    },
-    {
-      "version": "2026.8.2-v0.3.84",
-      "mccVersion": "0.3.84",
-      "openclawVersion": "2026.8.2",
-      "releaseDate": "2026-09-02T17:44:05.097Z"
     }
   ]
 }
