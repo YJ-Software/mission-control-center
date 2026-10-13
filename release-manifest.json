@@ -1,27 +1,40 @@
 {
   "latest": {
-    "version": "0.4.3",
-    "mccVersion": "0.4.3",
-    "openclawVersion": "2026.10.2",
+    "version": "0.4.4",
+    "mccVersion": "0.4.4",
+    "openclawVersion": "2026.10.3",
     "validated": {
       "openclaw": [
         "2026.9.9",
-        "2026.10.2"
+        "2026.10.2",
+        "2026.10.3"
       ]
     },
-    "releaseDate": "2026-10-13T17:39:05.594Z",
-    "notes": "- fix(gateway): **Gateway 配對失敗後會自動重試，不再永久斷線**。先前 MCC 收到 `pairing required` 只會自我批准一次；若當下 gateway 正在重啟（例如 OCD 重新部署後），批准失敗就不再重試也不重連，之後每句對話都是「RPC timeout: chat.send」，側欄卻仍顯示 Gateway Linked，只能靠重啟儀表板解決。現改為退避重試（2 → 30 秒封頂、不限次數），實機約 11–15 秒內自動恢復\n  - 側欄 Gateway 狀態改由伺服器推送，只有握手完成後才顯示「已連線」；配對中、重試中、驗證失敗、離線各有明確文案\n  - gateway 未連線時，對話與 API 請求立即回「Gateway not connected」，不再等 30 秒逾時\n  - gateway 重新連線後自動重抓對話紀錄、session 與模型清單\n- 已知：OpenClaw 2026.10.3 上，從備份還原後主 session 的第一句對話可能停頓約 2 分鐘（gateway 記憶體索引重建中，非 MCC 問題），2026.10.2 未見；故本版 validated 仍記 2026.9.9／2026.10.2，10.3 其餘功能實測正常（E2E 22/23）",
+    "releaseDate": "2026-10-13T18:28:19.536Z",
+    "notes": "- fix(gateway): **gateway 啟動中的重連改為 2.5 秒短重試**。gateway 剛啟動時會以 `1013 gateway starting` 關線，先前 MCC 把它當一般斷線並沿用已累積的 20–60 秒退避，gateway 就緒後要 18–60 秒才連上；現在固定 2.5 秒重試、不計入一般退避（連續約 2 分鐘仍在啟動中才退回遞增），實測就緒後 1–3 秒內連上。側欄新增「Gateway 啟動中…」狀態\n  - 一般斷線的退避只在握手完成後歸零，避免 gateway 反覆接受又關閉連線時日誌爆量\n- test(e2e): 備份還原 spec 還原後先等 gateway 連線並送暖身訊息，涵蓋 OpenClaw 2026.10.3 還原後重建記憶體索引的停頓\n- 驗證：OpenClaw 2026.10.3 上 E2E 23/23（含還原後聊天連跑 3 次全綠），正式將 2026.10.3 列入已驗證版本",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.3/mission-control-v0.4.3-linux-x64.tar.gz",
-        "sha256": "78bf9db5393d626af33a9cdb2580c5a3a20e11e7ce34aed8e5fd45676b9c5195",
-        "size": 26560812
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.4/mission-control-v0.4.4-linux-x64.tar.gz",
+        "sha256": "6d2f00200f82d927db7aa04454033674ba0ea72ef72a02a8382841a963c77522",
+        "size": 26563579
       }
     ]
   },
   "history": [
+    {
+      "version": "0.4.3",
+      "mccVersion": "0.4.3",
+      "openclawVersion": "2026.10.2",
+      "validated": {
+        "openclaw": [
+          "2026.9.9",
+          "2026.10.2"
+        ]
+      },
+      "releaseDate": "2026-10-13T17:39:05.594Z"
+    },
     {
       "version": "0.4.2",
       "mccVersion": "0.4.2",
@@ -100,12 +113,6 @@
       "mccVersion": "0.3.88",
       "openclawVersion": "2026.9.3",
       "releaseDate": "2026-09-09T07:50:18.419Z"
-    },
-    {
-      "version": "2026.9.2-v0.3.87",
-      "mccVersion": "0.3.87",
-      "openclawVersion": "2026.9.2",
-      "releaseDate": "2026-09-08T09:12:02.448Z"
     }
   ]
 }
