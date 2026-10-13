@@ -1,7 +1,7 @@
 // src/lib/headless-vnc/sse-stream.ts
 import { spawn } from 'child_process'
 import { registerLongRun, unregisterLongRun, updateLongRun } from '@/lib/long-running'
-import { DPKG_REPAIR_LABEL, isAptCommand, isDpkgRepairCommand } from '@/lib/system-update/dpkg-repair'
+import { DPKG_REPAIR_ARGS, DPKG_REPAIR_LABEL, isAptCommand, isDpkgRepairCommand, withAptNonInteractive } from '@/lib/system-update/dpkg-repair'
 
 export interface InstallEvent {
   type: 'log' | 'progress' | 'done' | 'error'
@@ -32,8 +32,30 @@ export function withAptSelfHeal(commands: SSECommand[], force = false): SSEComma
     if (!force) return commands
     at = 0
   }
-  const repair: SSECommand = { label: DPKG_REPAIR_LABEL, cmd: 'sudo', args: ['dpkg', '--configure', '-a'], optional: true }
+  const repair: SSECommand = { label: DPKG_REPAIR_LABEL, cmd: 'sudo', args: ['-n', ...DPKG_REPAIR_ARGS], optional: true }
   return [...commands.slice(0, at), repair, ...commands.slice(at)]
+}
+
+// Env vars sudo strips by default — must be forwarded explicitly via
+// `sudo env KEY=val` so apt + needrestart stay non-interactive.
+const NON_INTERACTIVE_ENV_PAIRS = [
+  'DEBIAN_FRONTEND=noninteractive',
+  'NEEDRESTART_MODE=a',
+  'NEEDRESTART_SUSPEND=1',
+  'UCF_FORCE_CONFFOLD=1',
+  'APT_LISTCHANGES_FRONTEND=none',
+]
+
+/**
+ * 實際 spawn 的參數：apt/dpkg 補上 -y 與 conffile 旗標；sudo 時把非互動環境變數用 `env` 帶過去。
+ * sudo 自己的旗標（例如 -n）要留在 env 之前，否則會被當成 env 的參數。
+ */
+export function buildSpawnArgs(cmd: string, rawArgs: readonly string[]): string[] {
+  const args = withAptNonInteractive(cmd, rawArgs)
+  if (cmd !== 'sudo') return args
+  let i = 0
+  while (i < args.length && args[i].startsWith('-')) i++
+  return [...args.slice(0, i), 'env', ...NON_INTERACTIVE_ENV_PAIRS, ...args.slice(i)]
 }
 
 export function createSSEStream(
@@ -58,30 +80,20 @@ export function createSSEStream(
       }
 
       // 整段串流（含 onBefore/onAfter）都登記為長時間作業：MCC 自己的重啟路徑看到就 409。
-      // 不只登記單一 spawn，因為兩步之間被重啟一樣會讓安裝停在一半
-      const longRunId = registerLongRun(runName)
+      // 不只登記單一 spawn，因為兩步之間被重啟一樣會讓安裝停在一半。
+      // MCC 即將重啟時登記會丟 RestartPendingError，在 catch 裡變成串流的 error 事件
+      let longRunId: number | null = null
       try {
+        longRunId = registerLongRun(runName)
+        const runId = longRunId
         if (opts?.onBefore) await opts.onBefore(enqueue)
-
-        // Env vars sudo strips by default — must be forwarded explicitly via
-        // `sudo env KEY=val` so apt + needrestart stay non-interactive.
-        const NON_INTERACTIVE_ENV_PAIRS = [
-          'DEBIAN_FRONTEND=noninteractive',
-          'NEEDRESTART_MODE=a',
-          'NEEDRESTART_SUSPEND=1',
-          'UCF_FORCE_CONFFOLD=1',
-          'APT_LISTCHANGES_FRONTEND=none',
-        ]
 
         for (let i = 0; i < commands.length; i++) {
           const { label, cmd, args: rawArgs, optional, env } = commands[i]
           enqueue({ type: 'progress', data: `[${i + 1}/${commands.length}] ${label}` })
-          updateLongRun(longRunId, { step: label })
+          updateLongRun(runId, { step: label })
 
-          // Forward non-interactive env through sudo (strips env by default)
-          const args = cmd === 'sudo'
-            ? ['env', ...NON_INTERACTIVE_ENV_PAIRS, ...rawArgs]
-            : rawArgs
+          const args = buildSpawnArgs(cmd, rawArgs)
 
           try {
             await new Promise<void>((resolve, reject) => {
@@ -97,7 +109,7 @@ export function createSSEStream(
                   ...env,
                 },
               })
-              updateLongRun(longRunId, { pid: proc.pid ?? null })
+              updateLongRun(runId, { pid: proc.pid ?? null })
               proc.stdout?.on('data', (chunk: Buffer) => {
                 for (const line of chunk.toString().split('\n').filter(Boolean)) {
                   enqueue({ type: 'log', data: line })
@@ -109,7 +121,7 @@ export function createSSEStream(
                 }
               })
               proc.on('close', (code) => {
-                updateLongRun(longRunId, { pid: null })
+                updateLongRun(runId, { pid: null })
                 if (code === 0) resolve()
                 else reject(new Error(`Command failed with exit code ${code}`))
               })
@@ -133,7 +145,7 @@ export function createSSEStream(
         enqueue({ type: 'error', data: err.message ?? String(err) })
         await new Promise(r => setTimeout(r, 500))
       } finally {
-        unregisterLongRun(longRunId)
+        if (longRunId !== null) unregisterLongRun(longRunId)
         controller.close()
       }
     },

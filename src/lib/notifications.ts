@@ -112,6 +112,15 @@ export function deleteNotification(id: string): void {
   emitBus({ type: 'notification:cleared', payload: { all: false, id } })
 }
 
+/** 刪除同一個 dedupKey 的所有通知（問題已排除時用，例如 dpkg 修復成功） */
+export function deleteNotificationsByDedupKey(dedupKey: string): number {
+  const rows = db.select({ id: notifications.id }).from(notifications)
+    .where(eq(notifications.dedupKey, dedupKey))
+    .all() as { id: string }[]
+  for (const r of rows) deleteNotification(r.id)
+  return rows.length
+}
+
 export function clearAll(): void {
   db.delete(notifications).run()
   emitBus({ type: 'notification:cleared', payload: { all: true } })

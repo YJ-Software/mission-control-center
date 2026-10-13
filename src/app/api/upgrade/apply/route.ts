@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { isBackupOrRestoreBusy } from '@/lib/backup/lock'
-import { hasLongRuns, longRunBusyBody, waitForNoLongRuns } from '@/lib/long-running'
+import { longRunBusyBody } from '@/lib/long-running'
+import { checkRestartGate, parseForce, waitForInstallsPhase } from '@/lib/restart-guard'
 import { createWriteStream } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
@@ -62,9 +63,15 @@ export async function POST(request: Request) {
       { status: 409 },
     )
   }
-  // 升級最後會重啟 MCC，連同 cgroup 內的 apt/dpkg 一起殺掉
-  if (hasLongRuns()) {
-    return NextResponse.json(longRunBusyBody(), { status: 409 })
+  // 升級最後會重啟 MCC，連同 cgroup 內的 apt/dpkg 一起殺掉。force：JSON body 的 force，
+  // 或上傳模式的 x-force-restart header（body 是 tarball，放不下旗標）
+  const isJson = (request.headers.get('content-type') || '').includes('application/json')
+  const force = isJson
+    ? parseForce(((await request.clone().json().catch(() => ({}))) as { force?: unknown }).force)
+    : parseForce(request.headers.get('x-force-restart'))
+  const gate = checkRestartGate(force)
+  if (gate.blocked) {
+    return NextResponse.json(longRunBusyBody(gate.blocked), { status: 409 })
   }
   const info = getInstallInfo()
   if (info.mode !== 'release') {
@@ -160,11 +167,11 @@ export async function POST(request: Request) {
     }
 
     const service = info.service
+    // 獨立 phase：等待期間 job 仍是 running；下載／解壓期間才開始的安裝在這裡等它結束
+    phases.push(waitForInstallsPhase(force))
     phases.push({
       name: `restart service (${service})`,
       inline: async (log) => {
-        // 入口已 409；下載／解壓期間才開始的安裝作業在這裡等它結束
-        await waitForNoLongRuns((m) => log('system', m))
         log('stdout', `scheduling restart in 2s — service: ${service}`)
         log('system', 'this process will be replaced; log resumes after restart')
         scheduleServiceRestart(service)

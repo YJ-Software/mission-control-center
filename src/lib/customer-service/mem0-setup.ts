@@ -21,7 +21,7 @@ import { join, resolve } from 'path'
 import { readAuthStoreDb, findProviderKey, type ProfilesFile } from '@/lib/openclaw/auth-profiles'
 import { getServerEnv } from '@/lib/server-env'
 import { withLongRun } from '@/lib/long-running'
-import { runDpkgRepair } from '@/lib/system-update/dpkg-repair'
+import { runDpkgRepair, runNonInteractive, sudoNonInteractiveArgs } from '@/lib/system-update/dpkg-repair'
 
 const execFileAsync = promisify(execFile)
 const OPENCLAW_CONFIG = join(homedir(), '.openclaw', 'openclaw.json')
@@ -199,9 +199,12 @@ async function runInstallSteps(progress: ProgressCallback): Promise<void> {
     const repair = await runDpkgRepair()
     if (!repair.ok) progress({ stage: 'log', message: `dpkg --configure -a failed (continuing): ${repair.output.slice(-500)}` })
     try {
-      // 逾時本身就會從中途殺掉 apt（留下 dpkg interrupted）；120 秒在慢鏡像上不夠，放寬到 10 分鐘
-      await execFileAsync('sudo', ['-n', 'apt-get', 'install', '-y', 'docker.io'], { timeout: 600000, env: getServerEnv() })
-      await execFileAsync('sudo', ['-n', 'usermod', '-aG', 'docker', process.env.USER ?? 'openclaw'], { env: getServerEnv() })
+      // 逾時本身就會從中途殺掉 apt（留下 dpkg interrupted）；120 秒在慢鏡像上不夠，放寬到 10 分鐘。
+      // 非互動：sudo env DEBIAN_FRONTEND=noninteractive、-y、conffile 一律保留舊檔、stdin 關閉（任何提問立即失敗而不是卡住）
+      const apt = await runNonInteractive('sudo', sudoNonInteractiveArgs(['apt-get', 'install', 'docker.io']), 600000)
+      if (apt.code !== 0) throw Object.assign(new Error(`apt-get exit ${apt.code}`), { stderr: apt.stderr.slice(-2000) })
+      const um = await runNonInteractive('sudo', ['-n', 'usermod', '-aG', 'docker', process.env.USER ?? 'openclaw'], 30000)
+      if (um.code !== 0) throw Object.assign(new Error(`usermod exit ${um.code}`), { stderr: um.stderr.slice(-2000) })
       progress({ stage: 'install', step: 'docker', message: 'docker installed', ready: true })
     } catch (err: any) {
       progress({ stage: 'error', step: 'docker', message: `docker install failed: ${err?.stderr ?? err?.message}` })

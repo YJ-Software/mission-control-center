@@ -120,6 +120,9 @@ async function runShellPhase(jobId: string, phaseIndex: number, cmd: string, lon
  * background and updates the index as phases complete.
  */
 export function startJob(spec: JobSpec): JobMeta {
+  // apt/npm 類 job 整段登記為長時間作業：MCC 自己的重啟路徑看到就 409（見 long-running.ts）。
+  // 放在寫任何 job 紀錄之前：MCC 即將重啟時 registerLongRun 會丟 RestartPendingError，不可留下永遠 running 的 job
+  const longRunId = LONG_RUNNING_JOB_KINDS.has(spec.kind) ? registerLongRun(spec.label, { kind: spec.kind }) : null
   const id = newJobId()
   const startedAt = nowIso()
   const phases: JobPhase[] = spec.phases.map((p) => ({ name: p.name, status: 'pending' }))
@@ -141,8 +144,6 @@ export function startJob(spec: JobSpec): JobMeta {
 
   // Detach the async work. 從這裡起直到 finally，本行程都視這個 job 為執行中（見 live.ts）
   markJobLive(id)
-  // apt/npm 類 job 整段登記為長時間作業：MCC 自己的重啟路徑看到就 409（見 long-running.ts）
-  const longRunId = LONG_RUNNING_JOB_KINDS.has(spec.kind) ? registerLongRun(spec.label) : null
   void (async () => {
    try {
     let overallFailed = false

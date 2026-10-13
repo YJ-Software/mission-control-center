@@ -19,10 +19,14 @@ export interface LongRunEntry {
   pid: number | null
   /** 目前步驟（例如「Installing Obsidian」） */
   step?: string
+  /** job runner 登記的 job 種類（SSE／execFile 安裝沒有） */
+  kind?: string
 }
 
 const KEY = '__mccLongRuns'
 const SEQ_KEY = '__mccLongRunSeq'
+const PENDING_KEY = '__mccRestartPendingUntil'
+const PROBE_KEY = '__mccLongRunPidProbe'
 const store = globalThis as unknown as Record<string, unknown>
 
 function runs(): Map<number, LongRunEntry> {
@@ -34,11 +38,62 @@ export const LONG_RUNNING_JOB_KINDS: ReadonlySet<JobKind> = new Set<JobKind>([
   'sys-update', 'dpkg-repair', 'upgrade-openclaw', 'upgrade-opencli', 'upgrade-nlm',
 ])
 
-export function registerLongRun(name: string, opts: { pid?: number | null; step?: string } = {}): number {
+/** MCC 即將重啟（重啟已排程）時開始新的安裝：會在幾秒內被一起殺掉，所以直接拒絕 */
+export class RestartPendingError extends Error {
+  constructor() { super('MCC 即將重啟，暫時無法開始安裝；請等重啟完成後再試') }
+}
+
+/** 重啟排程前呼叫。ttl 過後自動失效（重啟沒有真的發生、行程還活著時不會永遠擋住安裝） */
+export function markRestartPending(ttlMs = 120_000): void {
+  store[PENDING_KEY] = Date.now() + ttlMs
+}
+
+export function clearRestartPending(): void {
+  store[PENDING_KEY] = null
+}
+
+export function isRestartPending(): boolean {
+  const until = store[PENDING_KEY] as number | null | undefined
+  return typeof until === 'number' && Date.now() < until
+}
+
+export function registerLongRun(name: string, opts: { pid?: number | null; step?: string; kind?: string } = {}): number {
+  if (isRestartPending()) throw new RestartPendingError()
   const id = ((store[SEQ_KEY] as number | undefined) ?? 0) + 1
   store[SEQ_KEY] = id
-  runs().set(id, { id, name, startedAt: new Date().toISOString(), pid: opts.pid ?? null, step: opts.step })
+  runs().set(id, { id, name, startedAt: new Date().toISOString(), pid: opts.pid ?? null, step: opts.step, kind: opts.kind })
   return id
+}
+
+/** PID 是否還活著。EPERM（例如 root 擁有的 sudo）代表活著；只有 ESRCH 代表不存在 */
+function defaultPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code !== 'ESRCH'
+  }
+}
+
+function pidAlive(pid: number): boolean {
+  const probe = store[PROBE_KEY] as ((pid: number) => boolean) | undefined
+  return (probe ?? defaultPidAlive)(pid)
+}
+
+/**
+ * 登記項的子行程已經不在（close 事件沒觸發、行程被外部殺掉）卻沒註銷時，當場註銷並記 log，
+ * 不讓一筆殘留永遠擋住重啟。沒有 PID 的登記項（兩步之間、或 execFile 類）無從判斷，保留。
+ */
+export function pruneDeadLongRuns(): LongRunEntry[] {
+  const removed: LongRunEntry[] = []
+  for (const [id, e] of runs()) {
+    if (e.pid !== null && !pidAlive(e.pid)) {
+      runs().delete(id)
+      removed.push({ ...e })
+      console.warn(`[long-run] 「${e.name}」的 PID ${e.pid} 已不存在，自動註銷`)
+    }
+  }
+  return removed
 }
 
 export function updateLongRun(id: number, patch: { pid?: number | null; step?: string }): void {
@@ -53,12 +108,14 @@ export function unregisterLongRun(id: number): boolean {
   return runs().delete(id)
 }
 
-/** 依開始時間排序的快照（複本，呼叫端改了不影響登記表） */
+/** 依開始時間排序的快照（複本，呼叫端改了不影響登記表）；先註銷 PID 已死的登記項 */
 export function listLongRuns(): LongRunEntry[] {
+  pruneDeadLongRuns()
   return [...runs().values()].map((e) => ({ ...e })).sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.id - b.id)
 }
 
 export function hasLongRuns(): boolean {
+  pruneDeadLongRuns()
   return runs().size > 0
 }
 
@@ -101,11 +158,16 @@ function fmtTime(iso: string): string {
 }
 
 export function describeLongRuns(list: LongRunEntry[]): string {
-  return list.map((r) => `「${r.name}」（${fmtTime(r.startedAt)} 開始）`).join('、')
+  return list.map((r) => `「${r.name}」（${fmtTime(r.startedAt)} 開始，${r.pid !== null ? `PID ${r.pid}` : '無 PID'}）`).join('、')
 }
 
 export function longRunBusyMessage(list: LongRunEntry[]): string {
   return `${describeLongRuns(list)}進行中，現在重啟會中斷它，可能讓系統套件停在安裝一半的狀態；請等它完成後再試`
+}
+
+/** 使用者帶 force 強制重啟時寫進 job log 與伺服器 log 的一行 */
+export function forcedRestartNote(list: LongRunEntry[]): string {
+  return `使用者強制重啟，略過進行中：${describeLongRuns(list)}`
 }
 
 export class LongRunBusyError extends Error {
@@ -121,12 +183,12 @@ export function assertNoLongRuns(): void {
   if (list.length > 0) throw new LongRunBusyError(list)
 }
 
-/** 409 回應本體：error 給舊前端直接顯示，longRuns 給新前端列出名稱與開始時間 */
-export function longRunBusyBody(list: LongRunEntry[] = listLongRuns()) {
+/** 409 回應本體：error 給舊前端直接顯示，longRuns 給新前端列出名稱、開始時間、PID */
+export function longRunBusyBody(list: LongRunEntry[] = listLongRuns(), message?: string) {
   return {
     success: false as const,
     code: 'long-run-busy' as const,
-    error: longRunBusyMessage(list),
+    error: message ?? longRunBusyMessage(list),
     longRuns: list.map((r) => ({ name: r.name, startedAt: r.startedAt, pid: r.pid, step: r.step ?? null })),
   }
 }
@@ -156,7 +218,9 @@ export async function waitForNoLongRuns(
   return true
 }
 
-/** 測試用：清空登記表 */
-export function _resetLongRunsForTest(): void {
+/** 測試用：清空登記表與重啟旗標，並可換掉 PID 存活檢查 */
+export function _resetLongRunsForTest(pidProbe?: (pid: number) => boolean): void {
   runs().clear()
+  store[PENDING_KEY] = null
+  store[PROBE_KEY] = pidProbe
 }

@@ -16,7 +16,8 @@ import { preparePendingDbRestore, commitPendingDbRestore, discardPreparedDbResto
 import { checkScriptsAvailable } from './helpers'
 import { BackupBusyError, isBackupOrRestoreBusy, acquireLock, releaseLock } from './lock'
 import { assertNoBlockingJob } from './job-guard'
-import { listLongRuns, LongRunBusyError, waitForNoLongRuns, type LongRunEntry } from '@/lib/long-running'
+import { forcedRestartNote, listLongRuns, LongRunBusyError, waitForNoLongRuns, type LongRunEntry } from '@/lib/long-running'
+import { checkRestartGate, WAIT_FOR_INSTALLS_PHASE } from '@/lib/restart-guard'
 import { runRestore } from './scripts'
 import { requestLegacyBackupCronRecheck, type LegacyCronRecheckResult } from './scheduler'
 
@@ -313,7 +314,10 @@ export function startRestore(
   filePath: string,
   triggeredBy: TriggerSource,
   depsOverride?: Partial<RestoreDeps>,
+  /** force：使用者看過進行中的安裝清單並二次確認，略過長時間作業互鎖（會留下紀錄） */
+  opts: { force?: boolean } = {},
 ): JobMeta {
+  const force = opts.force === true
   const deps: RestoreDeps = { ...defaultDeps(), ...depsOverride }
   const file = path.resolve(filePath)
   const kind = classifyBackupFile(path.basename(file))
@@ -334,8 +338,8 @@ export function startRestore(
   assertNoBlockingJob(deps.findBlockingJob)
   // release 的 MCC 還原最後會重啟 MCC（KillMode=control-group 會連同 apt/dpkg 一起殺掉）：在動任何東西之前拒絕
   if (kind === 'mcc' && mode === 'release') {
-    const runs = deps.listLongRuns()
-    if (runs.length > 0) throw new LongRunBusyError(runs)
+    const gate = checkRestartGate(force, deps.listLongRuns())
+    if (gate.blocked) throw new LongRunBusyError(gate.blocked)
   }
   const lockToken = acquireLock(RESTORE_LOCK)
 
@@ -475,9 +479,17 @@ export function startRestore(
       }, { last: !release }))
 
       if (release) {
+        // 獨立 phase：等待期間 job 仍是 running（restarting 只在最後一個 phase）
+        phases.push(phase(WAIT_FOR_INSTALLS_PHASE, async (log) => {
+          if (force) {
+            const list = deps.listLongRuns()
+            log('system', list.length > 0 ? forcedRestartNote(list) : '使用者強制重啟（目前沒有進行中的安裝作業）')
+            return
+          }
+          await deps.waitForNoLongRuns((m) => log('system', m))
+        }))
         phases.push(phase('schedule MCC restart', async (log) => {
           const service = deps.getInstall().service
-          await deps.waitForNoLongRuns((m) => log('system', m))
           log('system', `2 秒後重啟 MCC（service: ${service}）`)
           // runner 在這個 phase 回傳時就把工作標為 success，此時 MCC 還沒重啟、資料庫也還沒套用
           log('system', '此工作在排程重啟後即標示完成；資料庫是否成功套用，請在 MCC 重啟後到備份頁查看還原結果')

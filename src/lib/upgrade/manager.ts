@@ -25,7 +25,7 @@ import crypto from 'node:crypto'
 
 import { getVersionInfo } from '@/lib/version'
 import type { ValidatedBackends } from '@/lib/release-validation'
-import { assertNoLongRuns } from '@/lib/long-running'
+import { assertNoLongRuns, markRestartPending } from '@/lib/long-running'
 
 const execFileP = promisify(execFile)
 
@@ -249,6 +249,8 @@ export async function applyUpgrade(opts: ApplyUpgradeOptions): Promise<ApplyUpgr
  * buys enough time for Next.js to flush the response.
  */
 export function scheduleServiceRestart(service: string, delaySeconds = 2): void {
+  // 排程後的這幾秒內開始的安裝會被一起殺掉：登記表在這段期間拒絕新的長時間作業
+  markRestartPending()
   const cmd = `sleep ${delaySeconds} && systemctl --user restart ${service}`
   const child = spawn('bash', ['-c', cmd], {
     detached: true,
@@ -261,9 +263,9 @@ export function scheduleServiceRestart(service: string, delaySeconds = 2): void 
  * Roll `current` symlink back to `prevTarget` and restart. Used when a
  * post-upgrade health check fails.
  */
-export async function rollbackUpgrade(prevTarget: string, service: string): Promise<void> {
+export async function rollbackUpgrade(prevTarget: string, service: string, opts: { force?: boolean } = {}): Promise<void> {
   // 長時間安裝作業進行中不重啟（會連同 apt/dpkg 一起殺掉）：丟 LongRunBusyError，在動 symlink 之前
-  assertNoLongRuns()
+  if (!opts.force) assertNoLongRuns()
   const info = getInstallInfo()
   const currentLink = path.join(info.prefix, 'current')
   await execFileP('ln', ['-sfn', prevTarget, currentLink])

@@ -5,6 +5,7 @@ import { isBackupOrRestoreBusy } from '@/lib/backup/scripts'
 import { resolveInsideDirs } from '@/lib/backup/path-guard'
 import { describeBackup, startRestore, BackupBusyError, RestoreRejectedError } from '@/lib/backup/run-restore'
 import { LongRunBusyError, longRunBusyBody } from '@/lib/long-running'
+import { parseForce } from '@/lib/restart-guard'
 import type { TriggerSource } from '@/lib/jobs/types'
 import { initDb } from '@/lib/db'
 
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid backup token' }, { status: 401 })
   }
 
-  let body: { file?: unknown; dryRun?: unknown; triggeredBy?: unknown }
+  let body: { file?: unknown; dryRun?: unknown; triggeredBy?: unknown; force?: unknown }
   try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   if (typeof body.file !== 'string' || !body.file) return NextResponse.json({ error: 'Missing file' }, { status: 400 })
 
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
     }
     const triggeredBy: TriggerSource = TRIGGER_SOURCES.includes(body.triggeredBy as TriggerSource)
       ? (body.triggeredBy as TriggerSource) : 'api'
-    const meta = startRestore(file, triggeredBy)
+    const meta = startRestore(file, triggeredBy, undefined, { force: parseForce(body.force) })
     return NextResponse.json({ ok: true, jobId: meta.id })
   } catch (err) {
     if (err instanceof LongRunBusyError) return NextResponse.json(longRunBusyBody(err.runs), { status: 409 })

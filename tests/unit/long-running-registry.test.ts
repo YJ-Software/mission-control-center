@@ -12,10 +12,13 @@ void h
 import {
   registerLongRun, unregisterLongRun, updateLongRun, listLongRuns, hasLongRuns, withLongRun, withLongRunSync,
   assertNoLongRuns, LongRunBusyError, longRunBusyBody, waitForNoLongRuns, LONG_RUNNING_JOB_KINDS, _resetLongRunsForTest,
+  markRestartPending, clearRestartPending, isRestartPending, RestartPendingError, pruneDeadLongRuns, forcedRestartNote,
 } from '@/lib/long-running'
+import { readAllJobsSync } from '@/lib/jobs/store'
+import { buildSpawnArgs } from '@/lib/headless-vnc/sse-stream'
 import { createSSEStream, withAptSelfHeal } from '@/lib/headless-vnc/sse-stream'
 import { startJob } from '@/lib/jobs/runner'
-import { formatLongRunList, parseLongRunBusy } from '@/lib/long-run-client'
+import { parseLongRunBusy } from '@/lib/long-run-client'
 
 beforeEach(() => _resetLongRunsForTest())
 
@@ -23,9 +26,9 @@ describe('長時間作業登記表', () => {
   it('登記、更新 PID／步驟、註銷', () => {
     expect(hasLongRuns()).toBe(false)
     const id = registerLongRun('Obsidian 安裝')
-    updateLongRun(id, { pid: 1234, step: 'Installing Obsidian' })
+    updateLongRun(id, { pid: process.pid, step: 'Installing Obsidian' })
     const [e] = listLongRuns()
-    expect(e).toMatchObject({ id, name: 'Obsidian 安裝', pid: 1234, step: 'Installing Obsidian' })
+    expect(e).toMatchObject({ id, name: 'Obsidian 安裝', pid: process.pid, step: 'Installing Obsidian' })
     expect(new Date(e.startedAt).getTime()).toBeGreaterThan(0)
     expect(unregisterLongRun(id)).toBe(true)
     expect(unregisterLongRun(id)).toBe(false) // 重複註銷無害
@@ -65,6 +68,7 @@ describe('長時間作業登記表', () => {
   })
 
   it('409 本體帶 code、可直接顯示的 error 與 longRuns 清單', () => {
+    _resetLongRunsForTest(() => true) // PID 99 視為活著
     const id = registerLongRun('apt update + upgrade')
     updateLongRun(id, { pid: 99, step: 'apt-get upgrade' })
     const body = longRunBusyBody()
@@ -75,7 +79,7 @@ describe('長時間作業登記表', () => {
     // 前端解析
     const parsed = parseLongRunBusy(JSON.parse(JSON.stringify(body)))
     expect(parsed?.[0].name).toBe('apt update + upgrade')
-    expect(formatLongRunList(parsed!, (n, t) => `${n}@${t}`, () => '14:02')).toBe('apt update + upgrade@14:02')
+    expect(parsed?.[0]).toMatchObject({ pid: 99, step: 'apt-get upgrade' })
     expect(parseLongRunBusy({ error: '備份或還原進行中' })).toBeNull()
   })
 
@@ -90,6 +94,93 @@ describe('長時間作業登記表', () => {
     const logs2: string[] = []
     expect(await waitForNoLongRuns((m) => logs2.push(m), { pollMs: 5, maxWaitMs: 20 })).toBe(false)
     expect(logs2.at(-1)).toContain('照常重啟')
+  })
+})
+
+describe('PID 存活檢查', () => {
+  it('子行程已不存在的登記項：檢查時當場註銷並記 log', () => {
+    const alive = new Set([111])
+    _resetLongRunsForTest((pid) => alive.has(pid))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const a = registerLongRun('還在跑', { pid: 111 })
+    registerLongRun('已經死了', { pid: 222 })
+    registerLongRun('沒有 PID') // 兩步之間：無從判斷，保留
+    expect(listLongRuns().map((r) => r.name)).toEqual(['還在跑', '沒有 PID'])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('「已經死了」的 PID 222 已不存在，自動註銷'))
+    alive.delete(111)
+    expect(pruneDeadLongRuns().map((r) => r.id)).toEqual([a])
+    expect(hasLongRuns()).toBe(true) // 沒有 PID 的那筆
+    warn.mockRestore()
+  })
+
+  it('預設檢查：EPERM（root 擁有的 sudo）視為活著，ESRCH 才註銷', () => {
+    _resetLongRunsForTest()
+    const kill = vi.spyOn(process, 'kill').mockImplementation(((pid: number) => {
+      const e = Object.assign(new Error('x'), { code: pid === 1 ? 'EPERM' : 'ESRCH' })
+      throw e
+    }) as typeof process.kill)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    registerLongRun('root sudo', { pid: 1 })
+    registerLongRun('gone', { pid: 999999 })
+    expect(listLongRuns().map((r) => r.name)).toEqual(['root sudo'])
+    kill.mockRestore(); warn.mockRestore()
+  })
+
+  it('描述與強制紀錄都帶 PID；沒有 PID 註記「無 PID」', () => {
+    _resetLongRunsForTest(() => true)
+    registerLongRun('A', { pid: 42 })
+    registerLongRun('B')
+    const note = forcedRestartNote(listLongRuns())
+    expect(note).toMatch(/^使用者強制重啟，略過進行中：「A」（.* 開始，PID 42）、「B」（.* 開始，無 PID）$/)
+  })
+})
+
+describe('MCC 即將重啟', () => {
+  it('重啟排程後拒絕新的登記；ttl 過了或清除後恢復', async () => {
+    markRestartPending(50)
+    expect(isRestartPending()).toBe(true)
+    expect(() => registerLongRun('x')).toThrow(RestartPendingError)
+    await new Promise((r) => setTimeout(r, 70))
+    expect(isRestartPending()).toBe(false)
+    expect(() => registerLongRun('x')).not.toThrow()
+    markRestartPending()
+    clearRestartPending()
+    expect(isRestartPending()).toBe(false)
+  })
+
+  it('SSE 安裝串流：回 error 事件，不執行任何指令', async () => {
+    markRestartPending()
+    const r = createSSEStream([{ label: 'x', cmd: 'sh', args: ['-c', 'echo SHOULD-NOT-RUN'] }], { name: 'x' }).getReader()
+    let out = ''
+    for (;;) { const { done, value } = await r.read(); if (done) break; out += new TextDecoder().decode(value) }
+    expect(out).toContain('"type":"error"')
+    expect(out).toContain('MCC 即將重啟')
+    expect(out).not.toContain('SHOULD-NOT-RUN')
+    expect(hasLongRuns()).toBe(false)
+  })
+
+  it('job runner：apt 類 job 直接丟錯，不留下永遠 running 的 job 紀錄', () => {
+    markRestartPending()
+    const before = readAllJobsSync().length
+    expect(() => startJob({ kind: 'sys-update', label: 'apt', triggeredBy: 'api', phases: [{ name: 'x', shell: 'true' }] }))
+      .toThrow(RestartPendingError)
+    expect(readAllJobsSync().length).toBe(before)
+  })
+})
+
+describe('SSE 實際 spawn 的參數', () => {
+  it('sudo apt：保留 sudo 旗標在 env 之前，帶非互動環境、-y 與 conffile 選項', () => {
+    expect(buildSpawnArgs('sudo', ['-n', 'dpkg', '--force-confdef', '--force-confold', '--configure', '-a'])).toEqual([
+      '-n', 'env', 'DEBIAN_FRONTEND=noninteractive', 'NEEDRESTART_MODE=a', 'NEEDRESTART_SUSPEND=1',
+      'UCF_FORCE_CONFFOLD=1', 'APT_LISTCHANGES_FRONTEND=none', 'dpkg', '--force-confdef', '--force-confold', '--configure', '-a',
+    ])
+    const apt = buildSpawnArgs('sudo', ['apt', 'install', '-y', 'couchdb'])
+    expect(apt.slice(0, 2)).toEqual(['env', 'DEBIAN_FRONTEND=noninteractive'])
+    expect(apt.slice(6)).toEqual(['apt', '-o', 'Dpkg::Options::=--force-confdef', '-o', 'Dpkg::Options::=--force-confold', 'install', '-y', 'couchdb'])
+  })
+  it('非 sudo、非 apt 的指令原樣', () => {
+    expect(buildSpawnArgs('npm', ['install', '-g', 'x'])).toEqual(['install', '-g', 'x'])
+    expect(buildSpawnArgs('bash', ['-c', 'yes | sudo env X=1 bash s.sh'])).toEqual(['-c', 'yes | sudo env X=1 bash s.sh'])
   })
 })
 
@@ -139,14 +230,14 @@ describe('SSE 安裝串流', () => {
       { label: 'apt2', cmd: 'sudo', args: ['apt-get', 'install', '-y', 'fcitx5'] },
     ])
     expect(cmds.map((c) => c.label)).toEqual(['curl', expect.stringContaining('dpkg --configure -a'), 'apt', 'apt2'])
-    expect(cmds[1]).toMatchObject({ cmd: 'sudo', args: ['dpkg', '--configure', '-a'], optional: true })
+    expect(cmds[1]).toMatchObject({ cmd: 'sudo', args: ['-n', 'dpkg', '--force-confdef', '--force-confold', '--configure', '-a'], optional: true })
   })
 
   it('沒有 apt 就不插；已經有修復步驟也不重複插；force 時插在最前面', () => {
     const plain = [{ label: 'npm', cmd: 'npm', args: ['install', '-g', 'x'] }]
     expect(withAptSelfHeal(plain)).toBe(plain)
     const forced = withAptSelfHeal(plain, true)
-    expect(forced[0].args).toEqual(['dpkg', '--configure', '-a'])
+    expect(forced[0].args).toEqual(['-n', 'dpkg', '--force-confdef', '--force-confold', '--configure', '-a'])
     expect(withAptSelfHeal(forced, true)).toBe(forced)
   })
 })

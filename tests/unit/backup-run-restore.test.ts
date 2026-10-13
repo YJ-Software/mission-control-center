@@ -106,7 +106,7 @@ describe('startRestore mcc（release 模式）', () => {
     startRestore(file, 'api', deps())
     expect(spec!.kind).toBe('backup-restore')
     expect(spec!.phases.map((p) => p.name)).toEqual(
-      ['verify', 'extract', 'restore OpenClaw', 'stage MCC database', 'schedule MCC restart'])
+      ['verify', 'extract', 'restore OpenClaw', 'stage MCC database', '等待安裝作業結束', 'schedule MCC restart'])
     expect(spec!.expectedVersion).toBe('0.3.99')
     expect(spec!.restartingBeforeLastPhase).toBe(true)
     await done
@@ -548,6 +548,20 @@ describe('startRestore：長時間安裝作業進行中（release 還原最後�
     startRestore(buildArchive(), 'api', deps({ listLongRuns: busy, getInstall: () => ({ mode: 'dev', service: 's' }) }))
     expect(spec).not.toBeNull()
     await done
+  })
+
+  it('force：略過互鎖照常還原，job log 記下被略過的作業，不等待', async () => {
+    let waited = false
+    startRestore(buildArchive(), 'api', deps({
+      listLongRuns: busy,
+      restartLockHoldMs: 10,
+      waitForNoLongRuns: async () => { waited = true },
+    }), { force: true })
+    await done
+    expect(finalStatus).toBe('success')
+    expect(waited).toBe(false)
+    expect(logs.some((l) => l.startsWith('使用者強制重啟，略過進行中：「Obsidian 安裝」') && l.includes('PID 42'))).toBe(true)
+    expect(calls.at(-1)).toBe('restart:mission-control')
   })
 
   it('重啟 phase 先等長時間作業結束才排程重啟（入口之後才開始的安裝）', async () => {

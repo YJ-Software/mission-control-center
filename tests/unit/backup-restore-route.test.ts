@@ -103,7 +103,7 @@ describe('POST /api/backup/restore', () => {
   it('成功：回 { ok, jobId }，傳入真實路徑與 triggeredBy', async () => {
     const res = await POST(req({ file, triggeredBy: 'settings-card' }))
     expect(await res.json()).toEqual({ ok: true, jobId: 'job-9' })
-    expect(m.start).toHaveBeenCalledWith(fs.realpathSync(file), 'settings-card')
+    expect(m.start).toHaveBeenCalledWith(fs.realpathSync(file), 'settings-card', undefined, { force: false })
   })
 })
 

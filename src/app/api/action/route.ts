@@ -3,7 +3,8 @@ import { exec } from 'child_process'
 import { startJob } from '@/lib/jobs/runner'
 import type { TriggerSource } from '@/lib/jobs/types'
 import { isBackupOrRestoreBusy } from '@/lib/backup/lock'
-import { hasLongRuns, longRunBusyBody, waitForNoLongRuns } from '@/lib/long-running'
+import { listLongRuns, longRunBusyBody, markRestartPending, RestartPendingError } from '@/lib/long-running'
+import { checkRestartGate, parseForce, waitForInstallsPhase } from '@/lib/restart-guard'
 
 /** 備份/還原進行中，這些動作會把它打斷（還原中途被重啟可能留下搬到一半的資料） */
 const BLOCKED_DURING_BACKUP = new Set(['restart-dashboard', 'restart-openclaw', 'update-mcc', 'update-openclaw', 'reboot-system'])
@@ -31,8 +32,8 @@ function run(cmd: string, timeout = 30000): Promise<{ success: boolean; output?:
   })
 }
 
-type ActionResult = { success: boolean; output?: string; error?: string; message?: string; jobId?: string }
-type ActionHandler = (ctx: { triggeredBy: TriggerSource }) => Promise<ActionResult>
+type ActionResult = { success: boolean; output?: string; error?: string; message?: string; jobId?: string; status?: number }
+type ActionHandler = (ctx: { triggeredBy: TriggerSource; force: boolean }) => Promise<ActionResult>
 
 // All action keys are validated against this allowlist — no arbitrary command execution
 const actions: Record<string, ActionHandler> = {
@@ -54,7 +55,7 @@ const actions: Record<string, ActionHandler> = {
     return { success: true, jobId: meta.id, message: 'Restart job started' }
   },
 
-  'restart-dashboard': async ({ triggeredBy }) => {
+  'restart-dashboard': async ({ triggeredBy, force }) => {
     const { getVersionInfo } = await import('@/lib/version')
     const expectedVersion = (() => { try { return getVersionInfo().version } catch { return undefined } })()
     const meta = startJob({
@@ -64,11 +65,11 @@ const actions: Record<string, ActionHandler> = {
       expectedVersion,
       restartingBeforeLastPhase: true,
       phases: [
+        waitForInstallsPhase(force),
         {
           name: 'schedule restart (mission-control)',
           inline: async (log) => {
-            // 入口已 409；這裡是入口之後才開始的安裝作業的最後防線
-            await waitForNoLongRuns((m) => log('system', m))
+            markRestartPending()
             log('stdout', 'scheduling restart in 2s')
             log('system', 'this process will be replaced; log resumes after restart')
             setTimeout(() => {
@@ -118,7 +119,7 @@ const actions: Record<string, ActionHandler> = {
     return { success: true, jobId: meta.id, message: 'Upgrade job started' }
   },
 
-  'reboot-system': async ({ triggeredBy }) => {
+  'reboot-system': async ({ triggeredBy, force }) => {
     const { buildRebootCommand } = await import('@/lib/system-update/apt')
     // Record the request before issuing it. The reboot takes the server down,
     // so a job that waited on the command could never write its own result —
@@ -130,10 +131,11 @@ const actions: Record<string, ActionHandler> = {
       label: 'Reboot host',
       triggeredBy,
       phases: [
+        waitForInstallsPhase(force),
         {
           name: 'schedule reboot',
           inline: async (log) => {
-            await waitForNoLongRuns((m) => log('system', m))
+            markRestartPending(10 * 60_000)
             log('system', 'reboot scheduled; the host goes down in a few seconds')
             exec(buildRebootCommand())
             return 0
@@ -144,7 +146,7 @@ const actions: Record<string, ActionHandler> = {
     return { success: true, jobId: meta.id, message: 'Reboot scheduled' }
   },
 
-  'update-mcc': async ({ triggeredBy }) => {
+  'update-mcc': async ({ triggeredBy, force }) => {
     const { getInstallInfo, fetchManifest, getConfiguredManifestUrl, pickArtifact, downloadArtifact, applyUpgrade, scheduleServiceRestart } = await import('@/lib/upgrade/manager')
     const { getVersionInfo } = await import('@/lib/version')
 
@@ -211,10 +213,10 @@ const actions: Record<string, ActionHandler> = {
             }
           },
         },
+        waitForInstallsPhase(force),
         {
           name: `restart service (${service})`,
           inline: async (log) => {
-            await waitForNoLongRuns((m) => log('system', m))
             log('stdout', `scheduling restart in 2s — service: ${service}`)
             log('system', 'this process will be replaced; log resumes after restart')
             scheduleServiceRestart(service)
@@ -249,11 +251,21 @@ const actions: Record<string, ActionHandler> = {
   // dpkg-repair 在 LONG_RUNNING_JOB_KINDS 裡，執行期間同樣擋住重啟。
   'dpkg-repair': async ({ triggeredBy }) => {
     const { dpkgRepairStrictShell, DPKG_REPAIR_LABEL } = await import('@/lib/system-update/dpkg-repair')
+    // 另一個 apt/dpkg（或另一次修復）正在跑時，第二個 dpkg 只會撞鎖失敗，留下一筆令人困惑的失敗 job
+    const running = listLongRuns()
+    if (running.length > 0) {
+      const body = longRunBusyBody(running, '其他安裝作業進行中，現在修復會撞上套件管理員的鎖；請等它完成後再試')
+      return { ...body, status: 409 } as ActionResult
+    }
     const meta = startJob({
       kind: 'dpkg-repair',
       label: DPKG_REPAIR_LABEL,
       triggeredBy,
       phases: [{ name: 'dpkg --configure -a', shell: dpkgRepairStrictShell() }],
+      // 修好就清掉通知；沒修好就重新通知（按鈕回來）
+      onSettled: () => {
+        void import('@/lib/system-update/dpkg-boot-check').then((m) => m.recheckDpkgAfterRepair())
+      },
     })
     return { success: true, jobId: meta.id, message: 'dpkg repair started' }
   },
@@ -281,13 +293,19 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (BLOCKED_DURING_LONG_RUN.has(action) && hasLongRuns()) {
-      return NextResponse.json(longRunBusyBody(), { status: 409 })
+    // 使用者在前端看過進行中的清單並二次確認後才會帶 force: true；略過互鎖並留下紀錄
+    const force = parseForce(body.force)
+    if (BLOCKED_DURING_LONG_RUN.has(action)) {
+      const gate = checkRestartGate(force)
+      if (gate.blocked) return NextResponse.json(longRunBusyBody(gate.blocked), { status: 409 })
     }
 
-    const result = await actions[action]({ triggeredBy })
-    return NextResponse.json(result)
+    const { status, ...result } = await actions[action]({ triggeredBy, force })
+    return NextResponse.json(result, status ? { status } : undefined)
   } catch (err) {
+    if (err instanceof RestartPendingError) {
+      return NextResponse.json({ success: false, code: 'restart-pending', error: err.message }, { status: 409 })
+    }
     return NextResponse.json({ success: false, error: String(err) }, { status: 500 })
   }
 }

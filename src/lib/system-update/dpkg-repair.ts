@@ -8,7 +8,7 @@
  * 偵測用 `dpkg --audit`（非 root 可跑）加 `/var/lib/dpkg/updates/` 是否有待處理的 journal
  * （dpkg 被中斷時留下的就是這些檔；非 root 可讀）。 */
 
-import { execFile } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { readdirSync } from 'node:fs'
 import { getServerEnv } from '@/lib/server-env'
 
@@ -21,10 +21,26 @@ const NONINTERACTIVE_ENV = [
   'APT_LISTCHANGES_FRONTEND=none',
 ]
 
-/** 給 execFile 用的 sudo 參數（-n：需要密碼時直接失敗，不會卡住） */
-export const DPKG_REPAIR_SUDO_ARGS: readonly string[] = [
-  '-n', 'env', ...NONINTERACTIVE_ENV, 'dpkg', '--configure', '-a',
+/** dpkg 的 conffile 提問發生在 configure 階段、不看 DEBIAN_FRONTEND：沒有這兩個旗標，被管理者改過的設定檔
+ *  （例如 sshd_config）會讓 dpkg 停在提問，stdin 關著就失敗、開著就永遠卡住 */
+export const DPKG_CONFFILE_FLAGS: readonly string[] = ['--force-confdef', '--force-confold']
+/** apt 透過 -o 把同樣的旗標交給 dpkg */
+export const APT_CONFFILE_OPTS: readonly string[] = [
+  '-o', 'Dpkg::Options::=--force-confdef', '-o', 'Dpkg::Options::=--force-confold',
 ]
+
+/** dpkg --configure -a 本體（不含 sudo/env） */
+export const DPKG_REPAIR_ARGS: readonly string[] = ['dpkg', ...DPKG_CONFFILE_FLAGS, '--configure', '-a']
+
+/** 給直接 spawn 用的 sudo 參數（-n：需要密碼時直接失敗，不會卡住） */
+export const DPKG_REPAIR_SUDO_ARGS: readonly string[] = [
+  '-n', 'env', ...NONINTERACTIVE_ENV, ...DPKG_REPAIR_ARGS,
+]
+
+/** `sudo -n env <非互動> <program> <args>` 的 sudo 參數；program 是 apt/apt-get 時一併補上 -y 與 conffile 選項 */
+export function sudoNonInteractiveArgs(programArgs: readonly string[]): string[] {
+  return ['-n', 'env', ...NONINTERACTIVE_ENV, ...withAptNonInteractive(programArgs[0] ?? '', programArgs.slice(1), true)]
+}
 
 export const DPKG_REPAIR_LABEL = '修復上次中斷的套件安裝（dpkg --configure -a）'
 
@@ -40,38 +56,97 @@ export function dpkgRepairStrictShell(): string {
 }
 
 const APT_PROGRAMS = new Set(['apt', 'apt-get', 'dpkg', 'aptitude'])
+const APT_FRONTENDS = new Set(['apt', 'apt-get', 'aptitude'])
 
-/** 這個指令會不會動到 dpkg 資料庫：`apt-get …`、`sudo apt-get …`、`sudo env K=V apt …`、`dpkg -r …` */
-export function isAptCommand(cmd: string, args: readonly string[]): boolean {
-  if (APT_PROGRAMS.has(cmd)) return true
-  if (cmd !== 'sudo') return false
+/** 套件管理程式在 args 裡的位置：cmd 本身是 apt 類時回 -1；找不到回 null */
+function aptProgramIndex(cmd: string, args: readonly string[]): number | null {
+  if (APT_PROGRAMS.has(cmd)) return -1
+  if (cmd !== 'sudo') return null
   let i = 0
   while (i < args.length && args[i].startsWith('-')) i++ // sudo 自己的旗標
   if (args[i] === 'env') {
     i++
     while (i < args.length && (args[i].includes('=') || args[i].startsWith('-'))) i++
   }
-  return i < args.length && APT_PROGRAMS.has(args[i])
+  return i < args.length && APT_PROGRAMS.has(args[i]) ? i : null
 }
 
-/** 自己判斷是不是 dpkg --configure -a，避免使用者已經手動放了一步時又重複加一次 */
+/** 這個指令會不會動到 dpkg 資料庫：`apt-get …`、`sudo apt-get …`、`sudo env K=V apt …`、`dpkg -r …` */
+export function isAptCommand(cmd: string, args: readonly string[]): boolean {
+  return aptProgramIndex(cmd, args) !== null
+}
+
+/**
+ * 回傳補齊非互動參數後的 args（不改原陣列）：
+ * - apt/apt-get/aptitude：程式名後面補 `-y` 與 `-o Dpkg::Options::=--force-confdef/--force-confold`
+ * - dpkg 的 --configure / -i / --install：補 `--force-confdef --force-confold`（-r/--remove 不會問 conffile，不動）
+ * 已經有的不重複加。cmdIsProgram：args[0] 之外的 cmd 本身就是程式（給 sudoNonInteractiveArgs 用）。
+ */
+export function withAptNonInteractive(cmd: string, args: readonly string[], cmdIsProgram = false): string[] {
+  const at = cmdIsProgram ? (APT_PROGRAMS.has(cmd) ? -1 : null) : aptProgramIndex(cmd, args)
+  const out = cmdIsProgram ? [cmd, ...args] : [...args]
+  if (at === null) return out
+  const progPos = cmdIsProgram ? 0 : at // 在 out 裡的位置（-1 代表 cmd 本身）
+  const program = progPos === -1 ? cmd : out[progPos]
+  const rest = out.slice(progPos + 1)
+  const add: string[] = []
+  if (APT_FRONTENDS.has(program)) {
+    if (!rest.includes('-y') && !rest.includes('--yes') && !rest.includes('--assume-yes')) add.push('-y')
+    if (!rest.some((a) => a.includes('--force-confold'))) add.push(...APT_CONFFILE_OPTS)
+  } else if (program === 'dpkg') {
+    const configures = rest.some((a) => a === '--configure' || a === '-i' || a === '--install')
+    if (configures && !rest.includes('--force-confold')) add.push(...DPKG_CONFFILE_FLAGS)
+  }
+  return [...out.slice(0, progPos + 1), ...add, ...rest]
+}
+
+/** 自己判斷是不是 dpkg --configure -a（中間可夾 --force-* 旗標），避免已經有一步時又重複加一次 */
 export function isDpkgRepairCommand(cmd: string, args: readonly string[]): boolean {
   const all = [cmd, ...args]
   const at = all.indexOf('dpkg')
-  return at >= 0 && all[at + 1] === '--configure' && all[at + 2] === '-a'
+  if (at < 0) return false
+  const rest = all.slice(at + 1).filter((a) => !a.startsWith('--force-'))
+  return rest[0] === '--configure' && rest[1] === '-a'
 }
 
 export interface ExecResult { code: number; stdout: string; stderr: string }
 export type ExecFn = (cmd: string, args: readonly string[], timeoutMs: number) => Promise<ExecResult>
 
-const defaultExec: ExecFn = (cmd, args, timeoutMs) => new Promise((resolve) => {
-  execFile(cmd, [...args], { timeout: timeoutMs, env: getServerEnv(), maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
-    // 非零結束時 err.code 是 exit code；spawn 失敗（例如 ENOENT）時是字串，當成 127
-    const raw = (err as { code?: unknown } | null)?.code
-    const code = !err ? 0 : typeof raw === 'number' ? raw : 127
-    resolve({ code, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') || (err ? err.message : '') })
+const MAX_OUTPUT = 1024 * 1024
+
+/**
+ * 跑一個不可互動的指令並收集輸出；絕不丟錯。stdin 一律 'ignore'：execFile 留著一條開著但沒資料的 pipe，
+ * 任何提問都會讓子行程永遠卡住（直到逾時被殺，等於自己製造一次 dpkg 中斷）。spawn 失敗（ENOENT）回 127。
+ */
+export function runNonInteractive(cmd: string, args: readonly string[], timeoutMs: number): Promise<ExecResult> {
+  return new Promise((resolve) => {
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+    const done = (r: ExecResult) => { if (!settled) { settled = true; clearTimeout(timer); resolve(r) } }
+    let child: ReturnType<typeof spawn>
+    try {
+      child = spawn(cmd, [...args], { env: getServerEnv(), stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch (e) {
+      resolve({ code: 127, stdout: '', stderr: e instanceof Error ? e.message : String(e) })
+      return
+    }
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      stderr += `\n[timeout after ${Math.round(timeoutMs / 1000)}s]`
+      child.kill('SIGTERM')
+    }, timeoutMs)
+    // 逾時被殺時以 exit 為準：孫行程可能還握著 stdout，等 close 會一直等下去
+    child.on('exit', (code, signal) => { if (timedOut) done({ code: code ?? (signal ? 128 : 1), stdout, stderr }) })
+    child.stdout?.on('data', (d: Buffer) => { if (stdout.length < MAX_OUTPUT) stdout += d.toString() })
+    child.stderr?.on('data', (d: Buffer) => { if (stderr.length < MAX_OUTPUT) stderr += d.toString() })
+    child.on('error', (e) => done({ code: 127, stdout, stderr: stderr || e.message }))
+    child.on('close', (code, signal) => done({ code: code ?? (signal ? 128 : 1), stdout, stderr }))
   })
-})
+}
+
+const defaultExec: ExecFn = runNonInteractive
 
 /** 跑一次 `sudo -n dpkg --configure -a`；絕不丟錯。逾時 30 分鐘（maintainer script 可能很久）。 */
 export async function runDpkgRepair(exec: ExecFn = defaultExec): Promise<{ ok: boolean; output: string }> {
