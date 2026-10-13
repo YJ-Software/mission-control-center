@@ -112,6 +112,15 @@ describe('startRestore mcc（release 模式）', () => {
     expect(calls).toEqual(['prepare-db', 'preflight', 'verify-oc', 'restore-oc', 'commit-db', 'restart:mission-control'])
   })
 
+  it('prepareDb 收到正在還原的封存檔路徑（用來補上快照當下未知的備份大小）', async () => {
+    const file = buildArchive()
+    let got: unknown[] = []
+    startRestore(file, 'api', deps({ prepareDb: (...args) => { got = args } }))
+    await done
+    expect(got[1]).toBe(path.join(tmp, 'db.sqlite'))
+    expect(got[2]).toBe(path.resolve(file))
+  })
+
   it('M2：重啟訊息如實說明工作在排程重啟後即標示完成，資料庫是否套用要重啟後才知道', async () => {
     startRestore(buildArchive(), 'api', deps())
     await done

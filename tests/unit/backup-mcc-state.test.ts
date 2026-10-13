@@ -4,7 +4,7 @@ import os from 'os'
 import path from 'path'
 import Database from 'better-sqlite3'
 import { snapshotMccDb, copyEnvFile, stagePendingDbRestore, markBackupRowInSnapshot } from '@/lib/backup/mcc-state'
-import { applyPendingDbRestore, applyPendingDbRestoreOnce } from '@/lib/backup/pending-db-restore'
+import { applyPendingDbRestore, applyPendingDbRestoreOnce, isSqliteDbHealthy } from '@/lib/backup/pending-db-restore'
 
 let dir: string
 
@@ -430,5 +430,89 @@ describe('markBackupRowInSnapshot', () => {
       { id: 1, status: 'completed', file_path: null, completed_at: null, error: null },
       { id: 2, status: 'completed', file_path: '/b/mcc-backup_x.tar.gz', completed_at: 1791535407, error: null },
     ])
+  })
+})
+
+describe('還原時補上快照當下未知的 backup_logs 欄位', () => {
+  const BACKUP_LOGS = `CREATE TABLE backup_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT, status TEXT NOT NULL DEFAULT 'pending',
+    started_at INTEGER NOT NULL DEFAULT (unixepoch()), completed_at INTEGER, file_size INTEGER,
+    file_path TEXT, extra_file_paths TEXT, destination TEXT, notes TEXT, error TEXT)`
+  const NAME = 'mcc-backup_openclaw_h1_20261006_000000.tar.gz'
+  type Row = { id: number; status: string; file_path: string | null; file_size: number | null; completed_at: number | null; extra_file_paths?: string | null; error?: string | null }
+  function makeLogsDb(file: string, rows: Row[]) {
+    const d = new Database(file)
+    d.exec(BACKUP_LOGS)
+    const ins = d.prepare('INSERT INTO backup_logs (id, status, file_path, file_size, completed_at, extra_file_paths, error) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    for (const r of rows) ins.run(r.id, r.status, r.file_path, r.file_size, r.completed_at, r.extra_file_paths ?? null, r.error ?? null)
+    return d
+  }
+  const rowOf = (file: string, id: number) => {
+    const d = new Database(file, { readonly: true })
+    try { return d.prepare('SELECT * FROM backup_logs WHERE id = ?').get(id) as Record<string, unknown> } finally { d.close() }
+  }
+
+  it('現行 DB 有同一份備份的完成紀錄：還原後 file_size、extra、警告、完成時間與現行一致', () => {
+    const archive = path.join(dir, NAME)
+    fs.writeFileSync(archive, Buffer.alloc(777))
+    const live = path.join(dir, 'db.sqlite')
+    const liveConn = makeLogsDb(live, [
+      { id: 4, status: 'completed', file_path: path.join(dir, 'older.tar.gz'), file_size: 999, completed_at: 50 },
+      { id: 5, status: 'completed', file_path: archive, file_size: 12345, completed_at: 200, extra_file_paths: '["/b/x.tar.gz"]', error: '有警告' },
+    ])
+    liveConn.pragma('journal_mode = WAL') // 現行 DB 是 WAL 模式、連線仍開著
+    // 快照：這筆備份已被 markBackupRowInSnapshot 標成 completed，但打包前還不知道大小
+    const snap = path.join(dir, 'snap.sqlite')
+    makeLogsDb(snap, [
+      { id: 4, status: 'completed', file_path: path.join(dir, 'older.tar.gz'), file_size: 999, completed_at: 50 },
+      { id: 5, status: 'completed', file_path: archive, file_size: null, completed_at: 100 },
+    ]).close()
+
+    stagePendingDbRestore(snap, live, archive)
+    liveConn.close()
+    expect(applyPendingDbRestore(live)).toBe('applied')
+
+    expect(rowOf(live, 5)).toMatchObject({ file_size: 12345, extra_file_paths: '["/b/x.tar.gz"]', error: '有警告', completed_at: 200 })
+    expect(rowOf(live, 4)).toMatchObject({ file_size: 999, completed_at: 50 })
+  })
+
+  it('現行 DB 沒有這筆（從別台機器帶來的備份、檔案已搬移）：用封存檔本身的大小補 file_size', () => {
+    const elsewhere = path.join(dir, 'uploaded'); fs.mkdirSync(elsewhere)
+    const archive = path.join(elsewhere, NAME)
+    fs.writeFileSync(archive, Buffer.alloc(777))
+    const live = path.join(dir, 'db.sqlite')
+    makeLogsDb(live, []).close()
+    const snap = path.join(dir, 'snap.sqlite')
+    makeLogsDb(snap, [{ id: 5, status: 'completed', file_path: `/old/host/backups/${NAME}`, file_size: null, completed_at: 100 }]).close()
+
+    stagePendingDbRestore(snap, live, archive)
+    expect(applyPendingDbRestore(live)).toBe('applied')
+
+    expect(rowOf(live, 5)).toMatchObject({ file_size: 777, completed_at: 100 })
+  })
+
+  it('修補後的待還原檔仍通過完整性檢查、不留 -wal/-journal、權限 600', () => {
+    const archive = path.join(dir, NAME)
+    fs.writeFileSync(archive, Buffer.alloc(10))
+    const live = path.join(dir, 'db.sqlite')
+    makeLogsDb(live, []).close()
+    const snap = path.join(dir, 'snap.sqlite')
+    makeLogsDb(snap, [{ id: 5, status: 'completed', file_path: archive, file_size: null, completed_at: 100 }]).close()
+
+    stagePendingDbRestore(snap, live, archive)
+    const pending = `${live}.restore-pending`
+    expect(rowOf(pending, 5)).toMatchObject({ file_size: 10 })
+    expect(isSqliteDbHealthy(pending)).toBe(true)
+    for (const s of ['-wal', '-shm', '-journal']) expect(fs.existsSync(pending + s)).toBe(false)
+    expect(fs.statSync(pending).mode & 0o777).toBe(0o600)
+  })
+
+  it('快照裡沒有 backup_logs 表（非預期格式）時不影響還原排程', () => {
+    const archive = path.join(dir, NAME)
+    fs.writeFileSync(archive, 'x')
+    const live = path.join(dir, 'db.sqlite'); makeDb(live)
+    const snap = path.join(dir, 'snap.sqlite'); makeDb(snap, 'from-backup')
+    expect(() => stagePendingDbRestore(snap, live, archive)).not.toThrow()
+    expect(fs.existsSync(`${live}.restore-pending`)).toBe(true)
   })
 })

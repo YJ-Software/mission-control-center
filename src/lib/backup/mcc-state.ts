@@ -55,7 +55,7 @@ const pendingOf = (dbPath: string) => `${dbPath}.restore-pending`
  * 第一步（在動任何現行資料之前）：驗證快照並複製成 <pending>.tmp。
  * 空間不足、權限等會失敗的步驟都在這裡；失敗時不留 .tmp。
  */
-export function preparePendingDbRestore(snapshotPath: string, dbPath: string): void {
+export function preparePendingDbRestore(snapshotPath: string, dbPath: string, archivePath?: string): void {
   if (!isSqliteDbHealthy(snapshotPath)) {
     throw new Error(`備份中的資料庫快照無法通過完整性檢查，已拒絕排程還原：${snapshotPath}`)
   }
@@ -66,6 +66,60 @@ export function preparePendingDbRestore(snapshotPath: string, dbPath: string): v
   } catch (err) {
     fs.rmSync(tmp, { force: true })
     throw err
+  }
+  if (archivePath) {
+    // 純顯示資訊：補不上也照常還原
+    try { fillRestoredBackupRow(tmp, archivePath, dbPath) } catch { /* ignore */ }
+  }
+}
+
+/**
+ * 快照拍在打包之前，這筆備份自己的 backup_logs 列在快照裡沒有 file_size，
+ * 也沒有之後才知道的 extra_file_paths、警告（error）與實際完成時間；還原後 UI 就顯示不出大小。
+ * 還原當下這些都已知：現行 DB 有同一封存檔的完成紀錄就整組沿用，否則至少用封存檔本身的大小補 file_size。
+ * 只動 file_path 檔名與還原中的封存檔相同、且 file_size 仍為 NULL 的列（備份檔名含時間戳，不會撞名）。
+ */
+export function fillRestoredBackupRow(pendingPath: string, archivePath: string, liveDbPath: string): void {
+  const name = path.basename(archivePath)
+  const snap = new Database(pendingPath, { fileMustExist: true })
+  try {
+    const rows = (snap.prepare('SELECT id, file_path FROM backup_logs WHERE file_size IS NULL AND file_path IS NOT NULL').all() as
+      { id: number; file_path: string }[]).filter((r) => path.basename(r.file_path) === name)
+    if (rows.length === 0) return
+    for (const row of rows) {
+      const known = liveBackupRow(liveDbPath, [row.file_path, path.resolve(archivePath)])
+      if (known) {
+        snap.prepare('UPDATE backup_logs SET file_size = ?, extra_file_paths = ?, error = ?, completed_at = COALESCE(?, completed_at) WHERE id = ?')
+          .run(known.file_size, known.extra_file_paths, known.error, known.completed_at, row.id)
+      } else {
+        snap.prepare('UPDATE backup_logs SET file_size = ? WHERE id = ?').run(fs.statSync(archivePath).size, row.id)
+      }
+    }
+    // 快照本來就是 DELETE 模式；保險起見再設一次，確保待還原檔是單一自足檔案、不留 -wal
+    snap.pragma('journal_mode = DELETE')
+  } finally {
+    snap.close()
+  }
+}
+
+type LiveBackupRow = { file_size: number; extra_file_paths: string | null; error: string | null; completed_at: number | null }
+
+function liveBackupRow(liveDbPath: string, filePaths: string[]): LiveBackupRow | null {
+  let live: Database.Database | undefined
+  try {
+    live = new Database(liveDbPath, { readonly: true, fileMustExist: true })
+    const stmt = live.prepare(
+      "SELECT file_size, extra_file_paths, error, completed_at FROM backup_logs WHERE file_path = ? AND status = 'completed' AND file_size IS NOT NULL ORDER BY id DESC LIMIT 1",
+    )
+    for (const p of filePaths) {
+      const r = stmt.get(p) as LiveBackupRow | undefined
+      if (r) return r
+    }
+    return null
+  } catch {
+    return null
+  } finally {
+    try { live?.close() } catch { /* ignore */ }
   }
 }
 
@@ -89,8 +143,8 @@ export function discardPendingDbRestore(dbPath: string): void {
 }
 
 /** 把快照放成 <dbPath>.restore-pending，下次行程啟動時由 db.ts 套用。 */
-export function stagePendingDbRestore(snapshotPath: string, dbPath: string): void {
-  preparePendingDbRestore(snapshotPath, dbPath)
+export function stagePendingDbRestore(snapshotPath: string, dbPath: string, archivePath?: string): void {
+  preparePendingDbRestore(snapshotPath, dbPath, archivePath)
   try {
     commitPendingDbRestore(dbPath)
   } catch (err) {

@@ -34,8 +34,8 @@ export interface RestoreDeps {
   tar: (args: string[]) => Promise<string>
   openclawVerify: (archive: string, log: Log) => Promise<unknown>
   openclawRestore: (archive: string, log: Log) => Promise<{ preRestoreDir: string | null; parkedSkillsDir: string | null }>
-  /** 第一步：驗證快照並複製成暫存名（OpenClaw 換掉之前；會失敗的事都在這裡） */
-  prepareDb: (snapshot: string, dbPath: string) => void
+  /** 第一步：驗證快照並複製成暫存名（OpenClaw 換掉之前；會失敗的事都在這裡）；archive 用來補上快照當下未知的備份大小 */
+  prepareDb: (snapshot: string, dbPath: string, archive: string) => void
   /** 第二步：OpenClaw 換掉之後，只做 rename */
   commitDb: (dbPath: string) => void
   discardPreparedDb: (dbPath: string) => void
@@ -395,7 +395,7 @@ export function startRestore(
         const warn = newerWarning(st.manifest, deps.runningSemver())
         if (warn) log('stderr', warn)
         // 會失敗的事（快照完整性、空間、權限）都在動現行資料之前做完
-        deps.prepareDb(inside(st.content, st.manifest.parts.mccDb), deps.dbPath)
+        deps.prepareDb(inside(st.content, st.manifest.parts.mccDb), deps.dbPath, file)
       }))
 
       phases.push(phase('restore OpenClaw', async (log) => {
