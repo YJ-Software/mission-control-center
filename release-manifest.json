@@ -1,7 +1,7 @@
 {
   "latest": {
-    "version": "0.4.2",
-    "mccVersion": "0.4.2",
+    "version": "0.4.3",
+    "mccVersion": "0.4.3",
     "openclawVersion": "2026.10.2",
     "validated": {
       "openclaw": [
@@ -9,19 +9,31 @@
         "2026.10.2"
       ]
     },
-    "releaseDate": "2026-10-13T15:19:51.795Z",
-    "notes": "- fix(backup): **FTP 備份不再外洩密碼**。先前 FTP 上傳失敗時，整條 curl 命令列（含帳號密碼）會寫進備份紀錄、系統日誌與畫面；現在帳密改由 stdin 傳給 curl、錯誤訊息先遮罩，並在升級後第一次啟動時自動把既有備份紀錄與 job log 裡的明文密碼遮掉（冪等、失敗不影響啟動）\n  - 備份目的地 API 不再回傳密碼，編輯時留空代表不變更；改了主機、連接埠或帳號必須重新輸入密碼\n- feat(setup): **安裝進行中擋住儀表板自己的重啟**。setup 頁的安裝、系統更新、升級等會跑 apt／dpkg／docker／npm 的作業會登記為長時間作業；期間按重啟儀表板、升級、還原、重開機會回 409 並列出作業名稱、開始時間與 PID，可二次確認強制重啟。已知限制：強制重啟殺不掉以 root 跑的安裝，它會繼續跑完\n  - 所有 apt／dpkg 呼叫改為非互動並保留舊設定檔（--force-confdef --force-confold），apt 之前先 `dpkg --configure -a` 自癒\n  - 開機偵測 dpkg 中斷（sudo -n dpkg --audit，退回 dpkg-query），通知中心提供一鍵修復\n  - upgrade.sh 改為 stop → 等 cgroup 清空 → 換版 → start；在儀表板的網頁終端機執行時自動轉交 systemd-run 背景 unit，不再把自己殺掉\n- fix(server): 重啟時 systemctl 被 SIGTERM 終止不再誤記「restart-dashboard failed」\n- test(e2e): Playwright 升級 1.62.1，修正失敗的 spec 之後卡 10 分鐘（1.59 內建 yauzl 在 Node 26 讀 trace zip 掛死）；cron-job spec 成敗都清掉自己建立的排程\n- 實機驗證：OpenClaw 2026.10.2 throwaway 上完整走過 FTP 上傳／外洩清理、安裝中重啟 409 與強制重啟、dpkg 中斷偵測與一鍵修復、網頁終端機 upgrade.sh 轉交、smoke 9.6 分鐘",
+    "releaseDate": "2026-10-13T17:39:05.594Z",
+    "notes": "- fix(gateway): **Gateway 配對失敗後會自動重試，不再永久斷線**。先前 MCC 收到 `pairing required` 只會自我批准一次；若當下 gateway 正在重啟（例如 OCD 重新部署後），批准失敗就不再重試也不重連，之後每句對話都是「RPC timeout: chat.send」，側欄卻仍顯示 Gateway Linked，只能靠重啟儀表板解決。現改為退避重試（2 → 30 秒封頂、不限次數），實機約 11–15 秒內自動恢復\n  - 側欄 Gateway 狀態改由伺服器推送，只有握手完成後才顯示「已連線」；配對中、重試中、驗證失敗、離線各有明確文案\n  - gateway 未連線時，對話與 API 請求立即回「Gateway not connected」，不再等 30 秒逾時\n  - gateway 重新連線後自動重抓對話紀錄、session 與模型清單\n- 已知：OpenClaw 2026.10.3 上，從備份還原後主 session 的第一句對話可能停頓約 2 分鐘（gateway 記憶體索引重建中，非 MCC 問題），2026.10.2 未見；故本版 validated 仍記 2026.9.9／2026.10.2，10.3 其餘功能實測正常（E2E 22/23）",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.2/mission-control-v0.4.2-linux-x64.tar.gz",
-        "sha256": "ab488a4463dfc4672b81422af497d5e5d0faa473d68eab8bc4173254f96a4422",
-        "size": 26595144
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.3/mission-control-v0.4.3-linux-x64.tar.gz",
+        "sha256": "78bf9db5393d626af33a9cdb2580c5a3a20e11e7ce34aed8e5fd45676b9c5195",
+        "size": 26560812
       }
     ]
   },
   "history": [
+    {
+      "version": "0.4.2",
+      "mccVersion": "0.4.2",
+      "openclawVersion": "2026.10.2",
+      "validated": {
+        "openclaw": [
+          "2026.9.9",
+          "2026.10.2"
+        ]
+      },
+      "releaseDate": "2026-10-13T15:19:51.795Z"
+    },
     {
       "version": "0.4.1",
       "mccVersion": "0.4.1",
@@ -94,12 +106,6 @@
       "mccVersion": "0.3.87",
       "openclawVersion": "2026.9.2",
       "releaseDate": "2026-09-08T09:12:02.448Z"
-    },
-    {
-      "version": "2026.9.2-v0.3.86",
-      "mccVersion": "0.3.86",
-      "openclawVersion": "2026.9.2",
-      "releaseDate": "2026-09-06T19:13:48.720Z"
     }
   ]
 }
