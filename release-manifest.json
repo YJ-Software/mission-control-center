@@ -1,7 +1,7 @@
 {
   "latest": {
-    "version": "0.4.1",
-    "mccVersion": "0.4.1",
+    "version": "0.4.2",
+    "mccVersion": "0.4.2",
     "openclawVersion": "2026.10.2",
     "validated": {
       "openclaw": [
@@ -9,19 +9,31 @@
         "2026.10.2"
       ]
     },
-    "releaseDate": "2026-10-13T12:47:02.365Z",
-    "notes": "- fix(backup): **還原自救**。套用待還原資料庫失敗、且回滾也失敗時，自動把 pre-restore 複本搬回原位（主檔先搬，-wal/-shm 跟著搬，不覆寫既有複本），不再留下一個空的資料庫開機；搬不回時明確寫出資料所在的檔案位置\n- fix(backup): **舊版「💾 Backup:」cron 不再復活**。還原（新版還原、舊版 restore.sh 還原、套用待還原資料庫）後會清掉「舊 cron 已清理」旗標並重新檢查，先前還原回舊快照會讓舊排程復活、與內建排程器重複備份。清理只採信 gateway RPC，取不到就延後重試（約 1 分鐘）\n- 實機驗證：OpenClaw 2026.10.2 上重現 0.4.0 的舊 cron 復活問題，升級 0.4.1 後還原約 1 分鐘內自動移除；停機 1.5 秒、exit 0",
+    "releaseDate": "2026-10-13T15:19:51.795Z",
+    "notes": "- fix(backup): **FTP 備份不再外洩密碼**。先前 FTP 上傳失敗時，整條 curl 命令列（含帳號密碼）會寫進備份紀錄、系統日誌與畫面；現在帳密改由 stdin 傳給 curl、錯誤訊息先遮罩，並在升級後第一次啟動時自動把既有備份紀錄與 job log 裡的明文密碼遮掉（冪等、失敗不影響啟動）\n  - 備份目的地 API 不再回傳密碼，編輯時留空代表不變更；改了主機、連接埠或帳號必須重新輸入密碼\n- feat(setup): **安裝進行中擋住儀表板自己的重啟**。setup 頁的安裝、系統更新、升級等會跑 apt／dpkg／docker／npm 的作業會登記為長時間作業；期間按重啟儀表板、升級、還原、重開機會回 409 並列出作業名稱、開始時間與 PID，可二次確認強制重啟。已知限制：強制重啟殺不掉以 root 跑的安裝，它會繼續跑完\n  - 所有 apt／dpkg 呼叫改為非互動並保留舊設定檔（--force-confdef --force-confold），apt 之前先 `dpkg --configure -a` 自癒\n  - 開機偵測 dpkg 中斷（sudo -n dpkg --audit，退回 dpkg-query），通知中心提供一鍵修復\n  - upgrade.sh 改為 stop → 等 cgroup 清空 → 換版 → start；在儀表板的網頁終端機執行時自動轉交 systemd-run 背景 unit，不再把自己殺掉\n- fix(server): 重啟時 systemctl 被 SIGTERM 終止不再誤記「restart-dashboard failed」\n- test(e2e): Playwright 升級 1.62.1，修正失敗的 spec 之後卡 10 分鐘（1.59 內建 yauzl 在 Node 26 讀 trace zip 掛死）；cron-job spec 成敗都清掉自己建立的排程\n- 實機驗證：OpenClaw 2026.10.2 throwaway 上完整走過 FTP 上傳／外洩清理、安裝中重啟 409 與強制重啟、dpkg 中斷偵測與一鍵修復、網頁終端機 upgrade.sh 轉交、smoke 9.6 分鐘",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.1/mission-control-v0.4.1-linux-x64.tar.gz",
-        "sha256": "fac0aba01583c76d92ed406ba0426695a8a3a73820dc935dbb9b711c6d97eb6d",
-        "size": 26567893
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.2/mission-control-v0.4.2-linux-x64.tar.gz",
+        "sha256": "ab488a4463dfc4672b81422af497d5e5d0faa473d68eab8bc4173254f96a4422",
+        "size": 26595144
       }
     ]
   },
   "history": [
+    {
+      "version": "0.4.1",
+      "mccVersion": "0.4.1",
+      "openclawVersion": "2026.10.2",
+      "validated": {
+        "openclaw": [
+          "2026.9.9",
+          "2026.10.2"
+        ]
+      },
+      "releaseDate": "2026-10-13T12:47:02.365Z"
+    },
     {
       "version": "0.4.0",
       "mccVersion": "0.4.0",
@@ -88,12 +100,6 @@
       "mccVersion": "0.3.86",
       "openclawVersion": "2026.9.2",
       "releaseDate": "2026-09-06T19:13:48.720Z"
-    },
-    {
-      "version": "2026.8.2-v0.3.85",
-      "mccVersion": "0.3.85",
-      "openclawVersion": "2026.8.2",
-      "releaseDate": "2026-09-03T10:26:29.482Z"
     }
   ]
 }
