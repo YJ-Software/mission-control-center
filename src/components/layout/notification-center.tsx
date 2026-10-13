@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { Bell, X, Trash2, AlertCircle, AlertTriangle, Info, CheckCheck } from 'lucide-react'
+import { Bell, X, Trash2, AlertCircle, AlertTriangle, Info, CheckCheck, Wrench } from 'lucide-react'
+import { DPKG_INTERRUPTED_DEDUP_KEY } from '@/lib/long-run-client'
 
 interface NotificationRow {
   id: string
@@ -58,6 +59,29 @@ export function NotificationCenter() {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [toasts, setToasts] = useState<ToastItem[]>([])
+  // 「dpkg 被中斷」通知的一鍵修復狀態（依通知 id）
+  const [repair, setRepair] = useState<Record<string, { state: 'running' | 'started' | 'failed'; error?: string }>>({})
+
+  async function startDpkgRepair(id: string) {
+    setRepair(prev => ({ ...prev, [id]: { state: 'running' } }))
+    try {
+      const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'dpkg-repair', triggeredBy: 'header-button' }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data?.success === false) {
+        setRepair(prev => ({ ...prev, [id]: { state: 'failed', error: data?.error || `HTTP ${res.status}` } }))
+        return
+      }
+      setRepair(prev => ({ ...prev, [id]: { state: 'started' } }))
+      readMutation.mutate(id)
+      qc.invalidateQueries({ queryKey: ['system-log-jobs'] })
+    } catch (e) {
+      setRepair(prev => ({ ...prev, [id]: { state: 'failed', error: e instanceof Error ? e.message : String(e) } }))
+    }
+  }
   const dropdownRef = useRef<HTMLDivElement>(null)
   // Toasts render through a portal (see below); `document` only exists after mount.
   const [mounted, setMounted] = useState(false)
@@ -193,6 +217,28 @@ export function NotificationCenter() {
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-white/90 truncate">{n.title}</div>
                         {n.body && <div className="text-[11px] text-white/55 mt-0.5 line-clamp-2">{n.body}</div>}
+                        {n.dedupKey === DPKG_INTERRUPTED_DEDUP_KEY && (
+                          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                            {repair[n.id]?.state !== 'started' && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); void startDpkgRepair(n.id) }}
+                                disabled={repair[n.id]?.state === 'running'}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/20 text-amber-200 border border-amber-500/40 hover:bg-amber-500/30 disabled:opacity-50"
+                              >
+                                <Wrench className="w-3 h-3" />
+                                {repair[n.id]?.state === 'running' ? t('repairDpkgRunning') : t('repairDpkg')}
+                              </button>
+                            )}
+                            {repair[n.id]?.state === 'started' && (
+                              <a href="/system-log" onClick={(e) => e.stopPropagation()} className="text-[11px] text-cyan-300 hover:text-cyan-200">
+                                {t('repairDpkgStarted')}
+                              </a>
+                            )}
+                            {repair[n.id]?.state === 'failed' && (
+                              <span className="text-[11px] text-red-300 break-words">{t('repairDpkgFailed', { error: repair[n.id]?.error ?? '' })}</span>
+                            )}
+                          </div>
+                        )}
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-[10px] text-white/30 font-mono">{fmtAgo(n.createdAt)}</span>
                           <span className="text-[10px] text-white/30 font-mono">·</span>

@@ -759,5 +759,12 @@ app.prepare().then(async () => {
       const unit = await ensureServiceUnit(info)
       if (unit === 'updated') console.log('[ServiceUnit] unit refreshed — applies on next restart')
     })().catch((err) => console.warn('[Startup] post-listen setup skipped:', (err as Error).message))
+
+    // 上次 apt/dpkg 被重啟或主機重開打斷時，寫一則通知（含一鍵修復）。延後執行避開開機尖峰；絕不致命。
+    setTimeout(() => {
+      import('./src/lib/system-update/dpkg-boot-check')
+        .then(({ runDpkgBootCheck }) => runDpkgBootCheck())
+        .catch((err) => console.warn('[dpkg] boot check skipped:', (err as Error).message))
+    }, 15_000).unref()
   })
 })
