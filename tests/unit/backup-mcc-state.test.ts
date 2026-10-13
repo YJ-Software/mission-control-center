@@ -775,6 +775,47 @@ describe('M1 後續：套用失敗且回滾也失敗時，不可讓 MCC 默默�
     expect(j.detail).not.toContain('手動改名再重啟')
   })
 
+  it('N1：m1 情境重建出複本主檔後，detail 不可再把主檔列成「回滾時未能移回」（原位置已有檔案）', () => {
+    const live = path.join(dir, 'db.sqlite')
+    makeLiveWalDb(live)
+    makeDb(live + '.restore-pending', 'new')
+    const now = new Date('2026-10-13T01:02:03.456Z')
+    const saved = `${live}.pre-restore-2026-10-13T01-02-03-456Z`
+    const fsImpl = failingFs(live, (a, n) => n === 1 || a === `${saved}-wal`)
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try { applyPendingDbRestoreOnce(live, fsImpl, now) } finally { err.mockRestore() }
+    const j = JSON.parse(fs.readFileSync(path.join(dir, 'last-db-restore.json'), 'utf8'))
+    expect(j.detail).toContain(`已自動把 ${saved} 搬回`)
+    // 主檔已歸位（只是又被複製出一份配對），不可列成未移回；-wal 確實還在複本旁，可以列
+    expect(j.detail).not.toContain(`${saved} → ${live}：`)
+  })
+
+  it('N2：保留完整配對的複製不覆寫既有複本主檔（COPYFILE_EXCL）；EEXIST 時不丟出、detail 說明', () => {
+    const live = path.join(dir, 'db.sqlite')
+    makeLiveWalDb(live)
+    makeDb(live + '.restore-pending', 'new')
+    const now = new Date('2026-10-13T01:02:03.456Z')
+    const saved = `${live}.pre-restore-2026-10-13T01-02-03-456Z`
+    const fsImpl = failingFs(live, (a, n) => n === 1 || a === `${saved}-wal`)
+    const modes: unknown[] = []
+    ;(fsImpl as any).copyFileSync = (a: string, b: string, mode?: number) => {
+      modes.push(mode)
+      fs.writeFileSync(b, 'someone else') // 複製前複本位置被佔用
+      return fs.copyFileSync(a, b, mode)
+    }
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let r: string | undefined
+    try {
+      expect(() => { r = applyPendingDbRestoreOnce(live, fsImpl, now) }).not.toThrow()
+    } finally { err.mockRestore() }
+    expect(r).toBe('error')
+    expect(modes).toEqual([fs.constants.COPYFILE_EXCL])
+    expect(fs.readFileSync(saved, 'utf8')).toBe('someone else')
+    const j = JSON.parse(fs.readFileSync(path.join(dir, 'last-db-restore.json'), 'utf8'))
+    expect(j.detail).toContain('EEXIST')
+    expect(j.detail).toContain('未覆寫')
+  })
+
   it('m3：pending 旁殘留 -wal/-shm 的清理走注入的 fsImpl', () => {
     const live = path.join(dir, 'db.sqlite')
     makeDb(live, 'keep')

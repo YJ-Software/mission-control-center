@@ -199,12 +199,14 @@ function rescueAfterFailedApply(dbPath: string, fsImpl: FsLike, report: ApplyRep
     // -wal 搬不回：MCC 會用缺最近 WAL 資料的主檔開機。開機前先把主檔複製回複本位置，保留完整的「主檔＋WAL」配對；
     // 不可叫使用者事後把舊 -wal 改名放回——主檔被寫入或 checkpoint 後，套回舊 WAL 會混頁損毀。
     try {
-      fsImpl.copyFileSync(dbPath, src)
+      // EXCL：複本位置若已有檔案（不明來源）絕不覆寫
+      fsImpl.copyFileSync(dbPath, src, fs.constants.COPYFILE_EXCL)
       return `${moved}；但 ${src}-wal 未能一起搬回（${failures.join('；')}），MCC 目前用的主檔缺少最近寫入 WAL 的資料。` +
         `完整的原資料（主檔＋WAL）保留為 ${src} 與 ${src}-wal：請停止 MCC，把 ${dbPath}、${dbPath}-wal、${dbPath}-shm 整組換成這組` +
         `（${src} → ${dbPath}、${src}-wal → ${dbPath}-wal）後重啟；不要只把舊 -wal 改名放回，會混頁損毀`
     } catch (e) {
-      return `${moved}；但 ${src}-wal 未能一起搬回（${failures.join('；')}），且無法保留完整複本（${errMsg(e)}），` +
+      const why = (e as NodeJS.ErrnoException)?.code === 'EEXIST' ? `${src} 已有檔案，未覆寫：${errMsg(e)}` : errMsg(e)
+      return `${moved}；但 ${src}-wal 未能一起搬回（${failures.join('；')}），且無法保留完整複本（${why}），` +
         `MCC 目前用的主檔缺少最近寫入 WAL 的資料。請盡快停止 MCC 處理：MCC 寫入越多，${src}-wal 越不能套回；` +
         `不要把舊 -wal 直接改名放回正在使用的主檔旁`
     }
@@ -279,9 +281,10 @@ export function applyPendingDbRestoreOnce(
       aside = `待還原檔也無法移開（${e instanceof Error ? e.message : String(e)}），仍在 ${pending}`
     }
     const rescue = rescueAfterFailedApply(dbPath, fsImpl, report)
-    // 只列自救之後仍未歸位（還留在 pre-restore 位置）的項目；已歸位的不列，免得使用者以為還有檔案沒回來
+    // 只列自救之後仍未歸位的項目：還留在 pre-restore 位置、且原位置沒有檔案。
+    // 已歸位的不列（m1 情境會為了保留配對把主檔再複製回 pre-restore 位置，那不是「未移回」）
     const stillOut = (report.rollbackFailures ?? []).filter((f) => {
-      try { return fsImpl.existsSync(f.to) } catch { return true }
+      try { return fsImpl.existsSync(f.to) && !fsImpl.existsSync(f.from) } catch { return true }
     })
     const rollback = stillOut.length
       ? `；回滾時未能移回的檔案：${stillOut.map((f) => `${f.to} → ${f.from}：${f.reason}`).join('；')}`

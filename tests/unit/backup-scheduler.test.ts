@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
+// scheduler.ts import 了 @/lib/db；不 mock 的話載入時會開到真實 ~/.mission-control/db.sqlite。
+// 本檔所有測試都注入依賴，db 只需要是個不會被呼叫的替身。
+vi.mock('@/lib/db', () => ({ db: {} }))
 import { tickBackupScheduler, removeLegacyBackupCron, cleanLegacyBackupCron, startBackupScheduler, requestLegacyBackupCronRecheck, LEGACY_CRON_CLEANED_KEY, type SchedulerJob } from '@/lib/backup/scheduler'
 
 const daily = (id: string, time = '03:00', enabled = 1): SchedulerJob => ({
