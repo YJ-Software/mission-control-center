@@ -63,7 +63,7 @@ function fixture(runningVersion: string, target: string) {
   const stub = join(bin, 'systemctl')
   writeFileSync(stub, `#!/usr/bin/env bash
 for a in "$@"; do
-  if [[ "$a" == "restart" ]]; then printf '%s' "${target}" > "${servedFile}"; fi
+  if [[ "$a" == "restart" || "$a" == "start" ]]; then printf '%s' "${target}" > "${servedFile}"; fi
 done
 exit 0
 `)

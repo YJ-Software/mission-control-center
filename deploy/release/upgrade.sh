@@ -7,8 +7,9 @@
 # Flow:
 #   1. Extract new tarball to versions/vNEW/
 #   2. Symlink .env.local + data/ to the state dir (same as install.sh)
-#   3. Atomically swap the `current` symlink
-#   4. Restart the systemd unit
+#   3. Stop the unit (waiting first for any apt/dpkg it is running), wait for
+#      its cgroup to drain, then atomically swap the `current` symlink
+#   4. Start the systemd unit
 #   5. Poll /api/health until the new version responds (rollback on timeout)
 #   6. Prune — keep the 3 most recent versions
 #
@@ -23,6 +24,15 @@ STATE="${STATE:-$HOME/.mission-control}"
 SERVICE="${SERVICE:-mission-control}"
 KEEP_VERSIONS="${KEEP_VERSIONS:-3}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
+# Max seconds to wait for an apt/dpkg the dashboard is running (setup page,
+# system update) before stopping it anyway, and for the unit's cgroup to empty
+# after `stop`.
+APT_WAIT_TIMEOUT="${APT_WAIT_TIMEOUT:-900}"
+CGROUP_DRAIN_TIMEOUT="${CGROUP_DRAIN_TIMEOUT:-120}"
+# Overridable for tests only.
+CGROUP_ROOT="${CGROUP_ROOT:-/sys/fs/cgroup}"
+PROC_ROOT="${PROC_ROOT:-/proc}"
+POLL_SECONDS="${POLL_SECONDS:-1}"
 
 die() { echo "✗ $*" >&2; exit 1; }
 log() { echo "• $*"; }
@@ -43,6 +53,71 @@ ensure_user_bus() {
 "cannot reach the systemd user bus for uid $uid (XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR).
    Run as the service owner in a real user session, or enable lingering:
      sudo loginctl enable-linger <owner>"
+}
+
+# The unit's cgroup (v2 path relative to $CGROUP_ROOT), e.g.
+# /user.slice/user-1000.slice/user@1000.service/app.slice/mission-control.service.
+# Empty when the unit is not running or systemd can't tell us.
+service_cgroup() {
+  systemctl --user show -p ControlGroup --value "$SERVICE" 2>/dev/null || true
+}
+
+# PIDs in cgroup $1. A cgroup systemd already removed has no procs file → empty.
+cgroup_procs() {
+  local cg="$1"
+  [[ -n "$cg" && -r "$CGROUP_ROOT$cg/cgroup.procs" ]] || return 0
+  cat "$CGROUP_ROOT$cg/cgroup.procs" 2>/dev/null || true
+}
+
+# "pid:comm" for every apt/dpkg process inside cgroup $1.
+cgroup_apt_procs() {
+  local pid comm out=""
+  for pid in $(cgroup_procs "$1"); do
+    comm="$(cat "$PROC_ROOT/$pid/comm" 2>/dev/null || true)"
+    case "$comm" in
+      apt|apt-get|aptitude|dpkg|dpkg-deb|unattended-upgr) out+="$pid:$comm " ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
+# The unit is KillMode=control-group: stopping it SIGTERMs every process in its
+# cgroup, including a `sudo apt-get` the setup page or a system update started.
+# That leaves dpkg "interrupted" and breaks every later apt run. Give such a run
+# time to finish first; past the cap, go ahead (the dashboard repairs dpkg on
+# its next boot and before its next apt run).
+wait_for_service_apt() {
+  local cg="$1" waited=0 busy
+  busy="$(cgroup_apt_procs "$cg")"
+  [[ -z "$busy" ]] && return 0
+  log "apt/dpkg is running inside $SERVICE ($busy) — waiting up to ${APT_WAIT_TIMEOUT}s before stopping it"
+  while [[ -n "$busy" ]]; do
+    if (( waited >= APT_WAIT_TIMEOUT )); then
+      echo "⚠ apt/dpkg still running after ${APT_WAIT_TIMEOUT}s ($busy) — stopping $SERVICE anyway" >&2
+      return 0
+    fi
+    sleep "$POLL_SECONDS"; waited=$((waited + POLL_SECONDS))
+    busy="$(cgroup_apt_procs "$cg")"
+  done
+  log "apt/dpkg finished"
+}
+
+# After `stop`, wait for the old cgroup to empty so nothing from the old version
+# is still running (or still holding the dpkg lock) when the new one starts.
+drain_cgroup() {
+  local cg="$1" waited=0 left
+  left="$(cgroup_procs "$cg" | tr '\n' ' ' | sed 's/ *$//')"
+  [[ -z "$left" ]] && return 0
+  log "waiting up to ${CGROUP_DRAIN_TIMEOUT}s for $SERVICE's cgroup to drain (pids: $left)"
+  while [[ -n "$left" ]]; do
+    if (( waited >= CGROUP_DRAIN_TIMEOUT )); then
+      echo "⚠ $SERVICE cgroup still has processes after ${CGROUP_DRAIN_TIMEOUT}s (pids: $left) — continuing" >&2
+      return 0
+    fi
+    sleep "$POLL_SECONDS"; waited=$((waited + POLL_SECONDS))
+    left="$(cgroup_procs "$cg" | tr '\n' ' ' | sed 's/ *$//')"
+  done
+  log "$SERVICE cgroup drained"
 }
 
 # The version the service is ACTUALLY serving, per /api/health. This — not the
@@ -167,11 +242,7 @@ ln -sf "$STATE/data" "$NEW_DIR/data"
 # Ensure state/logs exists — older installs may have relied on /var/log.
 mkdir -p "$STATE/logs"
 
-# Atomic swap of `current` — `ln -sfn` replaces the link without a window
-# where `current` briefly doesn't exist.
 PREV_LINK_TARGET="$CURRENT_LINK"
-ln -sfn "$NEW_DIR" "$PREFIX/current"
-log "current → versions/v$VERSION"
 
 # Re-render the systemd unit from the new template if it changed. Older
 # releases may have shipped a unit with directives that no longer match what
@@ -207,9 +278,23 @@ if [[ -f "$NEW_DIR/install/install-logrotate.sh" ]]; then
   bash "$NEW_DIR/install/install-logrotate.sh" "$NEW_DIR/install" "$STATE" "$SERVICE"
 fi
 
-# Restart and wait for health. (PORT/HEALTH_URL were resolved before the
+# Stop → drain → swap → start, rather than swap + restart: the old process
+# must not be running (or killing an apt mid-run) while `current` already points
+# at the new tree. The unit re-render above only needs daemon-reload, which is
+# fine while the old version still runs; it takes effect on this start.
+SERVICE_CG="$(service_cgroup)"
+wait_for_service_apt "$SERVICE_CG"
+systemctl --user stop "$SERVICE"
+drain_cgroup "$SERVICE_CG"
+
+# Atomic swap of `current` — `ln -sfn` replaces the link without a window
+# where `current` briefly doesn't exist.
+ln -sfn "$NEW_DIR" "$PREFIX/current"
+log "current → versions/v$VERSION"
+
+# Start and wait for health. (PORT/HEALTH_URL were resolved before the
 # no-op check so the running-version probe could use them.)
-systemctl --user restart "$SERVICE"
+systemctl --user start "$SERVICE"
 
 log "waiting up to ${HEALTH_TIMEOUT}s for v$VERSION on $HEALTH_URL …"
 HEALTHY=""
@@ -227,8 +312,11 @@ done
 if [[ -z "$HEALTHY" ]]; then
   echo "✗ v$VERSION did not become healthy within ${HEALTH_TIMEOUT}s — rolling back" >&2
   if [[ -n "$PREV_LINK_TARGET" ]]; then
+    ROLLBACK_CG="$(service_cgroup)"
+    systemctl --user stop "$SERVICE"
+    drain_cgroup "$ROLLBACK_CG"
     ln -sfn "$PREV_LINK_TARGET" "$PREFIX/current"
-    systemctl --user restart "$SERVICE"
+    systemctl --user start "$SERVICE"
     echo "  rolled back to $(basename "$PREV_LINK_TARGET")" >&2
   fi
   exit 1
