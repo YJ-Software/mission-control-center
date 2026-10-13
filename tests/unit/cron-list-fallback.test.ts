@@ -74,6 +74,15 @@ describe('cronList', () => {
     expect(jobs).toHaveLength(1)
   })
 
+  it('allowFileFallback: false — RPC 失敗時即使有 jobs.json 也拋錯（舊備份 cron 清理只接受 gateway 的結果）', async () => {
+    // 還原會把備份裡的 cron/jobs.json 一起換回來；gateway 還沒恢復時若採信它，
+    // 可能把「gateway 實際還有舊 💾 Backup: cron」誤判成沒有，並記回已清理旗標
+    writeLegacyJobsFile([{ id: 'old', name: 'legacy job' }])
+    gatewayRpc.mockRejectedValue(new Error('gateway down'))
+    const { cronList } = await import('@/lib/morning-report/cron-cli')
+    await expect(cronList({ allowFileFallback: false })).rejects.toThrow(/gateway down/)
+  })
+
   it('rethrows when the legacy file exists but is corrupt', async () => {
     mkdirSync(join(home, '.openclaw', 'cron'), { recursive: true })
     writeFileSync(join(home, '.openclaw', 'cron', 'jobs.json'), '{ not json')

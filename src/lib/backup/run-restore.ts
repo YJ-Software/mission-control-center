@@ -17,7 +17,7 @@ import { checkScriptsAvailable } from './helpers'
 import { BackupBusyError, isBackupOrRestoreBusy, acquireLock, releaseLock } from './lock'
 import { assertNoBlockingJob } from './job-guard'
 import { runRestore } from './scripts'
-import { requestLegacyBackupCronRecheck } from './scheduler'
+import { requestLegacyBackupCronRecheck, type LegacyCronRecheckResult } from './scheduler'
 
 export { BackupBusyError }
 
@@ -55,7 +55,7 @@ export interface RestoreDeps {
   legacyDryRun: (file: string) => Promise<string>
   legacyScriptsOk: () => boolean
   /** 動過 ~/.openclaw 之後呼叫：舊版「💾 Backup:」cron 可能被換回來，清掉「已清理」旗標並重新檢查；不得丟錯 */
-  recheckLegacyCron: () => void
+  recheckLegacyCron: () => LegacyCronRecheckResult
   now: () => Date
   dbPath: string
   /** 解壓暫存目錄的父目錄（~/.mission-control，與家目錄同一個檔案系統） */
@@ -351,8 +351,14 @@ export function startRestore(
   const safeLog = (log?: Log): Log => (s, t) => { try { log?.(s, t) } catch { /* log I/O 不可打斷清理 */ } }
   const recheckLegacyCron = (log: Log) => {
     try {
-      deps.recheckLegacyCron()
-      log('system', '已要求重新檢查舊版「💾 Backup:」cron（還原可能把它帶回來，會與內建排程重複備份）')
+      const r = deps.recheckLegacyCron()
+      if (r === 'triggered') {
+        log('system', '已清除旗標，並已要求重新檢查舊版「💾 Backup:」cron（還原可能把它帶回來，會與內建排程重複備份；gateway 未恢復時會照退避重試）')
+      } else if (r === 'flag-only') {
+        log('system', '已清除旗標，下次啟動時重新檢查舊版「💾 Backup:」cron（本行程的備份排程器未啟動）')
+      } else {
+        log('stderr', '無法清除舊版「💾 Backup:」cron 的清理旗標，啟動時不會重新檢查；若備份會重複執行，請到排程頁手動刪除「💾 Backup:」開頭的 cron')
+      }
     } catch (e) {
       log('stderr', `無法要求重新檢查舊版備份 cron：${errText(e)}`)
     }

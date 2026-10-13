@@ -305,19 +305,29 @@ describe('M4：還原後重新檢查舊版備份 cron（requestLegacyBackupCronR
     expect(list).toHaveBeenCalledTimes(2)
     expect(flag.cleaned).toBe(true)
   })
-  it('排程器沒在這個行程啟動：只清旗標、不丟錯（下次開機會掃）', () => {
+  it('排程器沒在這個行程啟動：只清旗標、不丟錯，回傳 flag-only（下次開機會掃）', () => {
     const clearFlag = vi.fn()
-    expect(() => requestLegacyBackupCronRecheck({ clearFlag })).not.toThrow()
+    let r: unknown
+    expect(() => { r = requestLegacyBackupCronRecheck({ clearFlag }) }).not.toThrow()
     expect(clearFlag).toHaveBeenCalledTimes(1)
+    expect(r).toBe('flag-only')
   })
-  it('清旗標失敗也不丟錯，仍觸發清理', async () => {
+  it('排程器已啟動：回傳 triggered；清旗標失敗：回傳 failed', async () => {
+    startBackupScheduler(opts(async () => true))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(requestLegacyBackupCronRecheck({ clearFlag: () => {} })).toBe('triggered')
+    expect(requestLegacyBackupCronRecheck({ clearFlag: () => { throw new Error('x') }, log: () => {} })).toBe('failed')
+  })
+  it('清旗標失敗：不丟錯、記 log、回傳 failed，也不白跑一次清理（旗標還在，清理會直接跳過）', async () => {
     const clean = vi.fn(async () => true)
     startBackupScheduler(opts(clean))
     await vi.advanceTimersByTimeAsync(0)
     const log = vi.fn()
-    expect(() => requestLegacyBackupCronRecheck({ clearFlag: () => { throw new Error('SQLITE_BUSY') }, log })).not.toThrow()
+    let r: unknown
+    expect(() => { r = requestLegacyBackupCronRecheck({ clearFlag: () => { throw new Error('SQLITE_BUSY') }, log }) }).not.toThrow()
     await vi.advanceTimersByTimeAsync(0)
-    expect(clean).toHaveBeenCalledTimes(2)
+    expect(r).toBe('failed')
+    expect(clean).toHaveBeenCalledTimes(1)
     expect(log).toHaveBeenCalled()
   })
   it('退避重試等待中被觸發：立刻跑、退避歸零，舊的計時器不會多跑一次', async () => {

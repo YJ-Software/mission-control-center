@@ -209,7 +209,14 @@ function readJobsFile(): any[] | null {
  * that already existed. So when there is no fallback, the RPC error is
  * rethrown and the route reports it.
  */
-export async function cronList(): Promise<CronJobInfo[]> {
+export async function cronList(opts: {
+    /**
+     * false：只接受 gateway RPC 的結果，RPC 失敗一律拋錯（不讀 jobs.json）。
+     * 舊備份 cron 清理用：還原會把備份裡的 cron/jobs.json 一起換回來，gateway 還沒恢復時採信它，
+     * 可能把 gateway 實際還有的舊 cron 誤判成「沒有」並記回已清理旗標。
+     */
+    allowFileFallback?: boolean
+} = {}): Promise<CronJobInfo[]> {
     let jobs: any[]
     try {
         const result = await gatewayRpc('cron.list', {
@@ -219,6 +226,7 @@ export async function cronList(): Promise<CronJobInfo[]> {
         }) as any
         jobs = result?.jobs ?? []
     } catch (err) {
+        if (opts.allowFileFallback === false) throw err
         const fallback = readJobsFile()
         if (fallback === null) throw err
         jobs = fallback

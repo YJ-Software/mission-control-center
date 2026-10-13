@@ -82,7 +82,7 @@ function deps(over: Partial<RestoreDeps> = {}): Partial<RestoreDeps> {
     mccVersion: () => '0.3.99',
     legacyRestore: async () => { calls.push('legacy'); return 'legacy ok' },
     legacyScriptsOk: () => true,
-    recheckLegacyCron: () => {},
+    recheckLegacyCron: () => 'triggered' as const,
     now: () => new Date(1700000000000),
     dbPath: path.join(tmp, 'db.sqlite'),
     workRoot: work,
@@ -484,7 +484,7 @@ describe('describeBackup（只讀 manifest，不解壓）', () => {
 })
 
 describe('M4：還原可能把舊版「💾 Backup:」cron 帶回來，還原後要重新檢查', () => {
-  const recheck = { recheckLegacyCron: () => { calls.push('recheck-legacy-cron') } }
+  const recheck = { recheckLegacyCron: () => { calls.push('recheck-legacy-cron'); return 'triggered' as const } }
   it('舊格式 restore.sh 還原成功後觸發重新檢查', async () => {
     const f = path.join(tmp, 'openclaw-backup_x.tar.gz'); fs.writeFileSync(f, 'x')
     startRestore(f, 'api', deps(recheck))
@@ -508,6 +508,21 @@ describe('M4：還原可能把舊版「💾 Backup:」cron 帶回來，還原後
     startRestore(buildArchive({ backend: null }), 'api', deps(recheck))
     await done
     expect(calls).not.toContain('recheck-legacy-cron')
+  })
+  it('m5：job log 依結果如實描述（排程器未啟動 → 下次啟動時重新檢查；已啟動 → 已要求重新檢查）', async () => {
+    const f = path.join(tmp, 'openclaw-backup_x.tar.gz'); fs.writeFileSync(f, 'x')
+    startRestore(f, 'api', deps({ recheckLegacyCron: () => 'flag-only' }))
+    await done
+    expect(logs.join('\n')).toContain('已清除旗標，下次啟動時重新檢查')
+    expect(logs.join('\n')).not.toContain('已要求重新檢查')
+    logs = []
+    startRestore(f, 'api', deps({ recheckLegacyCron: () => 'triggered' }))
+    await done
+    expect(logs.join('\n')).toContain('已要求重新檢查')
+    logs = []
+    startRestore(f, 'api', deps({ recheckLegacyCron: () => 'failed' }))
+    await done
+    expect(logs.join('\n')).toContain('無法清除')
   })
   it('觸發本身丟錯不影響還原結果', async () => {
     const f = path.join(tmp, 'openclaw-backup_x.tar.gz'); fs.writeFileSync(f, 'x')

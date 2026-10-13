@@ -189,25 +189,38 @@ function clearLegacyCronFlag(): void {
  * 與內建排程器同時跑（每次備份兩份）。清掉「已清理」旗標，並在排程器已於本行程啟動時立刻重跑清理流程
  * （deferred 時照原本的退避重試）；排程器沒啟動就等下次開機掃。絕不丟錯。
  */
+export type LegacyCronRecheckResult =
+  /** 旗標已清、排程器已在本行程重跑清理 */
+  | 'triggered'
+  /** 旗標已清，但本行程沒有排程器：下次啟動時才檢查 */
+  | 'flag-only'
+  /** 旗標清不掉：開機不會重新檢查 */
+  | 'failed'
+
 export function requestLegacyBackupCronRecheck(deps: {
   clearFlag?: () => void
   log?: (msg: string) => void
-} = {}): void {
+} = {}): LegacyCronRecheckResult {
   const clearFlag = deps.clearFlag ?? clearLegacyCronFlag
   const log = deps.log ?? ((m: string) => console.warn('[backup-scheduler]', m))
-  const safeClear = () => {
+  const safeClear = (): boolean => {
     try {
       clearFlag()
+      return true
     } catch (err) {
       log(`無法重設舊版備份 cron 的清理旗標：${err instanceof Error ? err.message : String(err)}`)
+      return false
     }
   }
-  safeClear()
+  if (!safeClear()) return 'failed'
   try {
     const trigger = (globalThis as Record<string, unknown>)[RECHECK_KEY] as RecheckTrigger | undefined
-    if (typeof trigger === 'function') trigger(safeClear)
+    if (typeof trigger !== 'function') return 'flag-only'
+    trigger(() => { safeClear() })
+    return 'triggered'
   } catch (err) {
     log(`無法觸發舊版備份 cron 重新檢查：${err instanceof Error ? err.message : String(err)}`)
+    return 'flag-only'
   }
 }
 
@@ -220,7 +233,8 @@ async function cleanLegacyOnce(): Promise<boolean> {
       db.insert(settings).values({ key: LEGACY_CRON_CLEANED_KEY, value: '1' })
         .onConflictDoUpdate({ target: settings.key, set: { value: '1' } }).run()
     },
-    list: () => cronList(),
+    // 只採信 RPC：jobs.json fallback 可能是還原換回來的舊檔，RPC 失敗就 deferred、照退避重試，不記旗標
+    list: () => cronList({ allowFileFallback: false }),
     remove: (id) => cronRemove(id),
     onDone: () => { db.update(backupJobs).set({ cronJobId: null }).run() },
     log: (m) => console.warn('[backup-scheduler]', m),
