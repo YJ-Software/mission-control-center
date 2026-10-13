@@ -3,7 +3,7 @@ import path from 'path'
 import Database from 'better-sqlite3'
 import { clearLegacyCronFlagInFile } from './legacy-cron-flag'
 
-type FsLike = Pick<typeof fs, 'existsSync' | 'renameSync' | 'statSync'>
+type FsLike = Pick<typeof fs, 'existsSync' | 'renameSync' | 'statSync' | 'rmSync' | 'copyFileSync' | 'readdirSync'>
 
 /** 待還原檔超過此時間就視為過期：避免數週後的某次重啟默默把資料庫倒回舊備份 */
 export const PENDING_MAX_AGE_MS = 60 * 60 * 1000
@@ -27,8 +27,8 @@ export interface ApplyReport {
   detail?: string
   /** 本次搬走舊庫用的複本主檔名（db.sqlite.pre-restore-<ts>）；丟錯時供自救優先使用 */
   preRestoreBase?: string
-  /** 丟錯後回滾失敗的 rename（「來源 → 目的：原因」） */
-  rollbackFailures?: string[]
+  /** 丟錯後回滾失敗的 rename：from = 原本位置，to = 搬去的 pre-restore 位置 */
+  rollbackFailures?: Array<{ from: string; to: string; reason: string }>
 }
 
 function errMsg(e: unknown): string {
@@ -72,7 +72,7 @@ export function applyPendingDbRestore(
     return 'rejected'
   }
   // 清掉 pending 旁殘留的 -wal/-shm，避免換進來後被當成 db 的日誌
-  for (const suf of ['-wal', '-shm']) fs.rmSync(`${pending}${suf}`, { force: true })
+  for (const suf of ['-wal', '-shm']) fsImpl.rmSync(`${pending}${suf}`, { force: true })
   const moved: Array<[string, string]> = []
   if (report) report.preRestoreBase = `${dbPath}.pre-restore-${ts}`
   try {
@@ -92,7 +92,7 @@ export function applyPendingDbRestore(
         fsImpl.renameSync(to, from)
       } catch (e) {
         // 不可默默吞掉：回滾失敗時 db.sqlite 可能已不存在，applyPendingDbRestoreOnce 要據此自救並說明
-        if (report) (report.rollbackFailures ??= []).push(`${to} → ${from}：${errMsg(e)}`)
+        if (report) (report.rollbackFailures ??= []).push({ from, to, reason: errMsg(e) })
       }
     }
     throw err
@@ -104,10 +104,10 @@ export function applyPendingDbRestore(
 const PRE_RESTORE_TS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/
 
 /** 找最新的 <db>.pre-restore-<ts> 主檔（不含 -wal/-shm）；時戳是 ISO 格式，字串排序即時間排序 */
-export function findLatestPreRestore(dbPath: string): string | null {
+export function findLatestPreRestore(dbPath: string, fsImpl: Pick<FsLike, 'readdirSync'> = fs): string | null {
   try {
     const prefix = `${path.basename(dbPath)}.pre-restore-`
-    const names = fs.readdirSync(path.dirname(dbPath))
+    const names = (fsImpl.readdirSync(path.dirname(dbPath)) as string[])
       .filter((n) => n.startsWith(prefix) && PRE_RESTORE_TS_RE.test(n.slice(prefix.length)))
       .sort()
     return names.length ? path.join(path.dirname(dbPath), names[names.length - 1]) : null
@@ -117,8 +117,10 @@ export function findLatestPreRestore(dbPath: string): string | null {
 /**
  * 套用失敗後的自救：回滾沒做完時，把 pre-restore 複本搬回 dbPath，避免 db.ts 開連線時建出空庫。
  * 優先用本次搬走的那一組；本次沒搬任何檔、但 dbPath 不存在時，才用最新的一組。
- * 主檔先搬，主檔就位後才搬 -wal/-shm（日誌不可先於主檔出現，也不覆寫既有檔）。絕不丟錯。
- * 回傳給 detail 用的說明；什麼都不用做時回傳 null。
+ * 主檔先搬，主檔就位後才搬 -wal/-shm（日誌不可先於主檔出現，也不覆寫既有檔）。
+ * 主檔搬不回時，反過來把留在 dbPath 旁的 -wal/-shm 搬到複本旁：否則 db.ts 建出的新空庫
+ * 第一次寫入就會把舊 WAL 重設掉，未 checkpoint 的資料永久遺失。
+ * detail 一律依檔案「實際位置」組字串。絕不丟錯；什麼都不用做時回傳 null。
  */
 function rescueAfterFailedApply(dbPath: string, fsImpl: FsLike, report: ApplyReport): string | null {
   try {
@@ -128,7 +130,7 @@ function rescueAfterFailedApply(dbPath: string, fsImpl: FsLike, report: ApplyRep
       : null
     const dbMissing = !exists(dbPath)
     if (!ownLeft && !dbMissing) return null
-    const src = ownLeft ?? findLatestPreRestore(dbPath)
+    const src = ownLeft ?? findLatestPreRestore(dbPath, fsImpl)
     if (!src) {
       return `目前資料庫檔不存在，也找不到 pre-restore 複本，MCC 將以空資料庫啟動`
     }
@@ -144,26 +146,68 @@ function rescueAfterFailedApply(dbPath: string, fsImpl: FsLike, report: ApplyRep
         }
       }
     }
+
     if (!exists(dbPath)) {
-      return `目前資料庫檔不存在，MCC 將以空資料庫啟動；你的資料仍在 ${src}（連同同名的 -wal/-shm），` +
-        `請手動搬回 ${dbPath}（先停止 MCC，-wal/-shm 一併改名）後重啟` +
-        (failures.length ? `（自動搬回失敗：${failures.join('；')}）` : '')
+      // 主檔搬不回：讓日誌回到複本主檔旁（同一組），不可留在 dbPath 旁被新空庫吃掉
+      const stuck: string[] = []
+      for (const suf of ['-wal', '-shm']) {
+        const at = `${dbPath}${suf}`
+        const home = `${src}${suf}`
+        if (!exists(at)) continue
+        if (exists(home)) { stuck.push(at); failures.push(`${home} 已存在，未把 ${at} 搬過去`); continue }
+        try {
+          fsImpl.renameSync(at, home)
+        } catch (e) {
+          stuck.push(at)
+          failures.push(`${at} → ${home}：${errMsg(e)}`)
+        }
+      }
+      const pairParts = [src, ...['-wal', '-shm'].map((suf) => `${src}${suf}`).filter(exists)]
+      let msg = `目前資料庫檔不存在，MCC 將以空資料庫啟動；你的資料仍在 ${pairParts.join('、')}，` +
+        `請手動搬回 ${dbPath}（先停止 MCC，同名的 -wal/-shm 一併改名）後重啟`
+      if (stuck.some((p) => p.endsWith('-wal'))) {
+        const wal = `${dbPath}-wal`
+        msg += `；警告：舊資料的 WAL 仍在 ${wal}，MCC 以空資料庫開機後第一次寫入就會清掉它，` +
+          `請立即停止 MCC，並把 ${wal} 改名為 ${src}-wal`
+      }
+      if (failures.length) msg += `（自動搬回失敗：${failures.join('；')}）`
+      return msg
     }
+
+    let walLeft = false
     for (const suf of ['-wal', '-shm']) {
       const from = `${src}${suf}`
       const to = `${dbPath}${suf}`
       if (!exists(from)) continue
-      if (exists(to)) { failures.push(`${to} 已存在，未覆寫；${from} 留在原處`); continue }
-      try {
-        fsImpl.renameSync(from, to)
-      } catch (e) {
-        failures.push(`${from} → ${to}：${errMsg(e)}`)
+      if (exists(to)) {
+        failures.push(`${to} 已存在，未覆寫；${from} 留在原處`)
+      } else {
+        try {
+          fsImpl.renameSync(from, to)
+          continue
+        } catch (e) {
+          failures.push(`${from} → ${to}：${errMsg(e)}`)
+        }
       }
+      if (suf === '-wal') walLeft = true
     }
     const moved = `已自動把 ${src} 搬回 ${dbPath}，繼續使用原資料庫開機`
-    return failures.length
-      ? `${moved}；但下列檔案未能搬回，最近的資料可能不在現行資料庫中，請停止 MCC 後手動改名再重啟：${failures.join('；')}`
-      : moved
+    if (!walLeft) {
+      // 只剩 -shm 沒搬：-shm 是可重建的索引，不影響資料
+      return failures.length ? `${moved}（${failures.join('；')}；-shm 可重建，不影響資料）` : moved
+    }
+    // -wal 搬不回：MCC 會用缺最近 WAL 資料的主檔開機。開機前先把主檔複製回複本位置，保留完整的「主檔＋WAL」配對；
+    // 不可叫使用者事後把舊 -wal 改名放回——主檔被寫入或 checkpoint 後，套回舊 WAL 會混頁損毀。
+    try {
+      fsImpl.copyFileSync(dbPath, src)
+      return `${moved}；但 ${src}-wal 未能一起搬回（${failures.join('；')}），MCC 目前用的主檔缺少最近寫入 WAL 的資料。` +
+        `完整的原資料（主檔＋WAL）保留為 ${src} 與 ${src}-wal：請停止 MCC，把 ${dbPath}、${dbPath}-wal、${dbPath}-shm 整組換成這組` +
+        `（${src} → ${dbPath}、${src}-wal → ${dbPath}-wal）後重啟；不要只把舊 -wal 改名放回，會混頁損毀`
+    } catch (e) {
+      return `${moved}；但 ${src}-wal 未能一起搬回（${failures.join('；')}），且無法保留完整複本（${errMsg(e)}），` +
+        `MCC 目前用的主檔缺少最近寫入 WAL 的資料。請盡快停止 MCC 處理：MCC 寫入越多，${src}-wal 越不能套回；` +
+        `不要把舊 -wal 直接改名放回正在使用的主檔旁`
+    }
   } catch (e) {
     return `檢查資料庫檔時發生錯誤（${errMsg(e)}）；若 MCC 開機後資料是空的，請到 ${path.dirname(dbPath)} 找 ${path.basename(dbPath)}.pre-restore-* 手動搬回`
   }
@@ -235,7 +279,13 @@ export function applyPendingDbRestoreOnce(
       aside = `待還原檔也無法移開（${e instanceof Error ? e.message : String(e)}），仍在 ${pending}`
     }
     const rescue = rescueAfterFailedApply(dbPath, fsImpl, report)
-    const rollback = report.rollbackFailures?.length ? `；回滾時未能移回的檔案：${report.rollbackFailures.join('；')}` : ''
+    // 只列自救之後仍未歸位（還留在 pre-restore 位置）的項目；已歸位的不列，免得使用者以為還有檔案沒回來
+    const stillOut = (report.rollbackFailures ?? []).filter((f) => {
+      try { return fsImpl.existsSync(f.to) } catch { return true }
+    })
+    const rollback = stillOut.length
+      ? `；回滾時未能移回的檔案：${stillOut.map((f) => `${f.to} → ${f.from}：${f.reason}`).join('；')}`
+      : ''
     const detail = `套用待還原資料庫時發生錯誤：${reason}；${rescue ?? '繼續使用現行資料庫開機'}；${aside}${rollback}`
     try { console.error(`[Backup] ${detail}`) } catch { /* ignore */ }
     writeLastDbRestore(dbPath, 'error', detail, now)
