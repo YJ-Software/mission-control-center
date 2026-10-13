@@ -47,12 +47,11 @@ export class GatewayReconnectBackoff {
     return this.failures
   }
 
-  /** WS `open`: the gateway is reachable, so drop the accumulated backoff. */
-  onOpen(): void {
-    this.failures = 0
-  }
-
-  /** `hello-ok`: fully linked. */
+  /**
+   * `hello-ok`: fully linked — the ONLY point that resets the normal backoff.
+   * A bare WS `open` does not: a gateway that accepts and then drops us in a
+   * loop (e.g. 1011) must still back off to 60s, not retry every 5s forever.
+   */
   onLinked(): void {
     this.failures = 0
     this.startingStreak = 0
@@ -61,8 +60,8 @@ export class GatewayReconnectBackoff {
   /** Delay before the next attempt after a close of the given kind. */
   next(reason: GatewayReconnectReason): number {
     if (reason === 'starting') {
-      // Reachable-but-starting is not a failure: never feed the normal backoff.
-      this.failures = 0
+      // Reachable-but-starting is not a failure: it neither feeds nor resets
+      // the normal backoff — it just bypasses it with its own short retry.
       this.startingStreak++
       if (this.startingStreak <= GATEWAY_STARTING_FAST_RETRIES) return GATEWAY_STARTING_RETRY_MS
       return reconnectDelayMs(this.startingStreak - GATEWAY_STARTING_FAST_RETRIES - 1)

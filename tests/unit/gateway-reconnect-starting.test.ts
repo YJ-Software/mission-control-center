@@ -34,6 +34,13 @@ describe('GatewayReconnectBackoff', () => {
     expect(b.next('starting')).toBe(GATEWAY_STARTING_RETRY_MS)
   })
 
+  it('"starting" bypasses the normal backoff without resetting it', () => {
+    const b = grown(3)
+    for (let i = 0; i < 5; i++) b.next('starting')
+    expect(b.consecutiveFailures).toBe(3)
+    expect(b.next('disconnect')).toBe(reconnectDelayMs(3)) // 40s, not back to 5s
+  })
+
   it('"starting" closes do not accumulate into the normal backoff', () => {
     const b = new GatewayReconnectBackoff()
     for (let i = 0; i < 20; i++) b.next('starting')
@@ -41,10 +48,14 @@ describe('GatewayReconnectBackoff', () => {
     expect(b.next('disconnect')).toBe(reconnectDelayMs(0))
   })
 
-  it('resets the normal backoff when the socket opens', () => {
-    const b = grown(4)
-    expect(b.next('disconnect')).toBe(60_000)
-    b.onOpen()
+  it('does not expose an open-time reset: only hello-ok resets the normal backoff', () => {
+    // An accept-then-drop loop (open → 1011 → open → …) must keep growing to
+    // 60s instead of retrying every 5s forever.
+    const b = new GatewayReconnectBackoff()
+    expect('onOpen' in b).toBe(false)
+    expect([1, 2, 3, 4, 5].map(() => b.next('disconnect')))
+      .toEqual([5_000, 10_000, 20_000, 40_000, 60_000])
+    b.onLinked()
     expect(b.consecutiveFailures).toBe(0)
     expect(b.next('disconnect')).toBe(5_000)
   })
@@ -58,14 +69,10 @@ describe('GatewayReconnectBackoff', () => {
   it('a gateway stuck in "starting" falls back to the growing backoff after ~2 min', () => {
     const b = new GatewayReconnectBackoff()
     for (let i = 0; i < GATEWAY_STARTING_FAST_RETRIES; i++) {
-      b.onOpen() // each starting close follows a successful open
       expect(b.next('starting')).toBe(GATEWAY_STARTING_RETRY_MS)
     }
     expect(GATEWAY_STARTING_FAST_RETRIES * GATEWAY_STARTING_RETRY_MS).toBeLessThanOrEqual(150_000)
-    // open resets plain failures but not the starting streak
-    b.onOpen()
     expect(b.next('starting')).toBe(5_000)
-    b.onOpen()
     expect(b.next('starting')).toBe(10_000)
     for (let i = 0; i < 10; i++) b.next('starting')
     expect(b.next('starting')).toBe(60_000)

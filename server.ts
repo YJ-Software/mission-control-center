@@ -292,8 +292,8 @@ function broadcast(wss: WebSocketServer, message: string) {
 // Connect to OpenClaw gateway and relay events
 let gatewayWs: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-// Plain-disconnect backoff (5s→60s), reset whenever the socket opens; plus the
-// short fixed retry for `1013 gateway starting`. Pairing and auth failures
+// Plain-disconnect backoff (5s→60s), reset only on hello-ok; plus the short
+// fixed retry for `1013 gateway starting`, which bypasses it. Pairing and auth failures
 // have their own schedules and do not go through this.
 const reconnectBackoff = new GatewayReconnectBackoff()
 
@@ -375,9 +375,6 @@ function connectGateway(wss: WebSocketServer) {
 
     ws.on('open', () => {
       console.log('[Gateway] Connected to OpenClaw, waiting for challenge...')
-      // Reachable again: a backoff that grew while it was down must not delay
-      // the next reconnect (e.g. after a `1013 gateway starting` close).
-      reconnectBackoff.onOpen()
       // While it keeps answering "starting", don't flicker the sidebar to
       // "connecting" on every short retry.
       if (gatewayLink.state !== 'starting') setGatewayLink('connecting')
