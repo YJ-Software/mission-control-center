@@ -6,6 +6,7 @@ import type { JobKind, JobMeta, JobPhase, LogLine, LogStream, TriggerSource } fr
 import { appendLogLine, newJobId, upsertJobMeta } from './store'
 import { emitJobEvent } from './sse'
 import { markJobLive, markJobDone } from './live'
+import { LONG_RUNNING_JOB_KINDS, registerLongRun, unregisterLongRun, updateLongRun } from '@/lib/long-running'
 
 // Augment PATH for spawned shells. systemd user units inherit a slim PATH and
 // `bash -lc` is unreliable on Ubuntu (~/.bashrc returns early when non-interactive,
@@ -91,12 +92,13 @@ function emitMeta(meta: JobMeta) {
   emitJobEvent({ type: 'meta', jobId: meta.id, meta })
 }
 
-async function runShellPhase(jobId: string, phaseIndex: number, cmd: string): Promise<number> {
+async function runShellPhase(jobId: string, phaseIndex: number, cmd: string, longRunId: number | null = null): Promise<number> {
   return new Promise<number>((resolve) => {
     const child = spawn('bash', ['-c', cmd], {
       env: childEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
+    if (longRunId !== null) updateLongRun(longRunId, { pid: child.pid ?? null })
     child.stdout.setEncoding('utf8')
     child.stderr.setEncoding('utf8')
     child.stdout.on('data', (d: string) => logTo(jobId, phaseIndex, 'stdout', d))
@@ -105,7 +107,10 @@ async function runShellPhase(jobId: string, phaseIndex: number, cmd: string): Pr
       logTo(jobId, phaseIndex, 'stderr', `spawn error: ${err.message}`)
       resolve(127)
     })
-    child.on('close', (code) => resolve(code ?? 0))
+    child.on('close', (code) => {
+      if (longRunId !== null) updateLongRun(longRunId, { pid: null })
+      resolve(code ?? 0)
+    })
   })
 }
 
@@ -136,6 +141,8 @@ export function startJob(spec: JobSpec): JobMeta {
 
   // Detach the async work. 從這裡起直到 finally，本行程都視這個 job 為執行中（見 live.ts）
   markJobLive(id)
+  // apt/npm 類 job 整段登記為長時間作業：MCC 自己的重啟路徑看到就 409（見 long-running.ts）
+  const longRunId = LONG_RUNNING_JOB_KINDS.has(spec.kind) ? registerLongRun(spec.label) : null
   void (async () => {
    try {
     let overallFailed = false
@@ -144,6 +151,7 @@ export function startJob(spec: JobSpec): JobMeta {
       meta.phases[i] = { ...meta.phases[i], status: 'running', startedAt: nowIso() }
       emitMeta(meta)
       logTo(id, i, 'phase', `── ${phaseSpec.name} ──`)
+      if (longRunId !== null) updateLongRun(longRunId, { step: phaseSpec.name })
 
       if (spec.restartingBeforeLastPhase && i === spec.phases.length - 1) {
         meta.status = 'restarting'
@@ -167,7 +175,7 @@ export function startJob(spec: JobSpec): JobMeta {
             },
           )
         } else if (phaseSpec.shell) {
-          code = await runShellPhase(id, i, phaseSpec.shell)
+          code = await runShellPhase(id, i, phaseSpec.shell, longRunId)
         } else {
           logTo(id, i, 'stderr', 'phase missing shell or inline')
           code = 2
@@ -210,6 +218,7 @@ export function startJob(spec: JobSpec): JobMeta {
     logTo(id, undefined, 'system', overallFailed ? '✗ failed' : '✓ done')
    } finally {
     markJobDone(id)
+    if (longRunId !== null) unregisterLongRun(longRunId)
     try { spec.onSettled?.() } catch { /* 保底清理不可再丟錯 */ }
    }
   })().catch((err) => console.error('[jobs] runner failed', err))

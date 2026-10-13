@@ -227,7 +227,7 @@ export function installObsidian(locale: string = 'zh-TW'): ReadableStream<Uint8A
     { label: 'Enabling login linger', cmd: 'sudo', args: ['loginctl', 'enable-linger', os.userInfo().username] },
   ]
 
-  const stream = createSSEStream(commands)
+  const stream = createSSEStream(commands, { name: 'Obsidian 安裝' })
   const reader = stream.getReader()
   const decoder = new TextDecoder()
   let hadError = false
@@ -289,7 +289,7 @@ export function installHeadlessDeps(locale: string = 'zh-TW'): ReadableStream<Ui
     { label: 'Enabling login linger', cmd: 'sudo', args: ['loginctl', 'enable-linger', os.userInfo().username] },
   ]
 
-  const stream = createSSEStream(commands)
+  const stream = createSSEStream(commands, { name: 'Obsidian 執行環境安裝' })
   const reader = stream.getReader()
   const decoder = new TextDecoder()
   let hadError = false
@@ -484,7 +484,7 @@ export function uninstallObsidian(deleteData = false): ReadableStream<Uint8Array
     { label: 'Reloading systemd user daemon', cmd: 'systemctl', args: ['--user', 'daemon-reload'] },
   )
 
-  const stream = createSSEStream(commands)
+  const stream = createSSEStream(commands, { name: 'Obsidian 移除' })
   const reader = stream.getReader()
   return new ReadableStream({
     async pull(controller) {
@@ -538,7 +538,7 @@ export function uninstallCouchDB(deleteData = false): ReadableStream<Uint8Array>
     }
   }
 
-  const stream = createSSEStream(commands)
+  const stream = createSSEStream(commands, { name: 'CouchDB 移除' })
   const reader = stream.getReader()
   return new ReadableStream({
     async pull(controller) {
@@ -677,7 +677,7 @@ export function installCouchDB(method: 'docker' | 'apt'): ReadableStream<Uint8Ar
   }
 
   const encoder = new TextEncoder()
-  const stream = createSSEStream(commands)
+  const stream = createSSEStream(commands, { name: `CouchDB 安裝（${method}）` })
   const reader = stream.getReader()
   return new ReadableStream({
     async pull(controller) {

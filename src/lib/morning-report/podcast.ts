@@ -15,6 +15,7 @@ import { getTmpDir, getDateVars } from './utils'
 import { getTemplate, parsePodcastScript } from './template-helpers'
 import { findOpenclawBin } from './openclaw'
 import { getServerEnv } from '@/lib/server-env'
+import { withLongRunSync } from '@/lib/long-running'
 import type { ProgressCallback } from './finalize'
 
 function getConfigValue(key: string): string {
@@ -36,6 +37,11 @@ function hasEdgeTts(): boolean {
 }
 
 function installEdgeTts(): void {
+  // uv/pip 安裝期間登記為長時間作業（同步執行，主要是讓登記表完整）
+  withLongRunSync('晨報 Podcast：安裝 edge-tts', installEdgeTtsSteps)
+}
+
+function installEdgeTtsSteps(): void {
   const env = getServerEnv()
   // Try uv first (faster), fall back to pip
   try {

@@ -26,6 +26,8 @@ export function parseRebootPackages(raw: string): string[] {
     .filter((l) => l.length > 0)
 }
 
+import { dpkgRepairShell, DPKG_REPAIR_LABEL } from './dpkg-repair'
+
 export interface UpdatePhase {
   name: string
   shell: string
@@ -45,6 +47,8 @@ export function buildSystemUpdatePhases(): UpdatePhase[] {
     'sudo DEBIAN_FRONTEND=noninteractive apt-get -y ' +
     '-o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef'
   return [
+    // 上次 apt 被中斷（MCC 重啟、主機重開）會留下 dpkg interrupted，之後每次 apt 都失敗；先自癒，失敗只記 log
+    { name: DPKG_REPAIR_LABEL, shell: dpkgRepairShell() },
     { name: 'apt-get update', shell: 'sudo apt-get update 2>&1' },
     { name: 'apt-get upgrade', shell: `${nonInteractive} upgrade 2>&1` },
   ]

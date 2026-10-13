@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { getServerEnv } from '@/lib/server-env'
+import { withLongRun } from '@/lib/long-running'
 
 const execFileAsync = promisify(execFile)
 
@@ -80,7 +81,12 @@ export async function getStatus(): Promise<Neo4jStatus> {
   }
 }
 
+/** docker run（含拉 neo4j 映像，最多 10 分鐘）期間登記為長時間作業，MCC 自己的重啟路徑看到就 409 */
 export async function installAndStart(password = DEFAULT_PASSWORD): Promise<{ output: string }> {
+  return withLongRun('Neo4j 圖資料庫安裝', () => installAndStartSteps(password))
+}
+
+async function installAndStartSteps(password: string): Promise<{ output: string }> {
   const mk = await execFileAsync('mkdir', ['-p', DATA_DIR], { env: getServerEnv() })
   let output = (mk.stdout || '') + (mk.stderr || '')
 

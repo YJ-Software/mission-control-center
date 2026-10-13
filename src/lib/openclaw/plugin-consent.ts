@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { augmentedPath } from './models-config'
+import { withLongRun } from '@/lib/long-running'
 
 /** Enabling a plugin in openclaw.json that OpenClaw has not been given
  * capability consent for makes 2026.8.1 refuse to report the gateway ready:
@@ -92,7 +93,8 @@ export async function ensurePluginConsented(
   }
 
   log('system', `installing ${pluginPackage} with capability consent`)
-  const code = await probe.install(pluginPackage)
+  // `openclaw plugins install` 內部跑 npm install：期間登記為長時間作業，MCC 自己的重啟路徑看到就 409
+  const code = await withLongRun(`OpenClaw 外掛安裝：${pluginPackage}`, () => probe.install(pluginPackage))
   if (code !== 0) {
     log(
       'stderr',

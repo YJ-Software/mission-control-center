@@ -8,6 +8,7 @@ export type JobKind =
   | 'restart-mcc'
   | 'restart-tailscale'
   | 'sys-update'
+  | 'dpkg-repair'
   | 'reboot-host'
   | 'doctor'
   | 'provider-login'

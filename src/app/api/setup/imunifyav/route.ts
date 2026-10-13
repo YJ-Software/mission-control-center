@@ -92,6 +92,9 @@ export async function POST(req: Request) {
         { label: 'Running installer', cmd: 'bash', args: ['-c', `yes | sudo env ${NONINT} bash ${deployScript}`] },
       ],
       {
+        name: 'ImunifyAV 安裝',
+        // 安裝腳本內部以 sudo 跑 apt，指令本身看不出來，要明確要求前置 dpkg --configure -a
+        aptSelfHeal: true,
         async onBefore(enqueue) {
           // Create integration.conf dir
           try {
@@ -144,6 +147,8 @@ export async function POST(req: Request) {
     ]
 
     const stream = createSSEStream(commands, {
+      name: action === 'purge' ? 'ImunifyAV 完整移除' : 'ImunifyAV 移除',
+      aptSelfHeal: true,
       async onAfter() {
         try { fs.unlinkSync(deployScript) } catch { /* ignore */ }
       },

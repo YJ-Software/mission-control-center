@@ -23,6 +23,7 @@ import { settings } from '@/lib/schema'
 import { eq } from 'drizzle-orm'
 import { applyPurposeToConfig, getPurpose } from '@/lib/wiki/purpose'
 import { ensurePluginConsented, realPluginProbe } from '@/lib/openclaw/plugin-consent'
+import { withLongRun } from '@/lib/long-running'
 
 const execFileAsync = promisify(execFile)
 
@@ -383,6 +384,11 @@ function setMccDefaults(progress: Progress): void {
 /** End-to-end setup. Each step is idempotent and skips if already done.
  *  progress() is called for every meaningful step so the SSE stream can show it. */
 export async function runSetup(progress: Progress): Promise<DetectResult> {
+  // 整段登記為長時間作業（npm -g、brew/ollama 安裝腳本、ollama pull、openclaw plugins install）
+  return withLongRun('知識庫（Wiki）環境安裝', () => runSetupSteps(progress))
+}
+
+async function runSetupSteps(progress: Progress): Promise<DetectResult> {
   const before = await detect()
 
   if (!before.ollamaBin) {

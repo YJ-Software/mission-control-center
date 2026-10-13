@@ -20,6 +20,8 @@ import { homedir } from 'os'
 import { join, resolve } from 'path'
 import { readAuthStoreDb, findProviderKey, type ProfilesFile } from '@/lib/openclaw/auth-profiles'
 import { getServerEnv } from '@/lib/server-env'
+import { withLongRun } from '@/lib/long-running'
+import { runDpkgRepair } from '@/lib/system-update/dpkg-repair'
 
 const execFileAsync = promisify(execFile)
 const OPENCLAW_CONFIG = join(homedir(), '.openclaw', 'openclaw.json')
@@ -180,7 +182,12 @@ async function detectMcp(): Promise<ComponentStatus> {
   }
 }
 
+/** 整個安裝流程登記為長時間作業（apt/docker/ollama pull），MCC 自己的重啟路徑看到就 409 */
 export async function runInstall(progress: ProgressCallback): Promise<void> {
+  return withLongRun('客服記憶（mem0）安裝', () => runInstallSteps(progress))
+}
+
+async function runInstallSteps(progress: ProgressCallback): Promise<void> {
   const initial = await detectAll()
   for (const c of initial) {
     progress({ stage: 'check', step: c.id, message: `${c.label}: ${c.detail ?? (c.ready ? 'ready' : 'missing')}`, ready: c.ready })
@@ -188,8 +195,12 @@ export async function runInstall(progress: ProgressCallback): Promise<void> {
 
   if (!initial.find((c) => c.id === 'docker')!.ready) {
     progress({ stage: 'install', step: 'docker', message: 'installing docker via apt…' })
+    // 上次 apt 被中斷會留下 dpkg interrupted；先自癒，失敗只記 log、不阻擋
+    const repair = await runDpkgRepair()
+    if (!repair.ok) progress({ stage: 'log', message: `dpkg --configure -a failed (continuing): ${repair.output.slice(-500)}` })
     try {
-      await execFileAsync('sudo', ['-n', 'apt-get', 'install', '-y', 'docker.io'], { timeout: 120000, env: getServerEnv() })
+      // 逾時本身就會從中途殺掉 apt（留下 dpkg interrupted）；120 秒在慢鏡像上不夠，放寬到 10 分鐘
+      await execFileAsync('sudo', ['-n', 'apt-get', 'install', '-y', 'docker.io'], { timeout: 600000, env: getServerEnv() })
       await execFileAsync('sudo', ['-n', 'usermod', '-aG', 'docker', process.env.USER ?? 'openclaw'], { env: getServerEnv() })
       progress({ stage: 'install', step: 'docker', message: 'docker installed', ready: true })
     } catch (err: any) {

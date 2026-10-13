@@ -61,16 +61,25 @@ describe('parseRebootPackages', () => {
 describe('buildSystemUpdatePhases', () => {
   const phases = buildSystemUpdatePhases()
 
+  const upgradePhase = () => phases.find((p) => /apt-get\b.*\bupgrade\b/.test(p.shell))!
+
   it('refreshes the package lists before upgrading', () => {
-    expect(phases).toHaveLength(2)
-    expect(phases[0].shell).toMatch(/apt-get\b.*\bupdate\b/)
-    expect(phases[1].shell).toMatch(/apt-get\b.*\bupgrade\b/)
+    expect(phases).toHaveLength(3)
+    expect(phases[1].shell).toMatch(/apt-get\b.*\bupdate\b/)
+    expect(phases[2].shell).toMatch(/apt-get\b.*\bupgrade\b/)
+  })
+
+  // 上次 apt 被 MCC 重啟或主機重開打斷時，dpkg 會停在 interrupted，之後每次 apt 都失敗。
+  // 第一步先自癒；它失敗不可擋住後面的 apt（shell 以 || echo 收尾，exit 0）。
+  it('repairs an interrupted dpkg first, without failing the job when the repair fails', () => {
+    expect(phases[0].shell).toMatch(/^sudo -n env .*DEBIAN_FRONTEND=noninteractive.* dpkg --configure -a/)
+    expect(phases[0].shell).toMatch(/\|\| echo /)
   })
 
   // apt will otherwise stop on a config-file prompt and hang the job forever,
   // since a job has no tty to answer it.
   it('runs non-interactively and keeps existing config files', () => {
-    const upgrade = phases[1].shell
+    const upgrade = upgradePhase().shell
     expect(upgrade).toContain('DEBIAN_FRONTEND=noninteractive')
     expect(upgrade).toContain('--force-confold')
     expect(upgrade).toMatch(/\s-y\b/)
@@ -80,8 +89,8 @@ describe('buildSystemUpdatePhases', () => {
   // customer's gateway that difference matters more than pulling every last
   // held-back package.
   it('uses upgrade rather than dist-upgrade', () => {
-    expect(phases[1].shell).not.toContain('dist-upgrade')
-    expect(phases[1].shell).not.toContain('full-upgrade')
+    expect(upgradePhase().shell).not.toContain('dist-upgrade')
+    expect(upgradePhase().shell).not.toContain('full-upgrade')
   })
 })
 

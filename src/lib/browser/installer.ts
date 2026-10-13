@@ -210,6 +210,7 @@ export function installChrome(): ReadableStream<Uint8Array> {
   }
 
   return createSSEStream(commands, {
+    name: '瀏覽器（Chrome）安裝',
     onBefore(enqueue) {
       const detected = detectComponents()
       enqueue({ type: 'log', data: `Chrome detected: ${detected.chrome}` })
@@ -478,6 +479,7 @@ export function installHeadlessDepsOnly(): ReadableStream<Uint8Array> {
   ]
 
   return createSSEStream(commands, {
+    name: '瀏覽器執行環境安裝',
     onAfter(enqueue) {
       // Set VNC password
       let vncPassword = getBrowserConfig('vnc_password')
@@ -537,6 +539,7 @@ export function installOpencliOnly(): ReadableStream<Uint8Array> {
   ]
 
   return createSSEStream(commands, {
+    name: 'OpenCLI 安裝',
     onBefore(enqueue) {
       enqueue({ type: 'log', data: `OpenCLI installed: ${isOpencliInstalled()}` })
     },
@@ -561,6 +564,7 @@ export function uninstallChrome(deleteData = false): ReadableStream<Uint8Array> 
   ]
 
   return createSSEStream(commands, {
+    name: '瀏覽器移除',
     onAfter(enqueue) {
       // Remove unit files
       enqueue({ type: 'progress', data: 'Removing systemd unit files...' })
