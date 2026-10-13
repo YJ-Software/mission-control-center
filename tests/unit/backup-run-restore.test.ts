@@ -82,6 +82,7 @@ function deps(over: Partial<RestoreDeps> = {}): Partial<RestoreDeps> {
     mccVersion: () => '0.3.99',
     legacyRestore: async () => { calls.push('legacy'); return 'legacy ok' },
     legacyScriptsOk: () => true,
+    recheckLegacyCron: () => {},
     now: () => new Date(1700000000000),
     dbPath: path.join(tmp, 'db.sqlite'),
     workRoot: work,
@@ -479,5 +480,39 @@ describe('describeBackup（只讀 manifest，不解壓）', () => {
   })
   it('extra：RestoreRejectedError', async () => {
     await expect(describeBackup(path.join(tmp, 'extra-backup_a.tar.gz'), deps())).rejects.toBeInstanceOf(RestoreRejectedError)
+  })
+})
+
+describe('M4：還原可能把舊版「💾 Backup:」cron 帶回來，還原後要重新檢查', () => {
+  const recheck = { recheckLegacyCron: () => { calls.push('recheck-legacy-cron') } }
+  it('舊格式 restore.sh 還原成功後觸發重新檢查', async () => {
+    const f = path.join(tmp, 'openclaw-backup_x.tar.gz'); fs.writeFileSync(f, 'x')
+    startRestore(f, 'api', deps(recheck))
+    await done
+    expect(calls).toEqual(['legacy', 'recheck-legacy-cron'])
+    expect(finalStatus).toBe('success')
+  })
+  it('舊格式 restore.sh 中途失敗也觸發（~/.openclaw 可能已被部分換掉）', async () => {
+    const f = path.join(tmp, 'openclaw-backup_x.tar.gz'); fs.writeFileSync(f, 'x')
+    startRestore(f, 'api', deps({ ...recheck, legacyRestore: async () => { calls.push('legacy'); throw new Error('restore.sh exit 1') } }))
+    await done
+    expect(calls).toEqual(['legacy', 'recheck-legacy-cron'])
+    expect(finalStatus).toBe('failed')
+  })
+  it('新格式：OpenClaw 換回來之後觸發（dev 模式不重啟也要清掉舊 cron）', async () => {
+    startRestore(buildArchive(), 'api', deps({ ...recheck, getInstall: () => ({ mode: 'dev', service: 'mission-control' }) }))
+    await done
+    expect(calls).toEqual(['prepare-db', 'preflight', 'verify-oc', 'restore-oc', 'recheck-legacy-cron', 'commit-db'])
+  })
+  it('新格式不含 OpenClaw 資料：不動 ~/.openclaw，不觸發', async () => {
+    startRestore(buildArchive({ backend: null }), 'api', deps(recheck))
+    await done
+    expect(calls).not.toContain('recheck-legacy-cron')
+  })
+  it('觸發本身丟錯不影響還原結果', async () => {
+    const f = path.join(tmp, 'openclaw-backup_x.tar.gz'); fs.writeFileSync(f, 'x')
+    startRestore(f, 'api', deps({ recheckLegacyCron: () => { throw new Error('boom') } }))
+    await done
+    expect(finalStatus).toBe('success')
   })
 })

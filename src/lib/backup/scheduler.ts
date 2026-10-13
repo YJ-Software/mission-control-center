@@ -5,6 +5,7 @@ import { settings } from '@/lib/schema'
 import { isDue, nextRunAt } from './next-run'
 import { isBackupRunning, BackupBusyError } from './lock'
 import type { ScheduleConfig } from './helpers'
+import { LEGACY_CRON_CLEANED_KEY } from './legacy-cron-flag'
 
 export interface SchedulerJob {
   id: string
@@ -93,7 +94,7 @@ export function tickBackupScheduler(
 /** 舊 sync-cron.ts 產生的名稱是 `💾 Backup: <job 名稱>`；只認這個前綴，使用者自己以 💾 開頭的 cron 不動 */
 const LEGACY_PREFIX = '💾 Backup:'
 /** settings 旗標：舊 cron 已清理完成（removed / none），之後的開機不再 list cron */
-export const LEGACY_CRON_CLEANED_KEY = 'backup.legacyCronCleaned'
+export { LEGACY_CRON_CLEANED_KEY }
 
 export async function removeLegacyBackupCron(deps: {
   list(): Promise<Array<{ id: string; name?: string }>>
@@ -160,6 +161,9 @@ const TICK_MS = 60_000
 const LEGACY_RETRY_DELAYS_MS = [60_000, 2 * 60_000, 5 * 60_000, 10 * 60_000, 30 * 60_000]
 const LEGACY_RETRY_MAX_MS = 60 * 60_000
 const STARTED_KEY = '__mccBackupSchedulerStarted'
+/** 排程器啟動後在 globalThis 登記「立刻重跑舊 cron 清理」的入口；還原工作跑在 Next bundle，與 server.ts 是不同的模組實例 */
+const RECHECK_KEY = '__mccLegacyCronRecheck'
+type RecheckTrigger = (clearFlag: () => void) => void
 
 function readJobs(): SchedulerJob[] {
   const rows = db.select().from(backupJobs).all()
@@ -174,6 +178,37 @@ function readJobs(): SchedulerJob[] {
     }
   }
   return out
+}
+
+function clearLegacyCronFlag(): void {
+  db.delete(settings).where(eq(settings.key, LEGACY_CRON_CLEANED_KEY)).run()
+}
+
+/**
+ * 還原（舊版 restore.sh 或新格式換回 ~/.openclaw）可能把舊「💾 Backup:」cron 帶回來，
+ * 與內建排程器同時跑（每次備份兩份）。清掉「已清理」旗標，並在排程器已於本行程啟動時立刻重跑清理流程
+ * （deferred 時照原本的退避重試）；排程器沒啟動就等下次開機掃。絕不丟錯。
+ */
+export function requestLegacyBackupCronRecheck(deps: {
+  clearFlag?: () => void
+  log?: (msg: string) => void
+} = {}): void {
+  const clearFlag = deps.clearFlag ?? clearLegacyCronFlag
+  const log = deps.log ?? ((m: string) => console.warn('[backup-scheduler]', m))
+  const safeClear = () => {
+    try {
+      clearFlag()
+    } catch (err) {
+      log(`無法重設舊版備份 cron 的清理旗標：${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  safeClear()
+  try {
+    const trigger = (globalThis as Record<string, unknown>)[RECHECK_KEY] as RecheckTrigger | undefined
+    if (typeof trigger === 'function') trigger(safeClear)
+  } catch (err) {
+    log(`無法觸發舊版備份 cron 重新檢查：${err instanceof Error ? err.message : String(err)}`)
+  }
 }
 
 async function cleanLegacyOnce(): Promise<boolean> {
@@ -257,18 +292,42 @@ export function startBackupScheduler(opts: SchedulerStartOpts = {}): void {
   // 舊 cron 清理：deferred 時依退避間隔重試（1、2、5、10、30 分鐘，之後每小時），直到 removed / none
   const clean = opts.cleanLegacy ?? cleanLegacyOnce
   let failures = 0
+  let retryTimer: ReturnType<typeof setTimeout> | null = null
+  let inFlight = false
+  /** 進行中被要求重查：結束後先再清一次旗標（進行中的那次可能已把它記回已清理）再跑 */
+  let rerunClear: (() => void) | null = null
   const retryLater = () => {
     const delay = LEGACY_RETRY_DELAYS_MS[failures] ?? LEGACY_RETRY_MAX_MS
     failures++
-    setTimeout(attempt, delay).unref()
+    retryTimer = setTimeout(() => { retryTimer = null; attempt() }, delay)
+    retryTimer.unref?.()
+  }
+  const settle = (done: boolean) => {
+    inFlight = false
+    if (rerunClear) {
+      const clearAgain = rerunClear
+      rerunClear = null
+      clearAgain()
+      attempt()
+      return
+    }
+    if (!done) retryLater()
   }
   const attempt = () => {
-    clean().then((done) => {
-      if (!done) retryLater()
-    }).catch((err) => {
+    inFlight = true
+    let p: Promise<boolean>
+    try { p = clean() } catch (err) { p = Promise.reject(err) }
+    p.then(settle, (err) => {
       console.error('[backup-scheduler] 舊 cron 清理失敗:', err)
-      retryLater()
+      settle(false)
     })
   }
+  const recheck: RecheckTrigger = (clearFlag) => {
+    failures = 0
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null }
+    if (inFlight) { rerunClear = clearFlag; return }
+    attempt()
+  }
+  ;(globalThis as Record<string, unknown>)[RECHECK_KEY] = recheck
   attempt()
 }

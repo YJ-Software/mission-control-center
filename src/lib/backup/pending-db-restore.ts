@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import Database from 'better-sqlite3'
+import { clearLegacyCronFlagInFile } from './legacy-cron-flag'
 
 type FsLike = Pick<typeof fs, 'existsSync' | 'renameSync' | 'statSync'>
 
@@ -205,6 +206,17 @@ export function applyPendingDbRestoreOnce(
   const report: ApplyReport = {}
   try {
     const r = applyPendingDbRestore(dbPath, fsImpl, now, report)
+    if (r === 'applied') {
+      // 還原回來的資料庫可能記著「舊 cron 已清理」，但被換回來的 ~/.openclaw 可能又有舊「💾 Backup:」cron：
+      // 清掉旗標讓排程器開機時再掃一次（沒有舊 cron 只是多一次 cron.list）。失敗不影響套用結果。
+      try {
+        clearLegacyCronFlagInFile(dbPath)
+      } catch (e) {
+        const note = `無法重設舊版備份 cron 的清理旗標（${errMsg(e)}），開機時不會重新檢查舊「💾 Backup:」cron；若備份會重複執行，請到排程頁手動刪除`
+        try { console.error(`[Backup] ${note}`) } catch { /* ignore */ }
+        report.detail = `${report.detail ?? ''}；${note}`
+      }
+    }
     if (r !== 'none') writeLastDbRestore(dbPath, r, report.detail ?? '')
     return r
   } catch (err) {

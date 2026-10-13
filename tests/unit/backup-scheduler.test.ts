@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { tickBackupScheduler, removeLegacyBackupCron, cleanLegacyBackupCron, startBackupScheduler, LEGACY_CRON_CLEANED_KEY, type SchedulerJob } from '@/lib/backup/scheduler'
+import { tickBackupScheduler, removeLegacyBackupCron, cleanLegacyBackupCron, startBackupScheduler, requestLegacyBackupCronRecheck, LEGACY_CRON_CLEANED_KEY, type SchedulerJob } from '@/lib/backup/scheduler'
 
 const daily = (id: string, time = '03:00', enabled = 1): SchedulerJob => ({
   id, enabled, scheduleType: 'daily', scheduleConfig: { days: [0, 1, 2, 3, 4, 5, 6], time } as never,
@@ -266,5 +266,87 @@ describe('startBackupScheduler', () => {
     expect(clean).toHaveBeenCalledTimes(7)
     await advance(3 * 60 * 60_000)
     expect(clean).toHaveBeenCalledTimes(7)
+  })
+})
+
+describe('M4：還原後重新檢查舊版備份 cron（requestLegacyBackupCronRecheck）', () => {
+  const KEY = '__mccBackupSchedulerStarted'
+  const RECHECK = '__mccLegacyCronRecheck'
+  beforeEach(() => {
+    vi.useFakeTimers()
+    delete (globalThis as Record<string, unknown>)[KEY]
+    delete (globalThis as Record<string, unknown>)[RECHECK]
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    delete (globalThis as Record<string, unknown>)[KEY]
+    delete (globalThis as Record<string, unknown>)[RECHECK]
+  })
+  const opts = (clean: () => Promise<boolean>) => ({
+    jobs: () => [], isRunning: () => false, start: () => 'started' as const, log: () => {}, cleanLegacy: clean,
+  })
+
+  it('旗標已清理、排程器已跑完清理 → 還原後清旗標並立刻再跑一次清理（不必等重啟）', async () => {
+    const flag = { cleaned: false }
+    const list = vi.fn(async () => [{ id: 'c1', name: '💾 Backup: nightly' }])
+    const clean = vi.fn(() => cleanLegacyBackupCron({
+      isCleaned: () => flag.cleaned, markCleaned: () => { flag.cleaned = true }, list, remove: async () => {},
+    }))
+    startBackupScheduler(opts(clean))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(list).toHaveBeenCalledTimes(1)
+    expect(flag.cleaned).toBe(true)
+    // 之後的檢查都直接跳過（這就是還原後舊 cron 復活卻沒人管的原因）
+    requestLegacyBackupCronRecheck({ clearFlag: () => { flag.cleaned = false } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(clean).toHaveBeenCalledTimes(2)
+    expect(list).toHaveBeenCalledTimes(2)
+    expect(flag.cleaned).toBe(true)
+  })
+  it('排程器沒在這個行程啟動：只清旗標、不丟錯（下次開機會掃）', () => {
+    const clearFlag = vi.fn()
+    expect(() => requestLegacyBackupCronRecheck({ clearFlag })).not.toThrow()
+    expect(clearFlag).toHaveBeenCalledTimes(1)
+  })
+  it('清旗標失敗也不丟錯，仍觸發清理', async () => {
+    const clean = vi.fn(async () => true)
+    startBackupScheduler(opts(clean))
+    await vi.advanceTimersByTimeAsync(0)
+    const log = vi.fn()
+    expect(() => requestLegacyBackupCronRecheck({ clearFlag: () => { throw new Error('SQLITE_BUSY') }, log })).not.toThrow()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(clean).toHaveBeenCalledTimes(2)
+    expect(log).toHaveBeenCalled()
+  })
+  it('退避重試等待中被觸發：立刻跑、退避歸零，舊的計時器不會多跑一次', async () => {
+    const clean = vi.fn<() => Promise<boolean>>()
+    clean.mockResolvedValueOnce(false) // 開機：deferred，排 1 分鐘後重試
+    clean.mockResolvedValue(true)
+    startBackupScheduler(opts(clean))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(clean).toHaveBeenCalledTimes(1)
+    requestLegacyBackupCronRecheck({ clearFlag: () => {} })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(clean).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(2 * 60 * 60_000)
+    expect(clean).toHaveBeenCalledTimes(2)
+  })
+  it('清理進行中被觸發：等它結束後再清一次旗標、再跑一次（避免進行中的那次把旗標記回已清理）', async () => {
+    let resolveFirst!: (v: boolean) => void
+    const clean = vi.fn<() => Promise<boolean>>()
+    clean.mockImplementationOnce(() => new Promise<boolean>((r) => { resolveFirst = r }))
+    clean.mockResolvedValue(true)
+    startBackupScheduler(opts(clean))
+    await vi.advanceTimersByTimeAsync(0)
+    const clearFlag = vi.fn()
+    requestLegacyBackupCronRecheck({ clearFlag })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(clean).toHaveBeenCalledTimes(1)
+    resolveFirst(true)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(clean).toHaveBeenCalledTimes(2)
+    expect(clearFlag).toHaveBeenCalledTimes(2)
   })
 })

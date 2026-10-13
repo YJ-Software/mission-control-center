@@ -665,3 +665,45 @@ describe('M1 後續：套用失敗且回滾也失敗時，不可讓 MCC 默默�
     expect(fs.existsSync(`${live}.pre-restore-2026-09-01T00-00-00-000Z`)).toBe(true)
   })
 })
+
+describe('M4：還原回來的資料庫帶著「舊 cron 已清理」旗標時，套用後要清掉，讓開機再掃一次', () => {
+  const KEY = 'backup.legacyCronCleaned'
+  function makeMccDb(file: string, flag: string | null) {
+    const d = new Database(file)
+    d.exec('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+    d.prepare('INSERT INTO settings VALUES (?, ?)').run('other', 'keep')
+    if (flag !== null) d.prepare('INSERT INTO settings VALUES (?, ?)').run(KEY, flag)
+    d.close()
+  }
+  const readFlag = (file: string) => {
+    const d = new Database(file, { readonly: true })
+    try {
+      return (d.prepare('SELECT value FROM settings WHERE key = ?').get(KEY) as { value: string } | undefined)?.value
+    } finally { d.close() }
+  }
+
+  it('旗標為已清理（1）→ applied 後旗標被清掉（開機的 cleanLegacyBackupCron 因此會重新 list）、其他設定不動', () => {
+    const dbp = path.join(dir, 'db.sqlite')
+    makeMccDb(dbp, '1')
+    makeMccDb(dbp + '.restore-pending', '1')
+    expect(applyPendingDbRestoreOnce(dbp)).toBe('applied')
+    expect(readFlag(dbp)).toBeUndefined()
+    const d = new Database(dbp, { readonly: true })
+    expect(d.prepare('SELECT value FROM settings WHERE key = ?').get('other')).toEqual({ value: 'keep' })
+    d.close()
+    expect(isSqliteDbHealthy(dbp)).toBe(true)
+    expect(fs.existsSync(dbp + '-wal')).toBe(false)
+  })
+  it('沒有 settings 表（非預期格式）或沒有旗標：照常 applied，不出錯', () => {
+    const dbp = path.join(dir, 'db.sqlite')
+    makeDb(dbp + '.restore-pending', 'new')
+    expect(applyPendingDbRestoreOnce(dbp)).toBe('applied')
+    const j = JSON.parse(fs.readFileSync(path.join(dir, 'last-db-restore.json'), 'utf8'))
+    expect(j.result).toBe('applied')
+    delete (globalThis as any).__mccPendingDbRestoreChecked
+    const dbp2 = path.join(dir, 'db2.sqlite')
+    makeMccDb(dbp2 + '.restore-pending', null)
+    expect(applyPendingDbRestoreOnce(dbp2)).toBe('applied')
+    expect(readFlag(dbp2)).toBeUndefined()
+  })
+})

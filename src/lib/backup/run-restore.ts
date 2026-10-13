@@ -17,6 +17,7 @@ import { checkScriptsAvailable } from './helpers'
 import { BackupBusyError, isBackupOrRestoreBusy, acquireLock, releaseLock } from './lock'
 import { assertNoBlockingJob } from './job-guard'
 import { runRestore } from './scripts'
+import { requestLegacyBackupCronRecheck } from './scheduler'
 
 export { BackupBusyError }
 
@@ -53,6 +54,8 @@ export interface RestoreDeps {
   legacyRestore: (file: string) => Promise<string>
   legacyDryRun: (file: string) => Promise<string>
   legacyScriptsOk: () => boolean
+  /** 動過 ~/.openclaw 之後呼叫：舊版「💾 Backup:」cron 可能被換回來，清掉「已清理」旗標並重新檢查；不得丟錯 */
+  recheckLegacyCron: () => void
   now: () => Date
   dbPath: string
   /** 解壓暫存目錄的父目錄（~/.mission-control，與家目錄同一個檔案系統） */
@@ -151,6 +154,7 @@ const defaultDeps = (): RestoreDeps => ({
   legacyRestore: (file) => runRestore(file, false),
   legacyDryRun: (file) => runRestore(file, true),
   legacyScriptsOk: () => checkScriptsAvailable().ok,
+  recheckLegacyCron: () => requestLegacyBackupCronRecheck(),
   now: () => new Date(),
   dbPath: DB_PATH,
   workRoot: path.dirname(DB_PATH),
@@ -345,6 +349,14 @@ export function startRestore(
     releaseLock(lockToken)
   }
   const safeLog = (log?: Log): Log => (s, t) => { try { log?.(s, t) } catch { /* log I/O 不可打斷清理 */ } }
+  const recheckLegacyCron = (log: Log) => {
+    try {
+      deps.recheckLegacyCron()
+      log('system', '已要求重新檢查舊版「💾 Backup:」cron（還原可能把它帶回來，會與內建排程重複備份）')
+    } catch (e) {
+      log('stderr', `無法要求重新檢查舊版備份 cron：${errText(e)}`)
+    }
+  }
   const phase = (name: string, fn: (log: Log) => Promise<void>, opts: { last?: boolean } = {}): PhaseSpec => ({
     name,
     inline: async (rawLog) => {
@@ -375,7 +387,12 @@ export function startRestore(
 
     if (kind === 'legacy-openclaw') {
       phases.push(phase('legacy restore', async (log) => {
-        log('system', await deps.legacyRestore(file))
+        // 不論成敗都重查：restore.sh 中途失敗時 ~/.openclaw 可能已被部分換掉
+        try {
+          log('system', await deps.legacyRestore(file))
+        } finally {
+          recheckLegacyCron(log)
+        }
       }, { last: true }))
     } else {
       phases.push(phase('verify', async (log) => {
@@ -407,7 +424,13 @@ export function startRestore(
         const archive = inside(st.content!, m.parts.backend)
         await deps.gatewayPreflight()
         await deps.openclawVerify(archive, log)
-        const r = await deps.openclawRestore(archive, log)
+        let r: Awaited<ReturnType<RestoreDeps['openclawRestore']>>
+        try {
+          r = await deps.openclawRestore(archive, log)
+        } finally {
+          // 換回來的 ~/.openclaw 可能帶著舊 cron；dev 模式不會自動重啟，所以現在就重查（失敗時也可能已部分換掉）
+          recheckLegacyCron(log)
+        }
         st.openclawRestored = true
         st.preRestoreDir = r.preRestoreDir
         log('system', r.preRestoreDir ? `舊的 ~/.openclaw 保留於 ${r.preRestoreDir}` : '原本沒有 ~/.openclaw，無舊資料可保留')
