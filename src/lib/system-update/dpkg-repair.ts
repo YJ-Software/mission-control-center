@@ -5,8 +5,11 @@
  * `dpkg --configure -a` 是冪等的（沒事時一秒內結束），所以每條會跑 apt 的路徑在 apt 之前都先跑一次；
  * 它失敗只記 log、不阻擋後面的 apt（後面的 apt 會給出真正的錯誤）。
  *
- * 偵測用 `dpkg --audit`（非 root 可跑）加 `/var/lib/dpkg/updates/` 是否有待處理的 journal
- * （dpkg 被中斷時留下的就是這些檔；非 root 可讀）。 */
+ * 偵測三個來源（見 checkDpkgHealth）：
+ * - `/var/lib/dpkg/updates/` 有沒有待處理的 journal（dpkg 被中斷時留下的；非 root 可讀）。
+ * - `sudo -n dpkg --audit`：dpkg 1.22（Ubuntu 24.04）起非 root 跑 `dpkg --audit` 會因為碰不到鎖檔
+ *   exit 2、stdout 空，什麼都看不到，所以要 sudo。
+ * - sudo 不放行或失敗時退回 `dpkg-query -W`（非 root 可跑）逐一看套件狀態。 */
 
 import { spawn } from 'node:child_process'
 import { readdirSync } from 'node:fs'
@@ -170,6 +173,27 @@ export function pendingDpkgJournals(names: readonly string[]): string[] {
   return names.filter((n) => /^\d+$/.test(n))
 }
 
+/** 正常的套件狀態（dpkg-query ${Status} 的第三欄）；其他（half-configured、unpacked、half-installed、
+ *  triggers-awaited、triggers-pending）都代表 configure 沒做完 */
+const SETTLED_STATES = new Set(['installed', 'config-files', 'not-installed'])
+
+/**
+ * 解析 `dpkg-query -W -f='${Status}\t${Package}\n'`，回傳中斷中的套件（「pkg（want ok half-configured）」）。
+ * 只看 eflag 與狀態欄、不看 want 欄：hold／deinstall 等選擇標記不代表中斷（例如 `apt-mark hold` 的
+ * `hold ok installed`），用整串字面比對會讓每台 hold 過套件的機器都誤報。eflag 不是 ok（reinstreq）也算中斷。
+ */
+export function parseDpkgQueryStatus(raw: string): string[] {
+  const broken: string[] = []
+  for (const line of raw.split('\n')) {
+    const [status, pkg] = line.split('\t')
+    if (!status || !pkg) continue
+    const [, eflag, state] = status.trim().split(/\s+/)
+    if (!state) continue
+    if (eflag !== 'ok' || !SETTLED_STATES.has(state)) broken.push(`${pkg.trim()}（${status.trim()}）`)
+  }
+  return broken
+}
+
 export interface DpkgHealth {
   /** dpkg 不存在（非 Debian 系）或讀不到：不判斷 */
   supported: boolean
@@ -194,19 +218,43 @@ export async function checkDpkgHealth(deps: DpkgCheckDeps = {}): Promise<DpkgHea
     updatesReadable = true
   } catch { /* 非 Debian 系或沒有權限 */ }
 
-  let audit: string | null = null
-  let auditRan = false
-  try {
-    const r = await exec('dpkg', ['--audit'], 60_000)
-    // 新版 dpkg 有問題時 exit 非零，但輸出照樣在 stdout；找不到 dpkg 時是 127 且 stdout 空
-    auditRan = r.code === 0 || r.stdout.trim().length > 0
-    audit = parseDpkgAudit(r.stdout)
-  } catch { /* ignore */ }
+  const safeExec = async (cmd: string, args: readonly string[]): Promise<ExecResult> => {
+    try { return await exec(cmd, args, 60_000) } catch (e) {
+      return { code: 127, stdout: '', stderr: e instanceof Error ? e.message : String(e) }
+    }
+  }
 
-  if (!updatesReadable && !auditRan) return { supported: false, interrupted: false, detail: '' }
+  // 1. sudo -n dpkg --audit。有問題時新舊版 exit code 不一，但清單一定在 stdout：exit 0 或 stdout 有內容都算跑成功
+  let findings: string | null = null
+  let checked = false
+  const audit = await safeExec('sudo', ['-n', 'dpkg', '--audit'])
+  if (audit.code === 0 || audit.stdout.trim().length > 0) {
+    checked = true
+    const a = parseDpkgAudit(audit.stdout)
+    if (a) findings = `dpkg --audit：\n${a.split('\n').slice(0, 20).join('\n')}`
+  } else {
+    // 2. sudo 不放行（或 dpkg 拿不到鎖）：退回非 root 也能跑的 dpkg-query
+    const q = await safeExec('dpkg-query', ['-W', '-f=${Status}\t${Package}\n'])
+    if (q.code === 0) {
+      checked = true
+      const broken = parseDpkgQueryStatus(q.stdout)
+      if (broken.length > 0) {
+        findings = `dpkg-query：${broken.length} 個套件沒有設定完成：\n${broken.slice(0, 20).join('\n')}`
+      }
+    } else if (updatesReadable) {
+      // Debian 系（updates/ 讀得到）卻兩種檢查都跑不了：說出來，不靜默當成「沒問題」
+      const tail = (t: string) => t.trim().split('\n').slice(-1)[0]?.slice(0, 200) ?? ''
+      console.warn(
+        `[dpkg] cannot check package states: sudo -n dpkg --audit exit ${audit.code} (${tail(audit.stderr)}); ` +
+        `dpkg-query exit ${q.code} (${tail(q.stderr)}); only /var/lib/dpkg/updates/ was checked`,
+      )
+    }
+  }
+
+  if (!updatesReadable && !checked) return { supported: false, interrupted: false, detail: '' }
 
   const parts: string[] = []
   if (journals.length > 0) parts.push(`/var/lib/dpkg/updates/ 有 ${journals.length} 個未處理的 journal（dpkg 上次被中斷）`)
-  if (audit) parts.push(`dpkg --audit：\n${audit.split('\n').slice(0, 20).join('\n')}`)
+  if (findings) parts.push(findings)
   return { supported: true, interrupted: parts.length > 0, detail: parts.join('\n\n') }
 }

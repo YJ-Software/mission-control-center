@@ -258,8 +258,9 @@ export function scheduleServiceRestart(service: string, delaySeconds = 2): void 
     stdio: 'ignore',
   })
   // 成功時這個行程會被重啟殺掉；只有失敗才會走到這裡：立刻解除「即將重啟」，不讓安裝被擋到 ttl 結束
+  // 被訊號終止（code 為 null）= 重啟正在殺 cgroup，不是失敗
   child.on('exit', (code) => {
-    if (code !== 0) {
+    if (code !== null && code !== 0) {
       clearRestartPending()
       console.warn(`[restart] systemctl --user restart ${service} failed (exit ${code}); cleared restart-pending`)
     }

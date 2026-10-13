@@ -169,9 +169,18 @@ describe('長時間安裝作業進行中拒絕 MCC 自己的重啟', () => {
       expect(m.exec).toHaveBeenCalledWith(expect.stringContaining('systemctl'), expect.any(Function)) // 被攔下的 mock
       // 重啟指令失敗（成功時本行程會被殺掉，不會走到 callback）→ 立刻解除「即將重啟」
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      ;(m.exec.mock.calls[0][1] as (e: Error | null) => void)(new Error('Failed to restart'))
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+      const cb = m.exec.mock.calls[0][1] as (e: (Error & { signal?: string }) | null) => void
+      // 重啟成功時 systemctl 會跟著 cgroup 被 SIGTERM：那是「重啟進行中」，不記 failed、不解除旗標
+      cb(Object.assign(new Error('Command failed: systemctl restart …'), { signal: 'SIGTERM' }))
+      expect(isRestartPending()).toBe(true)
+      expect(warn).not.toHaveBeenCalled()
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('重啟已排程'))
+      // 真的以非 0 結束才是失敗
+      cb(new Error('Failed to restart'))
       expect(isRestartPending()).toBe(false)
-      warn.mockRestore()
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('restart-dashboard failed'))
+      warn.mockRestore(); log.mockRestore()
     } finally {
       vi.useRealTimers()
     }
@@ -197,7 +206,10 @@ describe('長時間安裝作業進行中拒絕 MCC 自己的重啟', () => {
     expect(m.exec).toHaveBeenCalledWith('sh -c "sleep 3; sudo -n systemctl reboot"', expect.any(Function))
     expect(isRestartPending()).toBe(true)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    ;(m.exec.mock.calls[0][1] as (e: Error | null) => void)(new Error('sudo: a password is required'))
+    const cb = m.exec.mock.calls[0][1] as (e: (Error & { signal?: string }) | null) => void
+    cb(Object.assign(new Error('killed'), { signal: 'SIGTERM' })) // 關機流程在殺行程：不是失敗
+    expect(isRestartPending()).toBe(true)
+    cb(new Error('sudo: a password is required'))
     expect(isRestartPending()).toBe(false)
     warn.mockRestore()
   })

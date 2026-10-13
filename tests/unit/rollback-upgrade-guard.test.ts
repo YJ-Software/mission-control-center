@@ -89,7 +89,10 @@ describe('rollbackUpgrade 的長時間作業互鎖', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     await rollbackUpgrade('/prev', 'svc')
     expect(isRestartPending()).toBe(true)
-    const onExit = m.child.on.mock.calls.find((c) => c[0] === 'exit')![1] as (code: number) => void
+    const onExit = m.child.on.mock.calls.find((c) => c[0] === 'exit')![1] as (code: number | null) => void
+    onExit(null) // 被訊號終止：重啟正在殺 cgroup，不是失敗
+    expect(isRestartPending()).toBe(true)
+    expect(warn).not.toHaveBeenCalled()
     onExit(1)
     expect(isRestartPending()).toBe(false)
     warn.mockRestore()

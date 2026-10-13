@@ -74,11 +74,15 @@ const actions: Record<string, ActionHandler> = {
             log('system', 'this process will be replaced; log resumes after restart')
             setTimeout(() => {
               exec('systemctl restart mission-control 2>/dev/null || systemctl --user restart mission-control 2>/dev/null', (err) => {
-                // 成功時本行程被重啟殺掉，不會走到這裡；失敗就立刻解除「即將重啟」
-                if (err) {
-                  clearRestartPending()
-                  console.warn(`[restart] restart-dashboard failed: ${err.message}; cleared restart-pending`)
+                // 重啟成功時，這個 systemctl 會跟著 cgroup 一起被 SIGTERM（本行程的 graceful shutdown 期間 callback
+                // 仍會跑）：被訊號終止 = 重啟正在進行，不是失敗。只有真的以非 0 結束才解除「即將重啟」
+                if (!err) return
+                if (err.signal) {
+                  console.log(`[restart] restart-dashboard: 重啟已排程（systemctl 被 ${err.signal} 終止，重啟進行中）`)
+                  return
                 }
+                clearRestartPending()
+                console.warn(`[restart] restart-dashboard failed: ${err.message}; cleared restart-pending`)
               })
             }, 2000)
             return 0
@@ -145,10 +149,10 @@ const actions: Record<string, ActionHandler> = {
             log('system', 'reboot scheduled; the host goes down in a few seconds')
             // 失敗（sudo 不放行、systemctl 非 0）就立刻解除「即將重啟」；成功時主機關機，callback 不會執行
             exec(buildRebootCommand(), (err) => {
-              if (err) {
-                clearRestartPending()
-                console.warn(`[reboot] reboot command failed: ${err.message}; cleared restart-pending`)
-              }
+              // 被訊號終止 = 關機流程已經在殺行程，不是失敗
+              if (!err || err.signal) return
+              clearRestartPending()
+              console.warn(`[reboot] reboot command failed: ${err.message}; cleared restart-pending`)
             })
             return 0
           },

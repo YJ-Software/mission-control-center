@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   isAptCommand, isDpkgRepairCommand, dpkgRepairShell, dpkgRepairStrictShell, runDpkgRepair,
   parseDpkgAudit, pendingDpkgJournals, checkDpkgHealth, DPKG_REPAIR_SUDO_ARGS, type ExecFn,
-  withAptNonInteractive, sudoNonInteractiveArgs, runNonInteractive, APT_CONFFILE_OPTS,
+  withAptNonInteractive, sudoNonInteractiveArgs, runNonInteractive, APT_CONFFILE_OPTS, parseDpkgQueryStatus,
 } from '@/lib/system-update/dpkg-repair'
 import { runDpkgBootCheck, buildDpkgNotice, DPKG_INTERRUPTED_DEDUP_KEY, recheckDpkgAfterRepair } from '@/lib/system-update/dpkg-boot-check'
 import { buildSystemUpdatePhases } from '@/lib/system-update/apt'
@@ -148,6 +148,58 @@ describe('dpkg 健康檢查', () => {
     expect(r.detail).toContain('couchdb')
   })
 
+  // throwaway 實測（Ubuntu 24.04、dpkg 1.22.6）：非 root 的 dpkg --audit 碰不到鎖檔 → exit 2、stdout 空，
+  // half-configured 完全看不到。現在先 sudo -n dpkg --audit，不行再退回非 root 也能跑的 dpkg-query
+  it('sudo -n dpkg --audit 失敗（exit 2、空輸出）→ 退回 dpkg-query，抓到 half-configured', async () => {
+    const calls: string[] = []
+    const exec: ExecFn = async (cmd, args) => {
+      calls.push([cmd, ...args].join(' '))
+      if (cmd === 'sudo') return { code: 2, stdout: '', stderr: 'dpkg: error: unable to check lock file for dpkg database directory /var/lib/dpkg: Permission denied' }
+      return {
+        code: 0,
+        stdout: 'install ok half-configured\tless\ninstall ok installed\tbash\nhold ok installed\tlinux-image-generic\n' +
+          'deinstall ok config-files\told-pkg\nunknown ok not-installed\tnever\n',
+        stderr: '',
+      }
+    }
+    const r = await checkDpkgHealth({ exec, readUpdatesDir: () => [] })
+    expect(calls).toEqual(['sudo -n dpkg --audit', 'dpkg-query -W -f=${Status}\t${Package}\n'])
+    expect(r.interrupted).toBe(true)
+    expect(r.detail).toContain('less（install ok half-configured）')
+    expect(r.detail).not.toContain('linux-image-generic') // hold 不是中斷
+    expect(r.detail).not.toContain('old-pkg')
+  })
+
+  it('sudo -n dpkg --audit 成功時用它的結果，不再跑 dpkg-query', async () => {
+    const calls: string[] = []
+    const exec: ExecFn = async (cmd) => {
+      calls.push(cmd)
+      return { code: 0, stdout: 'The following packages are only half configured:\n less\n', stderr: '' }
+    }
+    const r = await checkDpkgHealth({ exec, readUpdatesDir: () => [] })
+    expect(calls).toEqual(['sudo'])
+    expect(r.detail).toContain('dpkg --audit')
+  })
+
+  it('兩種檢查都失敗：記一行 warn（含兩個 exit code），不通知', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const exec: ExecFn = async (cmd) => cmd === 'sudo'
+      ? { code: 1, stdout: '', stderr: 'sudo: a password is required' }
+      : { code: 2, stdout: '', stderr: 'dpkg-query: error: something' }
+    const notify = vi.fn()
+    expect(await runDpkgBootCheck({ exec, readUpdatesDir: () => [], notify })).toBe('ok')
+    expect(notify).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/sudo -n dpkg --audit exit 1 \(sudo: a password is required\); dpkg-query exit 2/))
+    warn.mockRestore()
+  })
+
+  it('parseDpkgQueryStatus：看 eflag 與狀態欄，不看 want 欄', () => {
+    expect(parseDpkgQueryStatus('install ok installed\ta\nhold ok installed\tb\ndeinstall ok installed\tc\n')).toEqual([])
+    expect(parseDpkgQueryStatus('install ok unpacked\td\ninstall reinstreq installed\te\ninstall ok triggers-pending\tf\n'))
+      .toEqual(['d（install ok unpacked）', 'e（install reinstreq installed）', 'f（install ok triggers-pending）'])
+    expect(parseDpkgQueryStatus('garbage\n\n')).toEqual([])
+  })
+
   it('非 Debian 系（沒有 dpkg、沒有 /var/lib/dpkg）→ 不判斷', async () => {
     const r = await checkDpkgHealth({
       exec: async () => ({ code: 127, stdout: '', stderr: 'spawn dpkg ENOENT' }),
@@ -189,6 +241,17 @@ describe('開機 dpkg 檢查', () => {
     expect(notify).toHaveBeenCalledTimes(1)
     expect(clear).toHaveBeenCalledTimes(1)
     expect(await recheckDpkgAfterRepair({ check: async () => { throw new Error('boom') }, clear, notify })).toBe('error')
+  })
+
+  it('一鍵修復後的重新檢查走同一個偵測（audit 失敗時也會退回 dpkg-query）', async () => {
+    const exec: ExecFn = async (cmd) => cmd === 'sudo'
+      ? { code: 2, stdout: '', stderr: 'Permission denied' }
+      : { code: 0, stdout: 'install ok half-configured\tless\n', stderr: '' }
+    const notify = vi.fn()
+    const clear = vi.fn()
+    expect(await recheckDpkgAfterRepair({ exec, readUpdatesDir: () => [], notify, clear })).toBe('notified')
+    expect(notify.mock.calls[0][0].body).toContain('less')
+    expect(clear).not.toHaveBeenCalled()
   })
 
   it('通知中心靠同一個 dedupKey 顯示「修復」按鈕', () => {

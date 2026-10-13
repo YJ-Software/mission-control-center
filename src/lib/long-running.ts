@@ -6,6 +6,14 @@
 //
 // 放在 globalThis：server.ts bundle 與 Next bundle 在同一個行程、各自載入本模組（dev HMR 也會重載），
 // 必須共用同一份紀錄（同 backup/lock.ts、jobs/live.ts 的做法）。
+//
+// 已知限制（2026-10-13 throwaway 實測，v0.4.2 前）：
+// - 登記表只存在本行程記憶體。使用者「仍要重啟」強制重啟時，systemd 的 user manager 殺不了 cgroup 裡
+//   root 擁有的行程（sudo、安裝腳本、apt；journal 會出現 `Failed to kill control group … Operation not
+//   permitted`），所以 root 的安裝其實會繼續跑完，並沒有被中斷；但新行程的登記表是空的，不知道它還在跑。
+//   這段期間可以再開始另一個 apt 類安裝，第二個會撞上 dpkg 鎖（前置的 dpkg --configure -a 會失敗或等待），
+//   upgrade.sh 的 drain_cgroup 也可能等到逾時。
+// - 第二階段（systemd-run 把安裝移出 MCC 的 cgroup、狀態寫檔、重啟後重新接上）才會解決；在那之前不修。
 
 import type { JobKind } from '@/lib/jobs/types'
 
