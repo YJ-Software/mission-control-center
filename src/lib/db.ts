@@ -30,7 +30,9 @@ if (restoreResult === 'applied') {
 } else if (restoreResult === 'rejected') {
   console.error('[Backup] pending MCC database restore was rejected (expired or failed integrity check); keeping current database')
 } else if (restoreResult === 'error') {
-  console.error('[Backup] pending MCC database restore failed; moved aside and keeping current database (see last-db-restore.json)')
+  console.error(fs.existsSync(DB_PATH)
+    ? '[Backup] pending MCC database restore failed; moved aside and keeping current database (see last-db-restore.json)'
+    : '[Backup] pending MCC database restore failed AND the database file is missing; starting with an EMPTY database. Your data is in a db.sqlite.pre-restore-* file (see last-db-restore.json)')
 }
 
 const sqlite = new Database(DB_PATH)

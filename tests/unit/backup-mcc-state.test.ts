@@ -549,3 +549,119 @@ describe('還原時補上快照當下未知的 backup_logs 欄位', () => {
     expect(fs.existsSync(`${live}.restore-pending`)).toBe(true)
   })
 })
+
+describe('M1 後續：套用失敗且回滾也失敗時，不可讓 MCC 默默以空資料庫開機', () => {
+  /** 建一個舊資料都還在未 checkpoint 的 -wal 裡的 live db（重現實機：關機沒關連線） */
+  function makeLiveWalDb(live: string) {
+    const srcDir = path.join(dir, 'src'); fs.mkdirSync(srcDir)
+    const src = path.join(srcDir, 'db.sqlite')
+    const conn = new Database(src)
+    conn.pragma('journal_mode = WAL'); conn.pragma('wal_autocheckpoint = 0')
+    conn.exec('CREATE TABLE old_t (v TEXT)')
+    for (const v of ['a', 'b', 'c']) conn.prepare('INSERT INTO old_t VALUES (?)').run(v)
+    for (const suf of ['', '-wal', '-shm']) fs.copyFileSync(src + suf, live + suf)
+    conn.close()
+  }
+  /** pending → db 一律失敗；pre-restore → db 的 rename 依 failRestoreBack 決定 */
+  function failingFs(dbp: string, failRestoreBack: (from: string, attempt: number) => boolean) {
+    const attempts = new Map<string, number>()
+    return {
+      existsSync: fs.existsSync,
+      statSync: fs.statSync,
+      renameSync: (a: string, b: string) => {
+        if (b === dbp && a.endsWith('.restore-pending')) throw new Error('ENOSPC: no space left on device')
+        if (a.includes('.pre-restore-')) {
+          const n = (attempts.get(a) ?? 0) + 1
+          attempts.set(a, n)
+          if (failRestoreBack(a, n)) throw new Error(`EIO: rename ${path.basename(a)} failed`)
+        }
+        fs.renameSync(a, b)
+      },
+    } as unknown as typeof fs
+  }
+
+  it('回滾失敗後自動把 pre-restore 複本（含 -wal/-shm）搬回 db.sqlite，資料可讀，detail 說明搬回了哪個檔', () => {
+    const live = path.join(dir, 'db.sqlite')
+    makeLiveWalDb(live)
+    makeDb(live + '.restore-pending', 'new')
+    const now = new Date('2026-10-13T01:02:03.456Z')
+    const saved = `${live}.pre-restore-2026-10-13T01-02-03-456Z`
+    // 第一次（applyPendingDbRestore 內的回滾）失敗，之後（自救）成功
+    const fsImpl = failingFs(live, (_a, n) => n === 1)
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let r: string | undefined
+    try {
+      expect(() => { r = applyPendingDbRestoreOnce(live, fsImpl, now) }).not.toThrow()
+    } finally { err.mockRestore() }
+    expect(r).toBe('error')
+    expect(fs.existsSync(live)).toBe(true)
+    for (const suf of ['', '-wal', '-shm']) expect(fs.existsSync(saved + suf)).toBe(false)
+    const d = new Database(live)
+    expect(d.prepare('SELECT v FROM old_t ORDER BY v').all()).toEqual([{ v: 'a' }, { v: 'b' }, { v: 'c' }])
+    d.close()
+    const j = JSON.parse(fs.readFileSync(path.join(dir, 'last-db-restore.json'), 'utf8'))
+    expect(j.result).toBe('error')
+    expect(j.detail).toContain('ENOSPC')
+    expect(j.detail).toContain(`已自動把 ${saved} 搬回`)
+  })
+
+  it('搬回也失敗：detail 明講將以空資料庫啟動、資料仍在哪個 pre-restore 路徑、要手動搬回', () => {
+    const live = path.join(dir, 'db.sqlite')
+    makeLiveWalDb(live)
+    makeDb(live + '.restore-pending', 'new')
+    const now = new Date('2026-10-13T01:02:03.456Z')
+    const saved = `${live}.pre-restore-2026-10-13T01-02-03-456Z`
+    const fsImpl = failingFs(live, () => true)
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let r: string | undefined
+    try {
+      expect(() => { r = applyPendingDbRestoreOnce(live, fsImpl, now) }).not.toThrow()
+    } finally { err.mockRestore() }
+    expect(r).toBe('error')
+    expect(fs.existsSync(live)).toBe(false)
+    // 資料仍完整留在複本
+    const old = new Database(saved)
+    expect(old.prepare('SELECT v FROM old_t ORDER BY v').all()).toEqual([{ v: 'a' }, { v: 'b' }, { v: 'c' }])
+    old.close()
+    const j = JSON.parse(fs.readFileSync(path.join(dir, 'last-db-restore.json'), 'utf8'))
+    expect(j.result).toBe('error')
+    expect(j.detail).toContain('MCC 將以空資料庫啟動')
+    expect(j.detail).toContain(`你的資料仍在 ${saved}`)
+    expect(j.detail).toContain('請手動搬回')
+    expect(j.detail).toContain('EIO')
+    expect(j.detail).not.toContain('繼續使用現行資料庫開機')
+  })
+
+  it('回滾只有 -wal 失敗（主檔已移回）：自救補搬 -wal，WAL 內的資料不會被默默丟掉', () => {
+    const live = path.join(dir, 'db.sqlite')
+    makeLiveWalDb(live)
+    makeDb(live + '.restore-pending', 'new')
+    const now = new Date('2026-10-13T01:02:03.456Z')
+    const saved = `${live}.pre-restore-2026-10-13T01-02-03-456Z`
+    const fsImpl = failingFs(live, (a, n) => a.endsWith('-wal') && n === 1)
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try { applyPendingDbRestoreOnce(live, fsImpl, now) } finally { err.mockRestore() }
+    expect(fs.existsSync(`${saved}-wal`)).toBe(false)
+    const d = new Database(live)
+    expect(d.prepare('SELECT v FROM old_t ORDER BY v').all()).toEqual([{ v: 'a' }, { v: 'b' }, { v: 'c' }])
+    d.close()
+    const j = JSON.parse(fs.readFileSync(path.join(dir, 'last-db-restore.json'), 'utf8'))
+    expect(j.detail).toContain(`已自動把 ${saved} 搬回`)
+    expect(j.detail).toContain('回滾時未能移回的檔案')
+  })
+
+  it('db.sqlite 不存在時，挑最新的 pre-restore 複本搬回（不挑舊的）', () => {
+    const live = path.join(dir, 'db.sqlite')
+    makeDb(`${live}.pre-restore-2026-09-01T00-00-00-000Z`, 'older')
+    makeLiveWalDb(live)
+    makeDb(live + '.restore-pending', 'new')
+    const now = new Date('2026-10-13T01:02:03.456Z')
+    const fsImpl = failingFs(live, (_a, n) => n === 1)
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try { applyPendingDbRestoreOnce(live, fsImpl, now) } finally { err.mockRestore() }
+    const d = new Database(live)
+    expect(d.prepare('SELECT v FROM old_t ORDER BY v').all()).toEqual([{ v: 'a' }, { v: 'b' }, { v: 'c' }])
+    d.close()
+    expect(fs.existsSync(`${live}.pre-restore-2026-09-01T00-00-00-000Z`)).toBe(true)
+  })
+})
