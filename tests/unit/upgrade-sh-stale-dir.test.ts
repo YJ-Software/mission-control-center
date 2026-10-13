@@ -86,7 +86,7 @@ async function runUpgrade(f: ReturnType<typeof fixture>): Promise<string> {
   try {
     const { stdout } = await execFileAsync('bash', [SCRIPT, f.tarball], {
       encoding: 'utf8',
-      env: { ...process.env, PATH: `${f.bin}:${process.env.PATH}`, PREFIX: f.prefix, STATE: f.state, HEALTH_TIMEOUT: '5' },
+      env: { ...process.env, PATH: `${f.bin}:${process.env.PATH}`, PREFIX: f.prefix, STATE: f.state, HEALTH_TIMEOUT: '5', SELF_CGROUP_FILE: '/nonexistent/cgroup' },
     })
     return stdout
   } catch (err: any) {

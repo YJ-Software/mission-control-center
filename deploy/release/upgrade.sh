@@ -33,6 +33,9 @@ CGROUP_DRAIN_TIMEOUT="${CGROUP_DRAIN_TIMEOUT:-120}"
 CGROUP_ROOT="${CGROUP_ROOT:-/sys/fs/cgroup}"
 PROC_ROOT="${PROC_ROOT:-/proc}"
 POLL_SECONDS="${POLL_SECONDS:-1}"
+SELF_CGROUP_FILE="${SELF_CGROUP_FILE:-/proc/self/cgroup}"
+# Empty (set but blank) means "not available" — tests use that; unset means look it up.
+SYSTEMD_RUN="${SYSTEMD_RUN-$(command -v systemd-run 2>/dev/null || true)}"
 
 die() { echo "✗ $*" >&2; exit 1; }
 log() { echo "• $*"; }
@@ -69,16 +72,85 @@ cgroup_procs() {
   cat "$CGROUP_ROOT$cg/cgroup.procs" 2>/dev/null || true
 }
 
-# "pid:comm" for every apt/dpkg process inside cgroup $1.
+# "pid:comm" for every package-manager process inside cgroup $1. `sudo` counts
+# too: inside the dashboard's cgroup a sudo is almost always an installer
+# (setup page, system update) — a third-party install script runs curl/gpg/bash
+# under sudo long before apt itself shows up.
 cgroup_apt_procs() {
   local pid comm out=""
   for pid in $(cgroup_procs "$1"); do
     comm="$(cat "$PROC_ROOT/$pid/comm" 2>/dev/null || true)"
     case "$comm" in
-      apt|apt-get|aptitude|dpkg|dpkg-deb|unattended-upgr) out+="$pid:$comm " ;;
+      apt|apt-get|aptitude|dpkg|dpkg-deb|unattended-upgr|sudo) out+="$pid:$comm " ;;
     esac
   done
   printf '%s' "$out"
+}
+
+# Say so when the waits below can't see anything, instead of silently skipping.
+report_cgroup_visibility() {
+  local cg="$1"
+  if [[ -z "$cg" ]]; then
+    log "systemd reports no cgroup for $SERVICE (not running?) — skipping the apt/drain wait"
+  elif [[ ! -r "$CGROUP_ROOT$cg/cgroup.procs" ]]; then
+    log "⚠ cannot read $CGROUP_ROOT$cg/cgroup.procs (cgroup v1/hybrid?) — skipping the apt/drain wait"
+  fi
+}
+
+# This script's own cgroup path (v2 "0::<path>", else v1 "N:name=systemd:<path>").
+# Empty when unreadable (no /proc, no systemd) — detection is then skipped.
+self_cgroup() {
+  [[ -r "$SELF_CGROUP_FILE" ]] || return 0
+  local line
+  line="$(grep -m1 '^0::' "$SELF_CGROUP_FILE" 2>/dev/null || true)"
+  [[ -n "$line" ]] || line="$(grep -m1 ':name=systemd:' "$SELF_CGROUP_FILE" 2>/dev/null || true)"
+  [[ -n "$line" ]] || return 0
+  printf '%s' "$line" | cut -d: -f3-
+}
+
+# Is cgroup $1 the service's cgroup $2 (or below it)? With no service cgroup from
+# systemd, fall back to matching the unit name $3 in the path.
+cgroup_within_service() {
+  local self="$1" svc="$2" name="$3"
+  [[ -n "$self" ]] || return 1
+  if [[ -n "$svc" ]]; then
+    [[ "$self" == "$svc" || "$self" == "$svc"/* ]]
+    return
+  fi
+  [[ "$self" == */"$name".service || "$self" == */"$name".service/* ]]
+}
+
+# Run from inside the dashboard (its web terminal is in the service's cgroup),
+# `systemctl stop` would kill this very script before it swaps `current` and
+# starts the new version — leaving the dashboard down. Hand the run to its own
+# transient unit instead; refuse when that is impossible.
+handoff_if_inside_service() {
+  [[ -n "${MCC_UPGRADE_DETACHED:-}" ]] && return 0
+  local self svc
+  self="$(self_cgroup)"
+  [[ -n "$self" ]] || return 0
+  svc="$(service_cgroup)"
+  cgroup_within_service "$self" "$svc" "$SERVICE" || return 0
+
+  local self_path tarball_abs
+  self_path="$(readlink -f "${BASH_SOURCE[0]:-}" 2>/dev/null || true)"
+  tarball_abs="$(readlink -f "$TARBALL")"
+  if [[ -z "$SYSTEMD_RUN" || -z "$self_path" || ! -f "$self_path" ]]; then
+    die "this shell runs inside $SERVICE's own cgroup (e.g. the dashboard's web terminal):
+   stopping the service would kill this script before the new version starts.
+   systemd-run is not available to move it out — run upgrade.sh over SSH instead."
+  fi
+  local unit="${SERVICE}-upgrade-$(date +%Y%m%d%H%M%S)"
+  "$SYSTEMD_RUN" --user --collect --unit "$unit" \
+    --setenv=MCC_UPGRADE_DETACHED=1 \
+    --setenv=PATH="$PATH" --setenv=HOME="$HOME" \
+    --setenv=PREFIX="$PREFIX" --setenv=STATE="$STATE" --setenv=SERVICE="$SERVICE" \
+    --setenv=KEEP_VERSIONS="$KEEP_VERSIONS" --setenv=HEALTH_TIMEOUT="$HEALTH_TIMEOUT" \
+    --setenv=APT_WAIT_TIMEOUT="$APT_WAIT_TIMEOUT" --setenv=CGROUP_DRAIN_TIMEOUT="$CGROUP_DRAIN_TIMEOUT" \
+    bash "$self_path" "$tarball_abs" \
+    || die "systemd-run could not start the upgrade unit — run upgrade.sh over SSH instead"
+  echo "• 升級已轉交 systemd 背景執行（unit: $unit），查看進度：journalctl --user -u $unit -f"
+  exit 0
 }
 
 # The unit is KillMode=control-group: stopping it SIGTERMs every process in its
@@ -189,6 +261,10 @@ fi
 # Fail before touching the symlink if we can't drive systemd.
 ensure_user_bus
 
+# Before extracting anything: if we're running inside the service's own cgroup,
+# re-run as a separate transient unit (or refuse).
+handoff_if_inside_service
+
 NEW_DIR="$PREFIX/versions/v$VERSION"
 # Reuse the existing tree ONLY when it is actually this tarball. Reusing on
 # directory-existence alone silently ships stale code whenever a version number
@@ -283,6 +359,7 @@ fi
 # at the new tree. The unit re-render above only needs daemon-reload, which is
 # fine while the old version still runs; it takes effect on this start.
 SERVICE_CG="$(service_cgroup)"
+report_cgroup_visibility "$SERVICE_CG"
 wait_for_service_apt "$SERVICE_CG"
 systemctl --user stop "$SERVICE"
 drain_cgroup "$SERVICE_CG"

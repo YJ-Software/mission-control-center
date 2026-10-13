@@ -98,6 +98,8 @@ async function runUpgrade(f: ReturnType<typeof fixture>): Promise<string> {
       PREFIX: f.prefix,
       STATE: f.state,
       HEALTH_TIMEOUT: '5',
+      // 不受跑測試那個 shell 自己的 cgroup 影響（例如從儀表板網頁終端機跑 npm test）
+      SELF_CGROUP_FILE: '/nonexistent/cgroup',
     },
   }
   try {

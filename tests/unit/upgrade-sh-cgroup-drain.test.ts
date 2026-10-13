@@ -92,6 +92,8 @@ async function runUpgrade(f: ReturnType<typeof fixture>, port: number, extra: Re
     PREFIX: f.prefix,
     STATE: f.state,
     HEALTH_TIMEOUT: '5',
+    // 不受跑測試那個 shell 自己的 cgroup 影響（例如從儀表板網頁終端機跑 npm test）
+    SELF_CGROUP_FILE: '/nonexistent/cgroup',
     CGROUP_ROOT: f.cgroupRoot,
     PROC_ROOT: f.procRoot,
     ...extra,
@@ -165,6 +167,17 @@ describe('upgrade.sh：stop 後等 cgroup 清空才換版、啟動', () => {
     expect(r.out).toContain('upgraded to Mission Control v1.0.0')
   }, 20_000)
 
+  it('cgroup 裡有 sudo（第三方安裝腳本還沒進到 apt）也視為忙碌，先等', async () => {
+    const f = fixture({ clearProcsAfterStop: true })
+    writeFileSync(join(f.procRoot, '4243', 'comm'), 'sudo\n')
+    const port = await startHealth(f.servedFile)
+    const t = setTimeout(() => writeFileSync(join(f.procRoot, '4243', 'comm'), 'bash\n'), 1500)
+    const r = await runUpgrade(f, port)
+    clearTimeout(t)
+    expect(r.out).toContain('(4243:sudo )')
+    expect(r.out).toContain('apt/dpkg finished')
+  }, 20_000)
+
   it('systemd 給不出 cgroup（舊版、cgroup v1）：直接 stop/start，不等待', async () => {
     const f = fixture({ clearProcsAfterStop: false })
     const port = await startHealth(f.servedFile)
@@ -173,6 +186,9 @@ describe('upgrade.sh：stop 後等 cgroup 清空才換版、啟動', () => {
 
     expect(r.out).not.toContain('cgroup to drain')
     expect(r.out).not.toContain('apt/dpkg is running')
+    // 保護沒生效時要說出來，而不是靜默跳過
+    expect(r.out).toContain('cannot read')
+    expect(r.out).toContain('skipping the apt/drain wait')
     expect(r.out).toContain('upgraded to Mission Control v1.0.0')
   }, 20_000)
 })
