@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import type { OpenClawVersionInfo } from '@/lib/services-status'
 import { NotificationCenter } from './notification-center'
 import { CHAT_PATH } from '@/lib/landing'
+import { useLongRunMessage } from '@/hooks/use-long-run-message'
 
 const locales = [
   { code: 'zh-TW', label: '繁' },
@@ -35,6 +36,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   const [rebooting, setRebooting] = useState(false)
   const [rebootJobId, setRebootJobId] = useState<string | null>(null)
   const t = useTranslations('header')
+  const longRunMessage = useLongRunMessage()
   const queryClient = useQueryClient()
 
   const { data: versionInfo } = useQuery<{ openclawVersion: OpenClawVersionInfo | null }>({
@@ -107,7 +109,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
       if (data?.success !== false) {
         setTimeout(() => window.location.reload(), 8000)
       } else {
-        alert(t('updateMccFailed', { error: data?.error ?? 'unknown' }))
+        alert(longRunMessage(data) ?? t('updateMccFailed', { error: data?.error ?? 'unknown' }))
       }
     } finally {
       setUpdatingMcc(false)
@@ -142,6 +144,12 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
         body: JSON.stringify({ action: 'reboot-system', triggeredBy: 'header-button' }),
       })
       const data = await res.json().catch(() => ({}))
+      if (!res.ok || data?.success === false) {
+        // 被擋下（長時間安裝作業、備份／還原進行中）：說明原因，並讓按鈕可以再按
+        alert(longRunMessage(data) ?? (data?.error || `reboot failed (${res.status})`))
+        setRebooting(false)
+        return
+      }
       if (data?.jobId) setRebootJobId(data.jobId)
       queryClient.invalidateQueries({ queryKey: ['system-log-jobs'] })
     } finally {

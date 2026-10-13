@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import { Zap } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { useLongRunMessage } from '@/hooks/use-long-run-message'
 
 interface ActionDef {
   id: string
@@ -26,12 +27,14 @@ const actionDefs: ActionDef[] = [
 
 export function QuickActions() {
   const t = useTranslations('quickActions')
+  const longRunMessage = useLongRunMessage()
   const [loading, setLoading] = useState<Record<string, boolean>>({})
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' } | null>(null)
 
   const showToast = useCallback((message: string, type: 'success' | 'warning') => {
     setToast({ message, type })
-    setTimeout(() => setToast(null), 4000)
+    // 警告（例如重啟被長時間安裝作業擋下）要讀得完，停留久一點
+    setTimeout(() => setToast(null), type === 'warning' ? 10000 : 4000)
   }, [])
 
   const handleAction = useCallback(async (action: ActionDef) => {
@@ -56,14 +59,14 @@ export function QuickActions() {
           setTimeout(() => location.reload(), 3000)
         }
       } else {
-        showToast(t('actionFailed') + ': ' + (data.error || 'Unknown error'), 'warning')
+        showToast(longRunMessage(data) ?? (t('actionFailed') + ': ' + (data.error || 'Unknown error')), 'warning')
       }
     } catch (e) {
       showToast(t('actionFailed') + ': ' + (e instanceof Error ? e.message : String(e)), 'warning')
     } finally {
       setLoading(prev => ({ ...prev, [action.id]: false }))
     }
-  }, [t, showToast])
+  }, [t, showToast, longRunMessage])
 
   return (
     <div className="cyber-card animate-slide-in delay-300">
@@ -106,7 +109,7 @@ export function QuickActions() {
           }`}
         >
           <span>{toast.type === 'success' ? '✅' : '⚠️'}</span>
-          <span className="max-w-xs truncate">{toast.message}</span>
+          <span className={toast.type === 'warning' ? 'max-w-sm break-words' : 'max-w-xs truncate'}>{toast.message}</span>
         </div>
       )}
     </div>

@@ -19,7 +19,11 @@
     "empty": "No notifications yet",
     "markAllRead": "Mark all read",
     "clearAll": "Clear all",
-    "open": "Open"
+    "open": "Open",
+    "repairDpkg": "Repair",
+    "repairDpkgRunning": "Repairing…",
+    "repairDpkgStarted": "Repair started — see System Log for progress",
+    "repairDpkgFailed": "Could not start the repair: {error}"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -2638,5 +2642,10 @@
     "title": "AI Assistant",
     "subtitle": "Chat with your AI assistant",
     "openFullMcc": "Full console"
+  },
+  "longRun": {
+    "busy": "An install is still running; restarting now would interrupt it and may leave system packages half-installed: {list}. Try again after it finishes.",
+    "item": "{name} (started {time})",
+    "sep": ", "
   }
 }

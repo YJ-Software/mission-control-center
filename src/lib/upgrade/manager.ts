@@ -25,6 +25,7 @@ import crypto from 'node:crypto'
 
 import { getVersionInfo } from '@/lib/version'
 import type { ValidatedBackends } from '@/lib/release-validation'
+import { assertNoLongRuns } from '@/lib/long-running'
 
 const execFileP = promisify(execFile)
 
@@ -261,6 +262,8 @@ export function scheduleServiceRestart(service: string, delaySeconds = 2): void 
  * post-upgrade health check fails.
  */
 export async function rollbackUpgrade(prevTarget: string, service: string): Promise<void> {
+  // 長時間安裝作業進行中不重啟（會連同 apt/dpkg 一起殺掉）：丟 LongRunBusyError，在動 symlink 之前
+  assertNoLongRuns()
   const info = getInstallInfo()
   const currentLink = path.join(info.prefix, 'current')
   await execFileP('ln', ['-sfn', prevTarget, currentLink])

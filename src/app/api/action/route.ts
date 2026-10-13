@@ -3,9 +3,16 @@ import { exec } from 'child_process'
 import { startJob } from '@/lib/jobs/runner'
 import type { TriggerSource } from '@/lib/jobs/types'
 import { isBackupOrRestoreBusy } from '@/lib/backup/lock'
+import { hasLongRuns, longRunBusyBody, waitForNoLongRuns } from '@/lib/long-running'
 
 /** 備份/還原進行中，這些動作會把它打斷（還原中途被重啟可能留下搬到一半的資料） */
 const BLOCKED_DURING_BACKUP = new Set(['restart-dashboard', 'restart-openclaw', 'update-mcc', 'update-openclaw', 'reboot-system'])
+
+/**
+ * 會重啟 MCC 自己（或整台主機）的動作：MCC unit 是 KillMode=control-group，重啟會連同 apt/dpkg 等
+ * 子行程一起殺掉。長時間安裝作業進行中一律 409（見 long-running.ts）。restart-openclaw 只重啟 gateway，不在此列。
+ */
+const BLOCKED_DURING_LONG_RUN = new Set(['restart-dashboard', 'update-mcc', 'reboot-system'])
 
 /**
  * Quick Actions API — all commands are hardcoded static strings,
@@ -60,6 +67,8 @@ const actions: Record<string, ActionHandler> = {
         {
           name: 'schedule restart (mission-control)',
           inline: async (log) => {
+            // 入口已 409；這裡是入口之後才開始的安裝作業的最後防線
+            await waitForNoLongRuns((m) => log('system', m))
             log('stdout', 'scheduling restart in 2s')
             log('system', 'this process will be replaced; log resumes after restart')
             setTimeout(() => {
@@ -124,6 +133,7 @@ const actions: Record<string, ActionHandler> = {
         {
           name: 'schedule reboot',
           inline: async (log) => {
+            await waitForNoLongRuns((m) => log('system', m))
             log('system', 'reboot scheduled; the host goes down in a few seconds')
             exec(buildRebootCommand())
             return 0
@@ -204,6 +214,7 @@ const actions: Record<string, ActionHandler> = {
         {
           name: `restart service (${service})`,
           inline: async (log) => {
+            await waitForNoLongRuns((m) => log('system', m))
             log('stdout', `scheduling restart in 2s — service: ${service}`)
             log('system', 'this process will be replaced; log resumes after restart')
             scheduleServiceRestart(service)
@@ -233,6 +244,19 @@ const actions: Record<string, ActionHandler> = {
     })
     return { success: true, jobId: meta.id }
   },
+
+  // 「一鍵修復」：上次 apt 被中斷（dpkg interrupted）時由通知或系統更新卡觸發。走 job runner 才有日誌；
+  // dpkg-repair 在 LONG_RUNNING_JOB_KINDS 裡，執行期間同樣擋住重啟。
+  'dpkg-repair': async ({ triggeredBy }) => {
+    const { dpkgRepairStrictShell, DPKG_REPAIR_LABEL } = await import('@/lib/system-update/dpkg-repair')
+    const meta = startJob({
+      kind: 'dpkg-repair',
+      label: DPKG_REPAIR_LABEL,
+      triggeredBy,
+      phases: [{ name: 'dpkg --configure -a', shell: dpkgRepairStrictShell() }],
+    })
+    return { success: true, jobId: meta.id, message: 'dpkg repair started' }
+  },
 }
 
 const VALID_SOURCES: TriggerSource[] = ['header-button', 'settings-card', 'quick-action', 'cron', 'api']
@@ -255,6 +279,10 @@ export async function POST(req: NextRequest) {
         { success: false, error: '備份或還原進行中，暫時無法執行此操作（重啟、升級或重開機）；請等它完成後再試' },
         { status: 409 },
       )
+    }
+
+    if (BLOCKED_DURING_LONG_RUN.has(action) && hasLongRuns()) {
+      return NextResponse.json(longRunBusyBody(), { status: 409 })
     }
 
     const result = await actions[action]({ triggeredBy })

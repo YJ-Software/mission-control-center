@@ -7,6 +7,7 @@ import { RotateCcw, Trash2, Archive, AlertTriangle, X, ExternalLink } from 'luci
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { restoreAction, systemLogJobUrl } from '@/lib/backup/ui-helpers'
 import type { BackupKind } from '@/lib/backup/archive-format'
+import { useLongRunMessage } from '@/hooks/use-long-run-message'
 
 interface BackupFile {
   filename: string
@@ -35,6 +36,7 @@ type ModalState =
 
 export function BackupRestore() {
   const t = useTranslations('backup')
+  const longRunMessage = useLongRunMessage()
   const locale = useLocale()
   const queryClient = useQueryClient()
 
@@ -77,7 +79,7 @@ export function BackupRestore() {
   }
 
   function failureMessage(status: number, data: { error?: string }): string {
-    if (status === 409) return t('restore.busy')
+    if (status === 409) return longRunMessage(data) ?? t('restore.busy')
     return data.error || t('restore.requestFailed')
   }
 

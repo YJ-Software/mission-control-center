@@ -4,6 +4,7 @@ import { verifyBackupToken, getAllBackupDirs } from '@/lib/backup/helpers'
 import { isBackupOrRestoreBusy } from '@/lib/backup/scripts'
 import { resolveInsideDirs } from '@/lib/backup/path-guard'
 import { describeBackup, startRestore, BackupBusyError, RestoreRejectedError } from '@/lib/backup/run-restore'
+import { LongRunBusyError, longRunBusyBody } from '@/lib/long-running'
 import type { TriggerSource } from '@/lib/jobs/types'
 import { initDb } from '@/lib/db'
 
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
     const meta = startRestore(file, triggeredBy)
     return NextResponse.json({ ok: true, jobId: meta.id })
   } catch (err) {
+    if (err instanceof LongRunBusyError) return NextResponse.json(longRunBusyBody(err.runs), { status: 409 })
     if (err instanceof BackupBusyError) return NextResponse.json({ error: err.message }, { status: 409 })
     if (err instanceof RestoreRejectedError) return NextResponse.json({ error: err.message }, { status: 400 })
     return NextResponse.json({ error: String(err instanceof Error ? err.message : err) }, { status: 500 })

@@ -531,3 +531,32 @@ describe('M4：還原可能把舊版「💾 Backup:」cron 帶回來，還原後
     expect(finalStatus).toBe('success')
   })
 })
+
+describe('startRestore：長時間安裝作業進行中（release 還原最後會重啟 MCC）', () => {
+  const busy = () => [{ id: 1, name: 'Obsidian 安裝', startedAt: '2026-10-13T06:00:00.000Z', pid: 42 }]
+
+  it('release 的 MCC 還原：在動任何東西之前丟 LongRunBusyError，不上鎖、不開 job', async () => {
+    const { LongRunBusyError } = await import('@/lib/long-running')
+    const file = buildArchive()
+    expect(() => startRestore(file, 'api', deps({ listLongRuns: busy }))).toThrow(LongRunBusyError)
+    expect(spec).toBeNull()
+    expect(calls).toEqual([])
+    expect(isBackupOrRestoreBusy()).toBe(false)
+  })
+
+  it('dev 模式不重啟 MCC，不擋', async () => {
+    startRestore(buildArchive(), 'api', deps({ listLongRuns: busy, getInstall: () => ({ mode: 'dev', service: 's' }) }))
+    expect(spec).not.toBeNull()
+    await done
+  })
+
+  it('重啟 phase 先等長時間作業結束才排程重啟（入口之後才開始的安裝）', async () => {
+    startRestore(buildArchive(), 'api', deps({
+      restartLockHoldMs: 10,
+      waitForNoLongRuns: async (log) => { calls.push('wait-long-runs'); log('等待中') },
+    }))
+    await done
+    expect(calls.slice(-2)).toEqual(['wait-long-runs', 'restart:mission-control'])
+    expect(logs).toContain('等待中')
+  })
+})

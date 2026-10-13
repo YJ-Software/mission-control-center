@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { isBackupOrRestoreBusy } from '@/lib/backup/lock'
+import { hasLongRuns, longRunBusyBody, waitForNoLongRuns } from '@/lib/long-running'
 import { createWriteStream } from 'node:fs'
 import { unlink } from 'node:fs/promises'
 import path from 'node:path'
@@ -60,6 +61,10 @@ export async function POST(request: Request) {
       { error: '備份或還原進行中，暫時無法升級；請等它完成後再試' },
       { status: 409 },
     )
+  }
+  // 升級最後會重啟 MCC，連同 cgroup 內的 apt/dpkg 一起殺掉
+  if (hasLongRuns()) {
+    return NextResponse.json(longRunBusyBody(), { status: 409 })
   }
   const info = getInstallInfo()
   if (info.mode !== 'release') {
@@ -158,6 +163,8 @@ export async function POST(request: Request) {
     phases.push({
       name: `restart service (${service})`,
       inline: async (log) => {
+        // 入口已 409；下載／解壓期間才開始的安裝作業在這裡等它結束
+        await waitForNoLongRuns((m) => log('system', m))
         log('stdout', `scheduling restart in 2s — service: ${service}`)
         log('system', 'this process will be replaced; log resumes after restart')
         scheduleServiceRestart(service)

@@ -106,3 +106,17 @@ describe('POST /api/backup/restore', () => {
     expect(m.start).toHaveBeenCalledWith(fs.realpathSync(file), 'settings-card')
   })
 })
+
+describe('POST /api/backup/restore：長時間安裝作業進行中', () => {
+  it('409，回應帶作業名稱與開始時間', async () => {
+    const { LongRunBusyError } = await import('@/lib/long-running')
+    m.start.mockImplementation(() => {
+      throw new LongRunBusyError([{ id: 1, name: 'Obsidian 安裝', startedAt: '2026-10-13T06:00:00.000Z', pid: 7 }])
+    })
+    const res = await POST(req({ file }))
+    expect(res.status).toBe(409)
+    const body = await res.json()
+    expect(body.code).toBe('long-run-busy')
+    expect(body.longRuns).toEqual([{ name: 'Obsidian 安裝', startedAt: '2026-10-13T06:00:00.000Z', pid: 7, step: null }])
+  })
+})

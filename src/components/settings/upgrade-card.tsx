@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Download, Loader2, CheckCircle2, AlertCircle, ArrowUpCircle, Package, Settings, Save, Terminal, Copy, Check, ScrollText } from 'lucide-react'
+import { useLongRunMessage } from '@/hooks/use-long-run-message'
 
 interface UpgradeStatus {
   mode: 'release' | 'dev' | 'unknown'
@@ -82,6 +83,7 @@ export function UpgradeCard() {
   const [check, setCheck] = useState<CheckResult | null>(null)
   const [phase, setPhase] = useState<Phase>('idle')
   const [message, setMessage] = useState<string>('')
+  const longRunMessage = useLongRunMessage()
   const [showManifestConfig, setShowManifestConfig] = useState(false)
   const [manifestUrlDraft, setManifestUrlDraft] = useState('')
   const [manifestSaved, setManifestSaved] = useState(false)
@@ -190,7 +192,7 @@ export function UpgradeCard() {
       const data = (await res.json()) as { ok?: boolean; jobId?: string; error?: string }
       if (!res.ok) {
         setPhase('error')
-        setMessage(data.error || `apply failed (${res.status})`)
+        setMessage(longRunMessage(data) ?? (data.error || `apply failed (${res.status})`))
         return
       }
       if (data.jobId) setMccJobId(data.jobId)
@@ -219,7 +221,7 @@ export function UpgradeCard() {
       const data = (await res.json()) as { ok?: boolean; jobId?: string; error?: string }
       if (!res.ok) {
         setPhase('error')
-        setMessage(data.error || `apply failed (${res.status})`)
+        setMessage(longRunMessage(data) ?? (data.error || `apply failed (${res.status})`))
         return
       }
       if (data.jobId) setMccJobId(data.jobId)

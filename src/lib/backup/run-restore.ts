@@ -16,10 +16,12 @@ import { preparePendingDbRestore, commitPendingDbRestore, discardPreparedDbResto
 import { checkScriptsAvailable } from './helpers'
 import { BackupBusyError, isBackupOrRestoreBusy, acquireLock, releaseLock } from './lock'
 import { assertNoBlockingJob } from './job-guard'
+import { listLongRuns, LongRunBusyError, waitForNoLongRuns, type LongRunEntry } from '@/lib/long-running'
 import { runRestore } from './scripts'
 import { requestLegacyBackupCronRecheck, type LegacyCronRecheckResult } from './scheduler'
 
 export { BackupBusyError }
+export { LongRunBusyError }
 
 /** 請求本身不被接受（類型不支援、舊腳本不在…）：route 回 400 */
 export class RestoreRejectedError extends Error {}
@@ -60,6 +62,10 @@ export interface RestoreDeps {
   dbPath: string
   /** 解壓暫存目錄的父目錄（~/.mission-control，與家目錄同一個檔案系統） */
   workRoot: string
+  /** 本行程登記的長時間安裝作業（apt/docker/npm）；release 還原最後會重啟 MCC，非空就拒絕 */
+  listLongRuns: () => LongRunEntry[]
+  /** 重啟前等長時間作業結束（入口之後才開始的安裝作業的最後防線） */
+  waitForNoLongRuns: (log: (text: string) => void) => Promise<unknown>
 }
 
 export function defaultTar(args: string[]): Promise<string> {
@@ -158,6 +164,8 @@ const defaultDeps = (): RestoreDeps => ({
   now: () => new Date(),
   dbPath: DB_PATH,
   workRoot: path.dirname(DB_PATH),
+  listLongRuns,
+  waitForNoLongRuns: (log) => waitForNoLongRuns(log),
 })
 
 function errText(e: unknown): string {
@@ -324,6 +332,11 @@ export function startRestore(
   // 單一執行：同步檢查並上鎖（與備份共用）
   if (isBackupOrRestoreBusy()) throw new BackupBusyError()
   assertNoBlockingJob(deps.findBlockingJob)
+  // release 的 MCC 還原最後會重啟 MCC（KillMode=control-group 會連同 apt/dpkg 一起殺掉）：在動任何東西之前拒絕
+  if (kind === 'mcc' && mode === 'release') {
+    const runs = deps.listLongRuns()
+    if (runs.length > 0) throw new LongRunBusyError(runs)
+  }
   const lockToken = acquireLock(RESTORE_LOCK)
 
   const st = {
@@ -464,6 +477,7 @@ export function startRestore(
       if (release) {
         phases.push(phase('schedule MCC restart', async (log) => {
           const service = deps.getInstall().service
+          await deps.waitForNoLongRuns((m) => log('system', m))
           log('system', `2 秒後重啟 MCC（service: ${service}）`)
           // runner 在這個 phase 回傳時就把工作標為 success，此時 MCC 還沒重啟、資料庫也還沒套用
           log('system', '此工作在排程重啟後即標示完成；資料庫是否成功套用，請在 MCC 重啟後到備份頁查看還原結果')

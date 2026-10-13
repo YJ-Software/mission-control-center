@@ -19,7 +19,11 @@
     "empty": "目前没有通知",
     "markAllRead": "全部标为已读",
     "clearAll": "清空",
-    "open": "打开"
+    "open": "打开",
+    "repairDpkg": "修复",
+    "repairDpkgRunning": "修复中…",
+    "repairDpkgStarted": "已开始修复，可在系统日志查看进度",
+    "repairDpkgFailed": "无法开始修复：{error}"
   },
   "nav": {
     "dashboard": "仪表板",
@@ -2638,5 +2642,10 @@
     "title": "AI 助理",
     "subtitle": "与您的 AI 助理对话",
     "openFullMcc": "完整控制台"
+  },
+  "longRun": {
+    "busy": "以下安装作业进行中，现在重启会中断它，可能让系统软件包停在安装一半：{list}。请等它完成后再试。",
+    "item": "{name}（{time} 开始）",
+    "sep": "、"
   }
 }
