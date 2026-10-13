@@ -2644,8 +2644,15 @@
     "openFullMcc": "Full console"
   },
   "longRun": {
-    "busy": "An install is still running; restarting now would interrupt it and may leave system packages half-installed: {list}. Try again after it finishes.",
-    "item": "{name} (started {time})",
-    "sep": ", "
+    "title": "An install is still running",
+    "intro": "Restarting now would interrupt the following and may leave system packages half-installed. Waiting for it to finish is recommended.",
+    "started": "started {time}",
+    "pid": "PID {pid}",
+    "noPid": "no PID",
+    "step": "Current step: {step}",
+    "wait": "Wait for it",
+    "force": "Restart anyway",
+    "forceConfirm": "Force the restart? The work below will be interrupted. If it was a package install, use “Repair” in the notification center afterwards, or run sudo dpkg --configure -a.",
+    "forceConfirmButton": "Force restart"
   }
 }

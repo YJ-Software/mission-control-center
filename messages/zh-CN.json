@@ -2644,8 +2644,15 @@
     "openFullMcc": "完整控制台"
   },
   "longRun": {
-    "busy": "以下安装作业进行中，现在重启会中断它，可能让系统软件包停在安装一半：{list}。请等它完成后再试。",
-    "item": "{name}（{time} 开始）",
-    "sep": "、"
+    "title": "安装作业进行中",
+    "intro": "现在重启会中断以下作业，可能让系统软件包停在安装一半。建议等它完成再重启。",
+    "started": "{time} 开始",
+    "pid": "PID {pid}",
+    "noPid": "无 PID",
+    "step": "当前步骤：{step}",
+    "wait": "等它完成",
+    "force": "仍要重启",
+    "forceConfirm": "确定要强制重启？以下作业会被中断。若中断的是软件包安装，之后可在通知中心点“修复”，或手动执行 sudo dpkg --configure -a。",
+    "forceConfirmButton": "确定强制重启"
   }
 }

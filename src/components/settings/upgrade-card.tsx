@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Download, Loader2, CheckCircle2, AlertCircle, ArrowUpCircle, Package, Settings, Save, Terminal, Copy, Check, ScrollText } from 'lucide-react'
-import { useLongRunMessage } from '@/hooks/use-long-run-message'
+import { useLongRunGuard } from '@/hooks/use-long-run-guard'
 
 interface UpgradeStatus {
   mode: 'release' | 'dev' | 'unknown'
@@ -83,7 +83,7 @@ export function UpgradeCard() {
   const [check, setCheck] = useState<CheckResult | null>(null)
   const [phase, setPhase] = useState<Phase>('idle')
   const [message, setMessage] = useState<string>('')
-  const longRunMessage = useLongRunMessage()
+  const guard = useLongRunGuard()
   const [showManifestConfig, setShowManifestConfig] = useState(false)
   const [manifestUrlDraft, setManifestUrlDraft] = useState('')
   const [manifestSaved, setManifestSaved] = useState(false)
@@ -179,20 +179,26 @@ export function UpgradeCard() {
     }
   }
 
-  const handleFileUpload = async (file: File) => {
+  const handleFileUpload = async (file: File, force = false) => {
     setPhase('uploading')
     setMessage(`Uploading ${file.name}…`)
     try {
       setPhase('applying')
       const res = await fetch('/api/upgrade/apply', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream', 'x-triggered-by': 'settings-card' },
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'x-triggered-by': 'settings-card',
+          // 上傳模式的 body 是 tarball，強制旗標放 header
+          ...(force ? { 'x-force-restart': '1' } : {}),
+        },
         body: file,
       })
       const data = (await res.json()) as { ok?: boolean; jobId?: string; error?: string }
       if (!res.ok) {
         setPhase('error')
-        setMessage(longRunMessage(data) ?? (data.error || `apply failed (${res.status})`))
+        if (guard.handle(data, () => { void handleFileUpload(file, true) })) { setPhase('idle'); setMessage(''); return }
+        setMessage(data.error || `apply failed (${res.status})`)
         return
       }
       if (data.jobId) setMccJobId(data.jobId)
@@ -204,7 +210,7 @@ export function UpgradeCard() {
     }
   }
 
-  const handleApplyFromManifest = async () => {
+  const handleApplyFromManifest = async (force = false) => {
     if (!check?.artifact) return
     setPhase('applying')
     setMessage(`Starting upgrade to ${check.latest}…`)
@@ -216,12 +222,14 @@ export function UpgradeCard() {
           url: check.artifact.url,
           sha256: check.artifact.sha256 || undefined,
           triggeredBy: 'settings-card',
+          ...(force ? { force: true } : {}),
         }),
       })
       const data = (await res.json()) as { ok?: boolean; jobId?: string; error?: string }
       if (!res.ok) {
         setPhase('error')
-        setMessage(longRunMessage(data) ?? (data.error || `apply failed (${res.status})`))
+        if (guard.handle(data, () => { void handleApplyFromManifest(true) })) { setPhase('idle'); setMessage(''); return }
+        setMessage(data.error || `apply failed (${res.status})`)
         return
       }
       if (data.jobId) setMccJobId(data.jobId)
@@ -255,6 +263,7 @@ export function UpgradeCard() {
 
   return (
     <div className="cyber-card p-5 space-y-4">
+      {guard.dialog}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-white/80 flex items-center gap-2">
           <Package className="w-4 h-4 text-cyan-400" />
@@ -371,7 +380,7 @@ export function UpgradeCard() {
                   )}
                 </div>
                 <button
-                  onClick={handleApplyFromManifest}
+                  onClick={() => { void handleApplyFromManifest() }}
                   disabled={busy}
                   className="bg-cyan-400/15 border border-cyan-400/40 text-cyan-300 hover:bg-cyan-400/25 transition-all rounded-xl px-4 py-2 flex items-center gap-1 text-sm disabled:opacity-40"
                 >

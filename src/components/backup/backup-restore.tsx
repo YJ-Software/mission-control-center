@@ -7,7 +7,7 @@ import { RotateCcw, Trash2, Archive, AlertTriangle, X, ExternalLink } from 'luci
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { restoreAction, systemLogJobUrl } from '@/lib/backup/ui-helpers'
 import type { BackupKind } from '@/lib/backup/archive-format'
-import { useLongRunMessage } from '@/hooks/use-long-run-message'
+import { useLongRunGuard } from '@/hooks/use-long-run-guard'
 
 interface BackupFile {
   filename: string
@@ -36,7 +36,7 @@ type ModalState =
 
 export function BackupRestore() {
   const t = useTranslations('backup')
-  const longRunMessage = useLongRunMessage()
+  const guard = useLongRunGuard()
   const locale = useLocale()
   const queryClient = useQueryClient()
 
@@ -65,21 +65,21 @@ export function BackupRestore() {
 
   const backupToken = dashboardData?.backupToken ?? ''
 
-  async function postRestore(file: BackupFile, dryRun: boolean) {
+  async function postRestore(file: BackupFile, dryRun: boolean, force = false) {
     const res = await fetch('/api/backup/restore', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Backup-Token': backupToken,
       },
-      body: JSON.stringify({ file: file.filePath, dryRun }),
+      body: JSON.stringify({ file: file.filePath, dryRun, ...(force ? { force: true } : {}) }),
     })
     const data = await res.json().catch(() => ({}))
     return { res, data }
   }
 
   function failureMessage(status: number, data: { error?: string }): string {
-    if (status === 409) return longRunMessage(data) ?? t('restore.busy')
+    if (status === 409) return t('restore.busy')
     return data.error || t('restore.requestFailed')
   }
 
@@ -97,11 +97,16 @@ export function BackupRestore() {
     }
   }
 
-  async function handleConfirmRestore(file: BackupFile, dryRunOutput: string) {
+  async function handleConfirmRestore(file: BackupFile, dryRunOutput: string, force = false) {
     setModal({ phase: 'restoring', file, output: dryRunOutput })
     try {
-      const { res, data } = await postRestore(file, false)
+      const { res, data } = await postRestore(file, false, force)
       if (!res.ok || !data.jobId) {
+        // 長時間安裝作業進行中（release 還原最後會重啟 MCC）：關掉還原對話框，改顯示作業清單與「仍要重啟」
+        if (guard.handle(data, () => { void handleConfirmRestore(file, dryRunOutput, true) })) {
+          setModal(null)
+          return
+        }
         setModal({ phase: 'error', file, message: failureMessage(res.status, data) })
         return
       }
@@ -137,6 +142,7 @@ export function BackupRestore() {
 
   return (
     <div className="space-y-4">
+      {guard.dialog}
       {/* Header */}
       <div className="cyber-card p-4">
         <h2 className="text-sm font-semibold text-white/80 uppercase tracking-wider">

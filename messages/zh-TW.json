@@ -2644,8 +2644,15 @@
     "openFullMcc": "完整控制台"
   },
   "longRun": {
-    "busy": "以下安裝作業進行中，現在重啟會中斷它，可能讓系統套件停在安裝一半：{list}。請等它完成後再試。",
-    "item": "{name}（{time} 開始）",
-    "sep": "、"
+    "title": "安裝作業進行中",
+    "intro": "現在重啟會中斷以下作業，可能讓系統套件停在安裝一半。建議等它完成再重啟。",
+    "started": "{time} 開始",
+    "pid": "PID {pid}",
+    "noPid": "無 PID",
+    "step": "目前步驟：{step}",
+    "wait": "等它完成",
+    "force": "仍要重啟",
+    "forceConfirm": "確定要強制重啟？以下作業會被中斷。若中斷的是套件安裝，之後可在通知中心按「修復」，或手動執行 sudo dpkg --configure -a。",
+    "forceConfirmButton": "確定強制重啟"
   }
 }

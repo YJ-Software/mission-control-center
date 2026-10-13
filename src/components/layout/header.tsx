@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import type { OpenClawVersionInfo } from '@/lib/services-status'
 import { NotificationCenter } from './notification-center'
 import { CHAT_PATH } from '@/lib/landing'
-import { useLongRunMessage } from '@/hooks/use-long-run-message'
+import { useLongRunGuard } from '@/hooks/use-long-run-guard'
 
 const locales = [
   { code: 'zh-TW', label: '繁' },
@@ -36,7 +36,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   const [rebooting, setRebooting] = useState(false)
   const [rebootJobId, setRebootJobId] = useState<string | null>(null)
   const t = useTranslations('header')
-  const longRunMessage = useLongRunMessage()
+  const guard = useLongRunGuard()
   const queryClient = useQueryClient()
 
   const { data: versionInfo } = useQuery<{ openclawVersion: OpenClawVersionInfo | null }>({
@@ -91,14 +91,15 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
     }
   }
 
-  async function handleUpdateMcc() {
-    if (!confirm(t('updateMccConfirm', { version: mccCheck?.latest ?? '' }))) return
+  async function handleUpdateMcc(force = false) {
+    // force 重送時使用者已在長時間作業對話框確認過兩次
+    if (!force && !confirm(t('updateMccConfirm', { version: mccCheck?.latest ?? '' }))) return
     setUpdatingMcc(true)
     try {
       const res = await fetch('/api/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update-mcc', triggeredBy: 'header-button' }),
+        body: JSON.stringify({ action: 'update-mcc', triggeredBy: 'header-button', ...(force ? { force: true } : {}) }),
       })
       const data = await res.json().catch(() => ({}))
       if (data?.jobId) setMccJobId(data.jobId)
@@ -108,8 +109,8 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
       // reload after a beat.
       if (data?.success !== false) {
         setTimeout(() => window.location.reload(), 8000)
-      } else {
-        alert(longRunMessage(data) ?? t('updateMccFailed', { error: data?.error ?? 'unknown' }))
+      } else if (!guard.handle(data, () => { void handleUpdateMcc(true) })) {
+        alert(t('updateMccFailed', { error: data?.error ?? 'unknown' }))
       }
     } finally {
       setUpdatingMcc(false)
@@ -133,21 +134,21 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
     }
   }
 
-  async function handleReboot() {
+  async function handleReboot(force = false) {
     // Rebooting drops every session on the box, so make them mean it.
-    if (!confirm(t('rebootConfirm'))) return
+    if (!force && !confirm(t('rebootConfirm'))) return
     setRebooting(true)
     try {
       const res = await fetch('/api/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'reboot-system', triggeredBy: 'header-button' }),
+        body: JSON.stringify({ action: 'reboot-system', triggeredBy: 'header-button', ...(force ? { force: true } : {}) }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok || data?.success === false) {
         // 被擋下（長時間安裝作業、備份／還原進行中）：說明原因，並讓按鈕可以再按
-        alert(longRunMessage(data) ?? (data?.error || `reboot failed (${res.status})`))
         setRebooting(false)
+        if (!guard.handle(data, () => { void handleReboot(true) })) alert(data?.error || `reboot failed (${res.status})`)
         return
       }
       if (data?.jobId) setRebootJobId(data.jobId)
@@ -221,7 +222,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
 
         {mccHasUpdate && (
           <button
-            onClick={handleUpdateMcc}
+            onClick={() => { void handleUpdateMcc() }}
             disabled={updatingMcc}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-medium
               bg-cyan-500/15 text-cyan-300 border border-cyan-500/30
@@ -300,7 +301,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
 
         {sys?.rebootRequired && (
           <button
-            onClick={handleReboot}
+            onClick={() => { void handleReboot() }}
             disabled={rebooting}
             title={sys.rebootPackages.length ? sys.rebootPackages.join(', ') : undefined}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-medium
@@ -359,6 +360,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
           <RefreshCw className={cn('w-4 h-4 sm:w-3.5 sm:h-3.5 transition-transform', refreshing && 'animate-spin')} />
         </button>
       </div>
+      {guard.dialog}
     </header>
   )
 }

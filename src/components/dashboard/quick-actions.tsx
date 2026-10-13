@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { Zap } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useLongRunMessage } from '@/hooks/use-long-run-message'
+import { useLongRunGuard } from '@/hooks/use-long-run-guard'
 
 interface ActionDef {
   id: string
@@ -27,7 +27,7 @@ const actionDefs: ActionDef[] = [
 
 export function QuickActions() {
   const t = useTranslations('quickActions')
-  const longRunMessage = useLongRunMessage()
+  const guard = useLongRunGuard()
   const [loading, setLoading] = useState<Record<string, boolean>>({})
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' } | null>(null)
 
@@ -37,8 +37,9 @@ export function QuickActions() {
     setTimeout(() => setToast(null), type === 'warning' ? 10000 : 4000)
   }, [])
 
-  const handleAction = useCallback(async (action: ActionDef) => {
-    if (action.confirm) {
+  const handleAction = useCallback(async (action: ActionDef, force = false) => {
+    // force 重送時使用者已在長時間作業對話框確認過兩次，不再問一次
+    if (action.confirm && !force) {
       const msg = t(action.confirm)
       if (!window.confirm(msg)) return
     }
@@ -49,7 +50,7 @@ export function QuickActions() {
       const res = await fetch('/api/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: action.id }),
+        body: JSON.stringify({ action: action.id, ...(force ? { force: true } : {}) }),
       })
       const data = await res.json()
 
@@ -58,15 +59,17 @@ export function QuickActions() {
         if (action.id === 'restart-dashboard') {
           setTimeout(() => location.reload(), 3000)
         }
-      } else {
-        showToast(longRunMessage(data) ?? (t('actionFailed') + ': ' + (data.error || 'Unknown error')), 'warning')
+      } else if (!guard.handle(data, () => { void handleActionRef.current(action, true) })) {
+        showToast(t('actionFailed') + ': ' + (data.error || 'Unknown error'), 'warning')
       }
     } catch (e) {
       showToast(t('actionFailed') + ': ' + (e instanceof Error ? e.message : String(e)), 'warning')
     } finally {
       setLoading(prev => ({ ...prev, [action.id]: false }))
     }
-  }, [t, showToast, longRunMessage])
+  }, [t, showToast, guard.handle])
+  const handleActionRef = useRef(handleAction)
+  handleActionRef.current = handleAction
 
   return (
     <div className="cyber-card animate-slide-in delay-300">
@@ -99,6 +102,8 @@ export function QuickActions() {
           })}
         </div>
       </div>
+
+      {guard.dialog}
 
       {/* Toast notification */}
       {toast && (

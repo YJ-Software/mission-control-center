@@ -25,19 +25,3 @@ export function parseLongRunBusy(data: unknown): LongRunInfo[] | null {
     }))
   return list.length > 0 ? list : null
 }
-
-function defaultTime(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
-}
-
-/** 「Obsidian 安裝（14:02）、apt update + upgrade（14:05）」；item 由呼叫端用 i18n 組 */
-export function formatLongRunList(
-  list: LongRunInfo[],
-  item: (name: string, time: string) => string = (n, t) => `${n} (${t})`,
-  fmtTime: (iso: string) => string = defaultTime,
-  sep = ', ',
-): string {
-  return list.map((r) => item(r.name, fmtTime(r.startedAt))).join(sep)
-}
