@@ -18,6 +18,13 @@ export default defineConfig({
   outputDir: 'test-results/output',
   use: {
     baseURL,
+    // On failure Playwright merges the trace chunks into trace.zip. With
+    // @playwright/test 1.59.x and earlier on Node 26, that merge never finishes
+    // once an entry is over 64 KB compressed (the failure screenshot and video
+    // always are): the bundled yauzl 3.2.1's fd-slicer overrides destroy() and
+    // its read stream never ends. Every failed spec then sat idle until the
+    // 10-min test timeout, turning an ~11-min smoke into 52 min. Fixed from
+    // 1.60; don't go below it.
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
