@@ -29,7 +29,18 @@ interface TurnResult { state: string | null; text: string }
  */
 export async function sendChatAndExpectReply(page: Page, baseURL: string, text: string) {
   await page.goto(`${baseURL}/chat`)
+  await sendChatTurnOnCurrentPage(page, text)
+}
 
+/**
+ * Same check, on whatever chat page is already open. /talk renders the very
+ * same ChatContent as /chat (same data-role / data-state markup), so the
+ * customer chat window shares this instead of re-implementing a weaker check:
+ * its old "a new non-empty bubble appeared" assertion passed on 2026-10-13
+ * while every turn answered "⚠️ Couldn't sign in to the AI service" (HTTP 401).
+ */
+export async function sendChatTurnOnCurrentPage(page: Page, text: string, opts: { timeout?: number } = {}) {
+  const timeout = opts.timeout ?? REPLY_TIMEOUT
   const input = page.locator('textarea').first()
   await expect(input).toBeVisible({ timeout: 15_000 })
   const marker = `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -51,7 +62,7 @@ export async function sendChatAndExpectReply(page: Page, baseURL: string, text: 
     expect(turn, 'no assistant reply after our message yet').not.toBeNull()
     expect(turn!.state, 'assistant reply still streaming').not.toBe('streaming')
     expect(turn!.text.length, 'assistant reply is empty').toBeGreaterThan(0)
-  }).toPass({ timeout: REPLY_TIMEOUT, intervals: [500, 1_000, 2_000] })
+  }).toPass({ timeout, intervals: [500, 1_000, 2_000] })
 
   const { state, text: reply } = turn! as TurnResult
   expect(state, `chat turn ended in state ${state}: ${reply.slice(0, 300)}`).not.toBe('error')

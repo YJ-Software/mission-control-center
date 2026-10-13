@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/login'
+import { sendChatTurnOnCurrentPage } from './utils/chat-turn'
 
 /**
  * The customer-facing chat window: no operator sidebar, one way through to the
@@ -23,17 +24,12 @@ test('/talk is a chat window without the operator shell, with a way into the ful
   await expect(out).toBeVisible()
   await expect(out).toHaveAttribute('href', '/dashboard')
 
-  // The chat works from here, not just renders. Count first: the panel restores
-  // history, so an assistant message being present proves nothing — only a NEW
-  // one does.
-  const assistant = page.locator('[data-role="assistant"]')
-  const before = await assistant.count()
-  await input.fill('回我一個 OK')
-  await input.press('Enter')
-  await expect(assistant).not.toHaveCount(before, { timeout: 120_000 })
-  await expect(async () => {
-    expect((await assistant.last().innerText()).trim().length).toBeGreaterThan(0)
-  }).toPass({ timeout: 120_000, intervals: [500, 1000, 2000] })
+  // The chat works from here, not just renders. The shared helper waits for the
+  // reply to THIS message (the panel restores history, so a pre-existing
+  // assistant bubble proves nothing) and fails on an error state or on
+  // OpenClaw's failure text — a 401 "Couldn't sign in to the AI service" also
+  // renders as a non-empty bubble and used to pass here.
+  await sendChatTurnOnCurrentPage(page, '回我一個 OK', { timeout: 120_000 })
 
   // And the button really lands on the full console.
   await out.click()
