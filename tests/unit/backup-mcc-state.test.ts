@@ -507,6 +507,39 @@ describe('還原時補上快照當下未知的 backup_logs 欄位', () => {
     expect(fs.statSync(pending).mode & 0o777).toBe(0o600)
   })
 
+  it('補大小後檔案若不健康：待還原檔退回未修補的快照，還原照常套用，並留一行錯誤紀錄', () => {
+    const archive = path.join(dir, NAME)
+    fs.writeFileSync(archive, Buffer.alloc(10))
+    const live = path.join(dir, 'db.sqlite')
+    makeLogsDb(live, []).close()
+    const snap = path.join(dir, 'snap.sqlite')
+    makeLogsDb(snap, [{ id: 5, status: 'completed', file_path: archive, file_size: null, completed_at: 100 }]).close()
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    preparePendingDbRestore(snap, live, archive, (target) => { fs.writeFileSync(target, 'not a database'.repeat(100)) })
+    commitPendingDbRestore(live)
+
+    expect(fs.readFileSync(`${live}.restore-pending`)).toEqual(fs.readFileSync(snap))
+    expect(fs.readdirSync(dir).filter((n) => n.includes('.restore-pending.'))).toEqual([])
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('[Backup]'), expect.anything())
+    errSpy.mockRestore()
+    expect(applyPendingDbRestore(live)).toBe('applied')
+    expect(rowOf(live, 5)).toMatchObject({ file_size: null, completed_at: 100 })
+  })
+
+  it('補大小丟錯：不影響還原、留一行錯誤紀錄（不再靜默）', () => {
+    const archive = path.join(dir, NAME)
+    fs.writeFileSync(archive, 'x')
+    const live = path.join(dir, 'db.sqlite'); makeDb(live)
+    const snap = path.join(dir, 'snap.sqlite'); makeDb(snap, 'from-backup')
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(() => preparePendingDbRestore(snap, live, archive, () => { throw new Error('boom') })).not.toThrow()
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('[Backup]'), expect.anything())
+    errSpy.mockRestore()
+    expect(fs.readFileSync(`${live}.restore-pending.tmp`)).toEqual(fs.readFileSync(snap))
+    expect(fs.readdirSync(dir).filter((n) => n.includes('.restore-pending.tmp.'))).toEqual([])
+  })
+
   it('快照裡沒有 backup_logs 表（非預期格式）時不影響還原排程', () => {
     const archive = path.join(dir, NAME)
     fs.writeFileSync(archive, 'x')

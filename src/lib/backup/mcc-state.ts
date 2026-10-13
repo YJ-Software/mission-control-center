@@ -55,7 +55,12 @@ const pendingOf = (dbPath: string) => `${dbPath}.restore-pending`
  * 第一步（在動任何現行資料之前）：驗證快照並複製成 <pending>.tmp。
  * 空間不足、權限等會失敗的步驟都在這裡；失敗時不留 .tmp。
  */
-export function preparePendingDbRestore(snapshotPath: string, dbPath: string, archivePath?: string): void {
+export function preparePendingDbRestore(
+  snapshotPath: string,
+  dbPath: string,
+  archivePath?: string,
+  fill: (target: string, archivePath: string, liveDbPath: string) => void = fillRestoredBackupRow,
+): void {
   if (!isSqliteDbHealthy(snapshotPath)) {
     throw new Error(`備份中的資料庫快照無法通過完整性檢查，已拒絕排程還原：${snapshotPath}`)
   }
@@ -67,9 +72,32 @@ export function preparePendingDbRestore(snapshotPath: string, dbPath: string, ar
     fs.rmSync(tmp, { force: true })
     throw err
   }
-  if (archivePath) {
-    // 純顯示資訊：補不上也照常還原
-    try { fillRestoredBackupRow(tmp, archivePath, dbPath) } catch { /* ignore */ }
+  if (archivePath) patchPreparedCopy(tmp, archivePath, dbPath, fill)
+}
+
+/**
+ * 補大小是純顯示資訊，絕不可讓還原失敗：在 .tmp 的另一份複本上修補，
+ * 修補後仍通過完整性檢查才換掉 .tmp；任何失敗都保留未修補的 .tmp（已驗過的快照），只記一行錯誤。
+ */
+function patchPreparedCopy(
+  tmp: string,
+  archivePath: string,
+  dbPath: string,
+  fill: (target: string, archivePath: string, liveDbPath: string) => void,
+): void {
+  const patched = `${tmp}.patch`
+  try {
+    fs.copyFileSync(tmp, patched)
+    fs.chmodSync(patched, 0o600)
+    fill(patched, archivePath, dbPath)
+    if (!isSqliteDbHealthy(patched)) throw new Error('修補後的資料庫未通過完整性檢查')
+    fs.renameSync(patched, tmp)
+  } catch (err) {
+    console.error('[Backup] 補上還原備份列的大小失敗，改用未修補的快照（不影響還原）:', err)
+  } finally {
+    for (const s of ['', '-journal', '-wal', '-shm']) {
+      try { fs.rmSync(patched + s, { force: true }) } catch { /* ignore */ }
+    }
   }
 }
 

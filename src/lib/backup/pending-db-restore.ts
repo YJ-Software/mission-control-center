@@ -23,8 +23,10 @@ export function isSqliteDbHealthy(file: string): boolean {
 const SUFFIXES = ['', '-wal', '-shm']
 
 /**
- * 注意：目前只有 server.ts 會 import db.ts。若日後有獨立腳本 import db.ts，
- * 它會在 server 執行中套用待還原檔，把 db 在連線底下換掉。
+ * 注意：同一行程會載入兩份 db.ts（server.ts 由 tsx 載入、Next bundle 的 route 再載一次，HMR 還會重跑），
+ * 只套用一次靠的是 applyPendingDbRestoreOnce 的 globalThis guard，不是只有一處 import。
+ * 若日後有「另一個行程」的獨立腳本 import db.ts，guard 擋不到，它會在 server 執行中
+ * 套用待還原檔，把 db 在連線底下換掉。
  *
  * 啟動時套用已排程的資料庫還原。必須在開啟 SQLite 連線之前呼叫；
  * 不得 import db.ts（會造成循環並提早開連線）。

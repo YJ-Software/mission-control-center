@@ -102,7 +102,11 @@ describe('接線（server.ts 會 spawn 整個 Next，無法直接 import 來測�
   const read = (p: string) => require('fs').readFileSync(require('path').join(process.cwd(), p), 'utf8') as string
   it('server.ts 的 SIGTERM/SIGINT 走 createGracefulShutdown，並把 closeDb 與連線追蹤交給它', () => {
     const src = read('server.ts')
-    expect(src).toMatch(/createGracefulShutdown\(\{[\s\S]*closeDb[\s\S]*\}\)/)
+    // 只看 createGracefulShutdown({ ... }) 這個參數物件本身（到第一個縮排兩格的 `})` 為止）
+    const call = src.match(/createGracefulShutdown\(\{\n([\s\S]*?)\n  \}\)/)
+    expect(call, 'server.ts 找不到 createGracefulShutdown({ ... }) 呼叫').not.toBeNull()
+    expect(call![1]).toMatch(/^\s*closeDb\s*[,:]/m)
+    expect(call![1]).toMatch(/^\s*sockets\s*:\s*openSockets\b/m)
     expect(src).toMatch(/trackConnections\(server\)/)
     expect(src).toMatch(/process\.on\('SIGTERM', gracefulShutdown\)/)
     expect(src).not.toMatch(/setTimeout\(\(\) => process\.exit\(1\)/)
