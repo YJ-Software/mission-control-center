@@ -1,7 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { useWebSocket } from '@/store/websocket'
+import { GatewayStatusLabel } from './gateway-status-label'
 import {
   Sheet,
   SheetContent,
@@ -19,7 +19,6 @@ interface MobileDrawerProps {
 
 export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
   const t = useTranslations('nav')
-  const { connected } = useWebSocket()
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -74,10 +73,7 @@ export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
           }}
         >
           <div className="flex items-center gap-2.5">
-            <span className={connected ? 'status-dot-active' : 'status-dot-error'} />
-            <span className="font-mono text-[10px] tracking-wide text-white/35">
-              {connected ? 'Gateway Linked' : 'Gateway Offline'}
-            </span>
+            <GatewayStatusLabel />
           </div>
         </div>
       </SheetContent>

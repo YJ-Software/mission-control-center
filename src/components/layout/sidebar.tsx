@@ -9,13 +9,12 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useWebSocket } from '@/store/websocket'
+import { GatewayStatusLabel } from './gateway-status-label'
 import { navItems } from '@/lib/nav-items'
 
 export function Sidebar() {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
-  const { connected } = useWebSocket()
   const t = useTranslations('nav')
 
   const { data: versionData } = useQuery<{ openclawVersion: { installed: string } | null }>({
@@ -125,10 +124,7 @@ export function Sidebar() {
       {!collapsed && (
         <div className="shrink-0 mx-2 mb-2 px-3 py-2 rounded-xl border border-white/[0.06] bg-white/[0.03]">
           <div className="flex items-center gap-2">
-            <span className={connected ? 'status-dot-active' : 'status-dot-error'} />
-            <span className="font-mono text-[10px] tracking-wide text-white/35">
-              {connected ? 'Gateway Linked' : 'Gateway Offline'}
-            </span>
+            <GatewayStatusLabel />
           </div>
           {mccDisplay && (
             <div className="mt-1 font-mono text-[10px] tracking-wide text-white/25" suppressHydrationWarning>

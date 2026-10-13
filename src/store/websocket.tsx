@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import { useTranslations } from 'next-intl'
+import { parseGatewayStatusFrame, type GatewayLinkStatus } from '@/lib/gateway/link-status'
 
 interface ActivityEvent {
   id: string
@@ -52,7 +53,10 @@ interface PendingRpc {
 }
 
 interface WebSocketContextValue {
+  /** This tab's socket to MCC is open. Says nothing about the Gateway. */
   connected: boolean
+  /** MCC's own link to the Gateway, pushed by server.ts; null until known. */
+  gatewayStatus: GatewayLinkStatus | null
   events: ActivityEvent[]
   sendMessage: (msg: object) => void
   agentStatuses: Record<string, string>
@@ -64,6 +68,7 @@ interface WebSocketContextValue {
 
 const WebSocketContext = createContext<WebSocketContextValue>({
   connected: false,
+  gatewayStatus: null,
   events: [],
   sendMessage: () => {},
   agentStatuses: {},
@@ -80,6 +85,7 @@ export function useWebSocket() {
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const t = useTranslations('common')
   const [connected, setConnected] = useState(false)
+  const [gatewayStatus, setGatewayStatus] = useState<GatewayLinkStatus | null>(null)
   const [events, setEvents] = useState<ActivityEvent[]>([])
   const [agentStatuses, setAgentStatuses] = useState<Record<string, string>>({})
   const wsRef = useRef<WebSocket | null>(null)
@@ -121,6 +127,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
       ws.onclose = () => {
         setConnected(false)
+        // Stale once we're cut off; the server re-sends it on reconnect.
+        setGatewayStatus(null)
         wsRef.current = null
         // Reject all pending RPCs on disconnect
         for (const [, pending] of pendingRpcsRef.current) {
@@ -139,6 +147,12 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const handleMessage = useCallback((msg: Record<string, unknown>) => {
+    const linkStatus = parseGatewayStatusFrame(msg)
+    if (linkStatus) {
+      setGatewayStatus(linkStatus)
+      return
+    }
+
     // Dashboard bus events (cs:*, notification:*, ...) forwarded from the
     // server-side EventEmitter. Re-emit as a window CustomEvent so any
     // listener (Conversations tab, NotificationCenter) can subscribe
@@ -289,7 +303,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [connect])
 
   return (
-    <WebSocketContext.Provider value={{ connected, events, sendMessage, agentStatuses, sendRpc, addChatListener, addToolStreamListener, addGatewayEventListener }}>
+    <WebSocketContext.Provider value={{ connected, gatewayStatus, events, sendMessage, agentStatuses, sendRpc, addChatListener, addToolStreamListener, addGatewayEventListener }}>
       {children}
     </WebSocketContext.Provider>
   )

@@ -49,7 +49,17 @@
     "backup": "Backup",
     "setup": "Setup",
     "agents": "Agents",
-    "customerService": "Customer Service"
+    "customerService": "Customer Service",
+    "gatewayStatus": {
+      "linked": "Gateway Linked",
+      "connecting": "Gateway Connecting…",
+      "pairing": "Gateway Pairing…",
+      "pairingRetry": "Pairing failed · retry #{n}",
+      "authFailed": "Gateway Auth Failed",
+      "offline": "Gateway Offline",
+      "dashboardOffline": "Dashboard Disconnected",
+      "hermes": "Hermes Runtime"
+    }
   },
   "common": {
     "loading": "Loading...",

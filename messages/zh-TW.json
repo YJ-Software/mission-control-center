@@ -49,7 +49,17 @@
     "backup": "備份",
     "setup": "初始設定",
     "agents": "Agents",
-    "customerService": "客服"
+    "customerService": "客服",
+    "gatewayStatus": {
+      "linked": "Gateway 已連線",
+      "connecting": "Gateway 連線中…",
+      "pairing": "Gateway 配對中…",
+      "pairingRetry": "配對失敗 · 第 {n} 次重試",
+      "authFailed": "Gateway 驗證失敗",
+      "offline": "Gateway 離線",
+      "dashboardOffline": "儀表板連線中斷",
+      "hermes": "Hermes 執行環境"
+    }
   },
   "common": {
     "loading": "載入中...",

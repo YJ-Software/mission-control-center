@@ -19,6 +19,12 @@ import { loadEnvConfig } from '@next/env'
 import { WebSocketServer, WebSocket } from 'ws'
 import { resolveSecretRef } from './src/lib/openclaw/secret-ref'
 import { reconnectDelayMs } from './src/lib/gateway-reconnect-backoff'
+import { PairingRetry, type PairingSnapshot } from './src/lib/gateway/pairing-retry'
+import {
+  gatewayStatusFrame,
+  type GatewayLinkState,
+  type GatewayLinkStatus,
+} from './src/lib/gateway/link-status'
 import { initDb, db, closeDb } from './src/lib/db'
 import { createGracefulShutdown, trackConnections } from './src/lib/shutdown'
 import { morningReportConfig } from './src/lib/schema'
@@ -187,18 +193,28 @@ function loadOrCreateDeviceIdentity(): DeviceIdentity {
 const DEVICE_IDENTITY = loadOrCreateDeviceIdentity()
 console.log(`[Gateway] Device identity ready (id=${DEVICE_IDENTITY.deviceId.slice(0, 12)}...)`)
 
-let pairingAttempted = false
-
 /** Find our pending pairing request via `openclaw devices list --json`
- *  and approve it. Returns true if approved, false otherwise.
+ *  and approve it. Resolves true if approved, false if no pending request
+ *  of ours showed up; rejects when the CLI fails (e.g. "Couldn't connect to
+ *  OpenClaw" while the Gateway restarts) or `signal` aborts. Retries are the
+ *  caller's job (PairingRetry) — this is one attempt.
  *
  *  Gateway writes the pending request asynchronously after sending the
  *  1008 close, so the first query right after disconnect can race ahead
- *  of the persist. Retry a few times with a short backoff. */
-async function tryAutoApproveDevice(): Promise<boolean> {
+ *  of the persist. Poll a few times with a short pause. */
+async function tryAutoApproveDevice(signal: AbortSignal): Promise<boolean> {
   const { execFile } = await import('child_process')
   const { promisify } = await import('util')
   const execFileAsync = promisify(execFile)
+  // Candidate-list lookup (npm-global, nvm, brew, …) plus an extended PATH:
+  // the unit's PATH is not guaranteed to contain openclaw.
+  const { findOpenclawBin } = await import('./src/lib/morning-report/openclaw')
+  const { getServerEnv } = await import('./src/lib/server-env')
+  const bin = findOpenclawBin()
+  const env = getServerEnv()
+  const throwIfAborted = () => {
+    if (signal.aborted) throw new Error('approval aborted')
+  }
 
   // openclaw 2026.6.1+ may prefix --json output with a clack "Doctor warnings"
   // box on stdout. Strip anything before the first '{' before parsing.
@@ -209,9 +225,9 @@ async function tryAutoApproveDevice(): Promise<boolean> {
 
   const findRequestId = async (): Promise<string | null> => {
     const { stdout } = await execFileAsync(
-      'openclaw',
+      bin,
       ['--log-level', 'silent', '--no-color', 'devices', 'list', '--json'],
-      { timeout: 10000, env: process.env },
+      { timeout: 10000, env, signal },
     )
     const data = parseJsonLoose(stdout) as { pending?: Array<{ requestId?: string; deviceId?: string }> }
     const pending = Array.isArray(data?.pending) ? data.pending : []
@@ -219,28 +235,25 @@ async function tryAutoApproveDevice(): Promise<boolean> {
     return req?.requestId ?? null
   }
 
-  try {
-    let requestId: string | null = null
-    for (let attempt = 0; attempt < 5; attempt++) {
-      requestId = await findRequestId()
-      if (requestId) break
-      await new Promise((r) => setTimeout(r, 500))
-    }
-    if (!requestId) {
-      console.warn('[Gateway] No pending pairing request matching our device id after 5 attempts')
-      return false
-    }
-    console.log(`[Gateway] Approving pairing request ${requestId}...`)
-    await execFileAsync(
-      'openclaw',
-      ['--log-level', 'silent', '--no-color', 'devices', 'approve', requestId],
-      { timeout: 10000, env: process.env },
-    )
-    return true
-  } catch (err) {
-    console.error('[Gateway] Auto-approve failed:', (err as Error).message)
+  let requestId: string | null = null
+  for (let attempt = 0; attempt < 5; attempt++) {
+    throwIfAborted()
+    requestId = await findRequestId()
+    if (requestId) break
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  if (!requestId) {
+    console.warn('[Gateway] No pending pairing request matching our device id after 5 attempts')
     return false
   }
+  throwIfAborted()
+  console.log(`[Gateway] Approving pairing request ${requestId}...`)
+  await execFileAsync(
+    bin,
+    ['--log-level', 'silent', '--no-color', 'devices', 'approve', requestId],
+    { timeout: 10000, env, signal },
+  )
+  return true
 }
 
 // Terminal session manager
@@ -298,7 +311,52 @@ const pendingRequests = new Map<string, { resolve: (value: unknown) => void; rej
   })
 }
 
+// -----------------------------------------------------------------------------
+// MCC → Gateway link status, pushed to every browser tab (sidebar indicator).
+// "linked" only after hello-ok; see src/lib/gateway/link-status.ts.
+// -----------------------------------------------------------------------------
+let gatewayWss: WebSocketServer | null = null
+let gatewayLink: GatewayLinkStatus = { state: 'connecting', since: Date.now(), runtime: 'openclaw' }
+
+function setGatewayLink(state: GatewayLinkState, extra: Partial<GatewayLinkStatus> = {}) {
+  // Same state: keep its details (retry count, …) unless overridden.
+  const prev: Partial<GatewayLinkStatus> = state === gatewayLink.state ? gatewayLink : {}
+  const next: GatewayLinkStatus = {
+    ...prev,
+    state,
+    since: prev.since ?? Date.now(),
+    runtime: gatewayLink.runtime,
+    lastClose: state === 'linked' ? null : gatewayLink.lastClose ?? null,
+    ...extra,
+  }
+  const changed = JSON.stringify(next) !== JSON.stringify(gatewayLink)
+  gatewayLink = next
+  if (changed && gatewayWss) broadcast(gatewayWss, gatewayStatusFrame(gatewayLink))
+}
+
+// Self-pairing: one approval at a time, backoff retries, reset on hello-ok.
+const pairing = new PairingRetry({
+  approve: (signal) => tryAutoApproveDevice(signal),
+  reconnect: () => {
+    if (gatewayWss) connectGateway(gatewayWss)
+  },
+  log: (level, message) => console[level](message),
+  onChange: (snap: PairingSnapshot) => {
+    if (snap.phase === 'approving') {
+      setGatewayLink('pairing', { pairingFailures: snap.failures, nextRetryAt: null })
+    } else if (snap.phase === 'waiting-retry') {
+      // failures === 0 here means "approved, reconnecting in 1s" — still pairing.
+      setGatewayLink(snap.failures > 0 ? 'pairing-retry' : 'pairing', {
+        pairingFailures: snap.failures,
+        nextRetryAt: snap.nextRetryAt,
+      })
+    }
+    // 'idle' → the reconnect/handshake that follows sets the state.
+  },
+})
+
 function connectGateway(wss: WebSocketServer) {
+  gatewayWss = wss
   try {
     // Re-read token every reconnect so token rotation (OpenClaw upgrades
     // regenerate it) is picked up without a dashboard restart.
@@ -311,6 +369,7 @@ function connectGateway(wss: WebSocketServer) {
 
     ws.on('open', () => {
       console.log('[Gateway] Connected to OpenClaw, waiting for challenge...')
+      setGatewayLink('connecting')
     })
 
     ws.on('message', (data) => {
@@ -408,6 +467,8 @@ function connectGateway(wss: WebSocketServer) {
         if (msg.type === 'res' && msg.ok && msg.payload?.type === 'hello-ok') {
           console.log('[Gateway] Authenticated successfully ✓')
           reconnectFailures = 0
+          pairing.onAuthenticated()
+          setGatewayLink('linked')
         }
       } catch {}
 
@@ -417,7 +478,8 @@ function connectGateway(wss: WebSocketServer) {
 
     ws.on('close', (code, reason) => {
       const reasonStr = reason?.toString() || ''
-      gatewayWs = null
+      if (gatewayWs === ws) gatewayWs = null
+      const lastClose = { code, reason: reasonStr }
       // Reject all pending RPC requests
       for (const [, pending] of pendingRequests) {
         clearTimeout(pending.timer)
@@ -425,19 +487,17 @@ function connectGateway(wss: WebSocketServer) {
       }
       pendingRequests.clear()
 
-      // First-run pairing: auto-approve our own device via `openclaw devices`
-      // when localhost Gateway rejects with "pairing required". Retry once.
-      if (code === 1008 && reasonStr.includes('pairing required') && !pairingAttempted) {
-        pairingAttempted = true
-        console.log('[Gateway] Pairing required — attempting auto-approval for our device...')
-        tryAutoApproveDevice().then((approved) => {
-          if (approved) {
-            console.log('[Gateway] Device approved, reconnecting in 1s...')
-            reconnectTimer = setTimeout(() => connectGateway(wss), 1000)
-          } else {
-            console.error('[Gateway] Auto-approval failed. Run: openclaw devices approve --latest')
-          }
-        })
+      // Pairing required (first run, or an OCD redeploy wiped the pairing
+      // records): self-approve via the `openclaw` CLI. PairingRetry owns the
+      // reconnect on this path — after success (1s) or failure (2s→30s
+      // backoff, unlimited) — so we must NOT also schedule one here, or two
+      // reconnect chains would run.
+      if (code === 1008 && reasonStr.includes('pairing required')) {
+        setGatewayLink(gatewayLink.state, { lastClose })
+        const result = pairing.onPairingRequired()
+        if (result !== 'started') {
+          console.log(`[Gateway] Pairing required — ${result === 'in-flight' ? 'approval already running' : 'retry already scheduled'}`)
+        }
         return
       }
 
@@ -448,12 +508,14 @@ function connectGateway(wss: WebSocketServer) {
       // hammering the gateway.
       const isAuthFailure = code === 1008 || reasonStr.includes('identity required') || reasonStr.includes('unauthorized')
       if (isAuthFailure) {
+        setGatewayLink('auth-failed', { lastClose })
         console.error(`[Gateway] Auth failed (${code} ${reasonStr}). Retrying in 30s with a fresh token...`)
         console.error('[Gateway] If this persists, check the token in ~/.openclaw/openclaw.json or .env.local')
         reconnectTimer = setTimeout(() => connectGateway(wss), 30000)
         return
       }
 
+      setGatewayLink('offline', { lastClose })
       const delay = reconnectDelayMs(reconnectFailures++)
       console.log(`[Gateway] Disconnected (${code} ${reasonStr}), reconnecting in ${delay / 1000}s...`)
       reconnectTimer = setTimeout(() => connectGateway(wss), delay)
@@ -464,6 +526,7 @@ function connectGateway(wss: WebSocketServer) {
     })
   } catch (err) {
     console.error('[Gateway] Connection failed:', err)
+    setGatewayLink('offline')
     reconnectTimer = setTimeout(() => connectGateway(wss), reconnectDelayMs(reconnectFailures++))
   }
 }
@@ -557,6 +620,7 @@ app.prepare().then(async () => {
   {
     const { agentRuntimeKind, resolveHermesConfig } = await import('./src/lib/agent-runtime')
     if (agentRuntimeKind() === 'hermes') {
+      gatewayLink = { ...gatewayLink, runtime: 'hermes' }
       try {
         // resolveHermesConfig() is the single source of truth for these vars;
         // duplicating the parsing here is what drifted last time.
@@ -585,6 +649,8 @@ app.prepare().then(async () => {
 
   wss.on('connection', (ws, req) => {
     console.log('[WS] Client connected from', req.socket.remoteAddress)
+    // Current MCC → Gateway link state; later changes arrive via setGatewayLink().
+    ws.send(gatewayStatusFrame(gatewayLink))
 
     ws.on('message', (data) => {
       const raw = data.toString()
@@ -607,7 +673,22 @@ app.prepare().then(async () => {
       // Forward client messages to gateway
       if (gatewayWs?.readyState === WebSocket.OPEN) {
         gatewayWs.send(raw)
+        return
       }
+      // No Gateway socket (offline, pairing, retrying): answer RPCs now with
+      // the reason instead of dropping them — dropping left the browser's
+      // sendRpc waiting its full 30s for a bare "RPC timeout: chat.send".
+      try {
+        const frame = JSON.parse(raw) as { type?: unknown; id?: unknown; method?: unknown }
+        if (frame?.type === 'req' && (typeof frame.id === 'string' || typeof frame.id === 'number')) {
+          ws.send(JSON.stringify({
+            type: 'res',
+            id: frame.id,
+            ok: false,
+            error: { message: `Gateway not connected (${gatewayLink.state})` },
+          }))
+        }
+      } catch { /* not JSON — nothing to answer */ }
     })
 
     ws.on('close', () => {
@@ -732,6 +813,7 @@ app.prepare().then(async () => {
     cleanups: [
       () => stopTunnel(),
       () => terminalManager?.shutdown(),
+      () => pairing.dispose(),
     ],
     closeDb,
     exit: (code) => process.exit(code),
