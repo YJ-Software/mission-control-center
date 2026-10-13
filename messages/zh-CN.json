@@ -1792,6 +1792,7 @@
       "port": "端口",
       "username": "用户名",
       "password": "密码",
+      "passwordKeepHint": "已设置密码，留空表示不变更",
       "mode": "模式",
       "active": "主动",
       "passive": "被动",

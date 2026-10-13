@@ -18,6 +18,8 @@ interface Destination {
   name: string
   type: 'ftp' | 'local'
   config: string
+  /** API 不回傳密碼本文（config.password 是遮罩值），只告訴前端「已設定」 */
+  hasPassword?: boolean
   enabled: number
   createdAt: number
   updatedAt: number
@@ -111,7 +113,8 @@ function initFormState(dest?: Destination): DestFormState {
   return {
     name: dest.name,
     type: dest.type,
-    ftp: dest.type === 'ftp' ? (cfg as FtpConfig) : emptyFtp(),
+    // 密碼欄一律從空白開始：留空送出 = 沿用伺服器上的既有密碼（API 回傳的只是遮罩值）
+    ftp: dest.type === 'ftp' ? { ...(cfg as FtpConfig), password: '' } : emptyFtp(),
     local: dest.type === 'local' ? (cfg as LocalConfig) : emptyLocal(),
   }
 }
@@ -217,6 +220,8 @@ function DestForm({ initial, onSave, onCancel, saving }: DestFormProps) {
                 type="password"
                 className={inputCls}
                 value={form.ftp.password}
+                placeholder={initial?.type === 'ftp' && initial.hasPassword ? t('destinations.passwordKeepHint') : undefined}
+                autoComplete="new-password"
                 onChange={(e) => setFtp({ password: e.target.value })}
               />
             </div>

@@ -3,12 +3,14 @@ import { db, initDb } from '@/lib/db'
 import { backupDestinations, backupJobs } from '@/lib/backup/schema'
 import { eq } from 'drizzle-orm'
 import { newId } from '@/lib/backup/helpers'
+import { toPublicDestination, mergeDestinationConfig } from '@/lib/backup/secrets'
 
 initDb()
 
 export async function GET() {
+  // 密碼不回傳到瀏覽器：換成遮罩值並附 hasPassword
   const items = db.select().from(backupDestinations).all()
-  return NextResponse.json(items)
+  return NextResponse.json(items.map(toPublicDestination))
 }
 
 export async function POST(req: NextRequest) {
@@ -18,7 +20,7 @@ export async function POST(req: NextRequest) {
 
   const id = newId()
   db.insert(backupDestinations).values({
-    id, name, type, config: JSON.stringify(config || {}),
+    id, name, type, config: JSON.stringify(mergeDestinationConfig(undefined, config || {}, type)),
   }).run()
 
   return NextResponse.json({ ok: true, id })
@@ -31,7 +33,12 @@ export async function PUT(req: NextRequest) {
   const set: Record<string, unknown> = { updatedAt: Math.floor(Date.now() / 1000) }
   if (updates.name !== undefined) set.name = updates.name
   if (updates.type !== undefined) set.type = updates.type
-  if (updates.config !== undefined) set.config = JSON.stringify(updates.config)
+  if (updates.config !== undefined) {
+    // 空密碼或遮罩值代表「不變更」：沿用 DB 裡的既有密碼
+    const existing = db.select().from(backupDestinations).where(eq(backupDestinations.id, id)).get()
+    const type = updates.type ?? existing?.type
+    set.config = JSON.stringify(mergeDestinationConfig(existing?.config, updates.config || {}, type))
+  }
   if (updates.enabled !== undefined) set.enabled = updates.enabled
 
   db.update(backupDestinations).set(set).where(eq(backupDestinations.id, id)).run()

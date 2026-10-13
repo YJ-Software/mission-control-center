@@ -1792,6 +1792,7 @@
       "port": "Port",
       "username": "Username",
       "password": "Password",
+      "passwordKeepHint": "Password saved — leave blank to keep it",
       "mode": "Mode",
       "active": "Active",
       "passive": "Passive",
