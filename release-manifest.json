@@ -1,28 +1,40 @@
 {
   "latest": {
-    "version": "0.3.93",
-    "mccVersion": "0.3.93",
-    "openclawVersion": "2026.9.8",
+    "version": "0.4.0",
+    "mccVersion": "0.4.0",
+    "openclawVersion": "2026.10.2",
     "validated": {
       "openclaw": [
-        "2026.9.5",
-        "2026.9.6",
-        "2026.9.8"
+        "2026.9.9",
+        "2026.10.2"
       ]
     },
-    "releaseDate": "2026-10-06T07:34:54.207Z",
-    "notes": "- **版本號顯示方式改變，這不是降版**：先前的版本顯示為 `2026.9.3-v0.3.92`（前面是配對的 OpenClaw 版本），從本版起只顯示 Mission Control 自己的版本，例如 `v0.3.93`。版本數字本身是往上升的，請放心升級\n  - 「這一版跟哪個 OpenClaw 版本驗證過」改為獨立記錄。本版已在 OpenClaw **2026.9.5、2026.9.6、2026.9.8** 上完整驗證\n  - 設定頁的升級卡片會標示目前的組合是否驗證過（Mission Control 與 OpenClaw 兩個升級按鈕都有）。沒驗證過的組合只會顯示提醒，**不會阻擋升級**\n- fix(logs): **儀表板日誌加上自動輪替**。日誌檔先前從不輪替，Gateway 長時間連不上時每天會增加數萬行。現在每小時檢查一次，超過 20MB 就輪替，保留 5 份壓縮檔，日誌路徑不變（fail2ban 照常運作）\n  - 不論是用升級按鈕、`upgrade.sh` 或全新安裝，新版第一次啟動時都會自動設定好，不需要手動操作\n- fix(server): Gateway 斷線時的重連改為逐步拉長間隔（5 秒起、最長 60 秒），連上即恢復。Gateway 長時間不在時不再狂刷日誌\n- fix(upgrade): 新版啟動時會依自帶的範本更新 Mission Control 自己的 systemd 服務設定，修正「用升級按鈕升級的機器永遠拿不到服務設定更新」。變更在下次重啟服務時生效，更新前會先備份；node 路徑沿用原本穩定的路徑，不會被固定到版本專屬目錄\n- fix(upgrade): 讀取發版資訊加上 10 秒逾時，發版伺服器沒有回應時，升級檢查不會再卡住\n- docs: 安裝完成時提示的看日誌指令改為 `tail -f ~/.mission-control/logs/mission-control.log`（先前提示的 journalctl 看不到應用程式輸出）\n- 內部：新增後端抽象層，預設行為完全不變",
+    "releaseDate": "2026-10-13T06:43:29.613Z",
+    "notes": "- feat(backup): 備份與還原整合進 MCC：備份改由 MCC 自己執行（OpenClaw 原生備份＋MCC 資料庫快照打包成單一檔案），排程由 MCC 內建執行，不再經由 AI agent 的 cron；舊的「💾 Backup:」cron 會在升級後自動移除（退避重試）\n- feat(backup): 還原改由 MCC 執行：驗證、交換式還原含回滾、OpenClaw 資料與 MCC 資料庫在重啟時套用；備份頁顯示新舊格式、還原進度與上次還原結果\n- feat(backup): 額外資料夾備份改為程式內建（release 版本原本無法使用）；FTP 目的地顯示明文傳輸警告\n- fix(backup): 還原時舊資料庫的 -wal/-shm 與主檔一起改名，pre-restore 複本可直接打開；還原回來的備份列補上檔案大小\n- fix(server): 關機時一定關閉 SQLite 連線（WAL 正常 checkpoint），並切斷殘留的瀏覽器長連線，stop 不再等 5 秒後以失敗結束\n- fix(jobs): 開機孤兒回收不再把仍在執行的長時間 job 標為失敗；重啟類 job 與備份／還原互鎖\n- fix(llm-auth): 設定寫入後確認生效，刪除憑證時保護 agent 覆寫不被蓋回\n- 已在 OpenClaw 2026.9.9 與 2026.10.2 以完整 E2E 驗證",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.3.93/mission-control-v0.3.93-linux-x64.tar.gz",
-        "sha256": "9fb983a4bcba41966898919b72f4fab33292ec01023e32ab49e97b18726fc440",
-        "size": 27507444
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.0/mission-control-v0.4.0-linux-x64.tar.gz",
+        "sha256": "302780cff283a5663e45b0f41b76b507110b19eade3e7fff715e50a79933c9fd",
+        "size": 26551475
       }
     ]
   },
   "history": [
+    {
+      "version": "0.3.93",
+      "mccVersion": "0.3.93",
+      "openclawVersion": "2026.9.8",
+      "validated": {
+        "openclaw": [
+          "2026.9.5",
+          "2026.9.6",
+          "2026.9.8"
+        ]
+      },
+      "releaseDate": "2026-10-06T07:34:54.207Z"
+    },
     {
       "version": "2026.9.3-v0.3.92",
       "mccVersion": "0.3.92",
@@ -76,12 +88,6 @@
       "mccVersion": "0.3.84",
       "openclawVersion": "2026.8.2",
       "releaseDate": "2026-09-02T17:44:05.097Z"
-    },
-    {
-      "version": "2026.8.2-v0.3.83",
-      "mccVersion": "0.3.83",
-      "openclawVersion": "2026.8.2",
-      "releaseDate": "2026-09-01T19:55:23.513Z"
     }
   ]
 }
