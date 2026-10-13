@@ -1,4 +1,4 @@
-import { execFile } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import { promisify } from 'util'
 import fs from 'fs'
 import path from 'path'
@@ -6,6 +6,7 @@ import { backupExtraFolder } from './extra-folder'
 import { getScriptsDir, getBackupOutputDir, formatBytes, checkScriptsAvailable } from './helpers'
 import { classifyBackupFile, type BackupKind } from './archive-format'
 import { resolveInsideDirs } from './path-guard'
+import { buildCurlAuthConfig, redactSecrets } from './secrets'
 
 const execFileAsync = promisify(execFile)
 
@@ -89,20 +90,58 @@ export async function runRestore(file: string, dryRun = false): Promise<string> 
 }
 
 // --- FTP upload ---
+const FTP_UPLOAD_TIMEOUT_MS = 620000
+const STDERR_TAIL_CHARS = 500
+
+/**
+ * 帳密不放 argv（同機 `ps`/`/proc/<pid>/cmdline` 看得到，且 execFile 失敗時會把整條命令列寫進錯誤訊息）：
+ * 用 `curl -K -` 從 stdin 讀 `user = "帳:密"`。失敗時自己組錯誤訊息（結束碼＋stderr 尾段，已遮罩），
+ * 絕不讓 `Command failed: <argv>` 流出。
+ */
 export async function uploadToFtp(
   localFile: string,
-  config: { ip: string; port: number; user: string; password: string; mode: string; path: string }
+  config: { ip: string; port: number; user: string; password: string; mode: string; path: string },
+  opts: { curlBin?: string } = {},
 ): Promise<void> {
+  const curlBin = opts.curlBin ?? '/usr/bin/curl'
   const remotePath = `ftp://${config.ip}:${config.port}${config.path}/`
-  const args = [
-    '-T', localFile,
-    remotePath,
-    '--user', `${config.user}:${config.password}`,
-  ]
+  const args = ['-K', '-', '-sS', '-T', localFile, remotePath]
   if (config.mode === 'passive') args.push('--ftp-pasv')
   args.push('--connect-timeout', '30', '--max-time', '600')
+  const secrets = [config.password]
 
-  await execFileAsync('/usr/bin/curl', args, { timeout: 620000 })
+  await new Promise<void>((resolve, reject) => {
+    let settled = false
+    let timedOut = false
+    let stderr = ''
+    const finish = (err?: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (err) reject(err)
+      else resolve()
+    }
+    const child = spawn(curlBin, args, { stdio: ['pipe', 'ignore', 'pipe'] })
+    const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL') }, FTP_UPLOAD_TIMEOUT_MS)
+    child.stderr?.on('data', (d: Buffer) => {
+      stderr += d.toString()
+      if (stderr.length > 8192) stderr = stderr.slice(-8192)
+    })
+    child.on('error', (err: NodeJS.ErrnoException) => {
+      finish(new Error(`無法執行 curl（${err.code ?? 'unknown'}）`))
+    })
+    child.on('close', (code, signal) => {
+      if (code === 0) return finish()
+      const tail = redactSecrets(stderr.trim().slice(-STDERR_TAIL_CHARS), secrets)
+      const reason = timedOut
+        ? `逾時（${FTP_UPLOAD_TIMEOUT_MS / 1000} 秒）`
+        : code !== null ? `curl 結束碼 ${code}` : `curl 被訊號 ${signal} 終止`
+      finish(new Error(`FTP 上傳失敗（${reason}）${tail ? `：${tail}` : ''}`))
+    })
+    // curl 提早結束時寫 stdin 會 EPIPE：結果以 close 事件為準
+    child.stdin?.on('error', () => { /* ignore */ })
+    child.stdin?.end(buildCurlAuthConfig(config.user, config.password))
+  })
 }
 
 // --- List backup files ---

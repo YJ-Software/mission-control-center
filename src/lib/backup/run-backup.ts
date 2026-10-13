@@ -14,6 +14,7 @@ import { snapshotMccDb, copyEnvFile, markBackupRowInSnapshot } from './mcc-state
 import { expandHome, getBackupOutputDir, getAllBackupDirs } from './helpers'
 import { BackupBusyError, isBackupOrRestoreBusy, acquireLock, releaseLock } from './lock'
 import { assertNoBlockingJob } from './job-guard'
+import { redactSecrets } from './secrets'
 import {
   runExtraBackup, uploadToFtp, deleteBackupFile,
 } from './scripts'
@@ -185,7 +186,8 @@ export function startBackupRun(
    * 只有尚未就位時才清掉。
    */
   const failRun = (phaseName: string, err: unknown, log?: Log) => {
-    const msg = `${phaseName}: ${errText(err)}`
+    // 錯誤訊息可能帶 FTP 帳密（例如舊式 curl 命令列）：寫進 job log／DB／UI 之前一律遮罩
+    const msg = redactSecrets(`${phaseName}: ${errText(err)}`, [destConfig.password as string | undefined])
     safeLog(log)('stderr', msg)
     try { cleanupTemp() } catch { /* ignore */ }
     const values: Record<string, unknown> = {

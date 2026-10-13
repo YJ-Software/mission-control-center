@@ -6,6 +6,7 @@ import os from 'os'
 import fs from 'fs'
 import { applyPendingDbRestoreOnce } from './backup/pending-db-restore'
 import { reconcileStaleBackupLogs } from './backup/reconcile'
+import { redactStoredBackupLogErrors } from './backup/secrets'
 import { registerDbConnection } from './db-close'
 
 export { closeDb } from './db-close'
@@ -359,6 +360,17 @@ export function initDb() {
   } catch (err: any) {
     if (!err.message?.includes('duplicate column') && !err.message?.includes('already exists')) {
       console.warn('Migration warning: backup_logs extra_file_paths', err.message)
+    }
+  }
+
+  // M7：舊版 FTP 上傳失敗會把 `--user 帳:密` 寫進 backup_logs.error；一次性遮罩（旗標記在 settings，冪等）。
+  // 測試行程不可改開發者的真實 DB。
+  if (!process.env.VITEST) {
+    try {
+      const n = redactStoredBackupLogErrors(sqlite)
+      if (n > 0) console.log(`[Backup] 已遮罩 ${n} 筆備份紀錄錯誤訊息中的 FTP 帳密`)
+    } catch (err) {
+      console.warn('[Backup] 遮罩備份紀錄中的 FTP 帳密失敗：', (err as Error).message)
     }
   }
 

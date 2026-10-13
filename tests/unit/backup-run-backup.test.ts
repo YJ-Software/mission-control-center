@@ -353,6 +353,24 @@ describe('startBackupRun', () => {
     expect(isBackupRunning()).toBe(false)
   })
 
+  it('M7：上傳錯誤訊息含 --user 帳:密 時，backup_logs.error 與 job log 都遮罩', async () => {
+    const pw = 'Leak3d-PW!'
+    db.update(backupDestinations).set({ type: 'ftp', config: JSON.stringify({ ip: '1.2.3.4', port: 21, user: 'u', password: pw, mode: 'passive', path: '/b' }) }).where(eq(backupDestinations.id, 'd1')).run()
+    const logged: string[] = []
+    logger = (_s, text) => { logged.push(text) }
+    const r = startBackupRun({ destinationId: 'd1', triggeredBy: 'api' }, makeDeps({
+      uploadToFtp: async () => { throw new Error(`Command failed: /usr/bin/curl -T /x ftp://1.2.3.4:21/b/ --user u:${pw} --ftp-pasv\n530 ${pw}`) },
+    }))
+    await done
+    const log = row(r.logId)
+    expect(log.status).toBe('failed')
+    expect(log.error).toContain('upload')
+    expect(log.error).toContain('--user ***')
+    expect(log.error).not.toContain(pw)
+    expect(logged.join('\n')).not.toContain(pw)
+    expect(logged.join('\n')).toContain('--user ***')
+  })
+
   it('保留數：刪除非預設目的地目錄中最舊的檔，retention 失敗不會讓備份變 failed', async () => {
     addJob({ retainCount: 1 })
     const oldFile = path.join(outDir, 'mcc-backup_openclaw_host1_20200101_000000.tar.gz')
