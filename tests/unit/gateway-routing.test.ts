@@ -63,8 +63,12 @@ describe('classifyGatewayClose', () => {
   it('recognises a gateway that is still booting (1013 / "starting")', () => {
     expect(classifyGatewayClose(1013, 'gateway starting')).toBe('starting')
     expect(classifyGatewayClose(1013, '')).toBe('starting')
-    expect(classifyGatewayClose(1011, 'gateway starting')).toBe('starting')
-    expect(classifyGatewayClose(1000, 'Starting up')).toBe('starting')
+    expect(classifyGatewayClose(1012, 'gateway starting')).toBe('starting')
+    expect(classifyGatewayClose(1012, 'Starting up')).toBe('starting')
+    // The reason is only consulted for 1013 / 1012.
+    expect(classifyGatewayClose(1011, 'gateway starting')).toBe('disconnect')
+    expect(classifyGatewayClose(1000, 'Starting up')).toBe('disconnect')
+    expect(classifyGatewayClose(1006, 'starting')).toBe('disconnect')
     // Pairing / credential rejections keep priority over a stray "starting".
     expect(classifyGatewayClose(1008, 'pairing required: starting')).toBe('pairing')
     expect(classifyGatewayClose(1008, 'unauthorized while starting')).toBe('auth')

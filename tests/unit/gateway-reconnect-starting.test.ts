@@ -78,6 +78,16 @@ describe('GatewayReconnectBackoff', () => {
     expect(b.next('starting')).toBe(60_000)
   })
 
+  it('the starting streak is consecutive: any other close restarts the ~2 min of short retries', () => {
+    const b = new GatewayReconnectBackoff()
+    for (let i = 0; i < GATEWAY_STARTING_FAST_RETRIES; i++) b.next('starting')
+    b.next('disconnect') // e.g. a 1006 between two boots
+    for (let i = 0; i < GATEWAY_STARTING_FAST_RETRIES; i++) {
+      expect(b.next('starting')).toBe(GATEWAY_STARTING_RETRY_MS)
+    }
+    expect(b.next('starting')).toBe(5_000)
+  })
+
   it('hello-ok clears both the plain backoff and the starting streak', () => {
     const b = new GatewayReconnectBackoff()
     for (let i = 0; i < GATEWAY_STARTING_FAST_RETRIES + 3; i++) b.next('starting')

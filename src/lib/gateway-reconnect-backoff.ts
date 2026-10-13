@@ -40,6 +40,7 @@ export type GatewayReconnectReason = 'starting' | 'disconnect'
  */
 export class GatewayReconnectBackoff {
   private failures = 0
+  /** Consecutive "starting" closes; any other close or hello-ok ends the run. */
   private startingStreak = 0
 
   /** Consecutive plain disconnects counted toward the normal backoff. */
@@ -66,6 +67,9 @@ export class GatewayReconnectBackoff {
       if (this.startingStreak <= GATEWAY_STARTING_FAST_RETRIES) return GATEWAY_STARTING_RETRY_MS
       return reconnectDelayMs(this.startingStreak - GATEWAY_STARTING_FAST_RETRIES - 1)
     }
+    // A non-starting close breaks the run: a later boot gets the full ~2 min
+    // of short retries again.
+    this.startingStreak = 0
     return reconnectDelayMs(this.failures++)
   }
 }

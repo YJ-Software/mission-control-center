@@ -69,6 +69,8 @@ export function classifyGatewayClose(code: number, reason: string): GatewayClose
   // it boots. Checked before the 1008/auth rule only for code 1013 itself.
   if (code === 1013) return 'starting'
   if (code === 1008 || reason.includes('identity required') || reason.includes('unauthorized')) return 'auth'
-  if (/\bstarting\b/i.test(reason)) return 'starting'
+  // The reason text only counts on 1012 (service restart); other codes ignore
+  // it so a stray "starting" in some unrelated reason cannot skip the backoff.
+  if (code === 1012 && /\bstarting\b/i.test(reason)) return 'starting'
   return 'disconnect'
 }
