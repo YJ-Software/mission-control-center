@@ -25,6 +25,8 @@ import {
   type GatewayLinkState,
   type GatewayLinkStatus,
 } from './src/lib/gateway/link-status'
+import { classifyGatewayClose, routeBrowserFrameToGateway } from './src/lib/gateway/routing'
+import { describeCliError, openclawCliEnv } from './src/lib/gateway/openclaw-cli'
 import { initDb, db, closeDb } from './src/lib/db'
 import { createGracefulShutdown, trackConnections } from './src/lib/shutdown'
 import { morningReportConfig } from './src/lib/schema'
@@ -211,7 +213,7 @@ async function tryAutoApproveDevice(signal: AbortSignal): Promise<boolean> {
   const { findOpenclawBin } = await import('./src/lib/morning-report/openclaw')
   const { getServerEnv } = await import('./src/lib/server-env')
   const bin = findOpenclawBin()
-  const env = getServerEnv()
+  const env = openclawCliEnv(getServerEnv(), process.execPath)
   const throwIfAborted = () => {
     if (signal.aborted) throw new Error('approval aborted')
   }
@@ -223,12 +225,17 @@ async function tryAutoApproveDevice(signal: AbortSignal): Promise<boolean> {
     return JSON.parse(i < 0 ? s : s.slice(i))
   }
 
+  // One-line error with exit code / signal / truncated stderr for the retry log.
+  const run = async (step: string, args: string[]) => {
+    try {
+      return await execFileAsync(bin, args, { timeout: 10000, env, signal })
+    } catch (err) {
+      throw new Error(describeCliError(step, err))
+    }
+  }
+
   const findRequestId = async (): Promise<string | null> => {
-    const { stdout } = await execFileAsync(
-      bin,
-      ['--log-level', 'silent', '--no-color', 'devices', 'list', '--json'],
-      { timeout: 10000, env, signal },
-    )
+    const { stdout } = await run('devices list', ['--log-level', 'silent', '--no-color', 'devices', 'list', '--json'])
     const data = parseJsonLoose(stdout) as { pending?: Array<{ requestId?: string; deviceId?: string }> }
     const pending = Array.isArray(data?.pending) ? data.pending : []
     const req = pending.find((r) => r.deviceId === DEVICE_IDENTITY.deviceId)
@@ -248,11 +255,7 @@ async function tryAutoApproveDevice(signal: AbortSignal): Promise<boolean> {
   }
   throwIfAborted()
   console.log(`[Gateway] Approving pairing request ${requestId}...`)
-  await execFileAsync(
-    bin,
-    ['--log-level', 'silent', '--no-color', 'devices', 'approve', requestId],
-    { timeout: 10000, env, signal },
-  )
+  await run('devices approve', ['--log-level', 'silent', '--no-color', 'devices', 'approve', requestId])
   return true
 }
 
@@ -298,7 +301,9 @@ const pendingRequests = new Map<string, { resolve: (value: unknown) => void; rej
 
 ;(globalThis as any).__gatewayRpc = (method: string, params?: unknown): Promise<unknown> => {
   return new Promise((resolve, reject) => {
-    if (!gatewayWs || gatewayWs.readyState !== WebSocket.OPEN) {
+    // Before hello-ok a non-connect request makes OpenClaw close our socket
+    // ("invalid handshake"), so only send once linked.
+    if (!gatewayWs || gatewayWs.readyState !== WebSocket.OPEN || gatewayLink.state !== 'linked') {
       return reject(new Error('Gateway WebSocket not connected'))
     }
     const id = Math.random().toString(36).substring(2) + Date.now().toString(36)
@@ -345,8 +350,8 @@ const pairing = new PairingRetry({
     if (snap.phase === 'approving') {
       setGatewayLink('pairing', { pairingFailures: snap.failures, nextRetryAt: null })
     } else if (snap.phase === 'waiting-retry') {
-      // failures === 0 here means "approved, reconnecting in 1s" — still pairing.
-      setGatewayLink(snap.failures > 0 ? 'pairing-retry' : 'pairing', {
+      // After a CLI success we are still pairing (reconnecting in 1s), not failing.
+      setGatewayLink(snap.lastOutcome === 'approved' ? 'pairing' : 'pairing-retry', {
         pairingFailures: snap.failures,
         nextRetryAt: snap.nextRetryAt,
       })
@@ -492,10 +497,11 @@ function connectGateway(wss: WebSocketServer) {
       // reconnect on this path — after success (1s) or failure (2s→30s
       // backoff, unlimited) — so we must NOT also schedule one here, or two
       // reconnect chains would run.
-      if (code === 1008 && reasonStr.includes('pairing required')) {
+      const closeKind = classifyGatewayClose(code, reasonStr)
+      if (closeKind === 'pairing') {
         setGatewayLink(gatewayLink.state, { lastClose })
         const result = pairing.onPairingRequired()
-        if (result !== 'started') {
+        if (result === 'in-flight' || result === 'scheduled') {
           console.log(`[Gateway] Pairing required — ${result === 'in-flight' ? 'approval already running' : 'retry already scheduled'}`)
         }
         return
@@ -506,8 +512,7 @@ function connectGateway(wss: WebSocketServer) {
       // heal on their own. The re-read at the top of connectGateway() picks
       // up the new token. 30s backoff keeps a genuinely bad config from
       // hammering the gateway.
-      const isAuthFailure = code === 1008 || reasonStr.includes('identity required') || reasonStr.includes('unauthorized')
-      if (isAuthFailure) {
+      if (closeKind === 'auth') {
         setGatewayLink('auth-failed', { lastClose })
         console.error(`[Gateway] Auth failed (${code} ${reasonStr}). Retrying in 30s with a fresh token...`)
         console.error('[Gateway] If this persists, check the token in ~/.openclaw/openclaw.json or .env.local')
@@ -670,25 +675,15 @@ app.prepare().then(async () => {
         return
       }
 
-      // Forward client messages to gateway
-      if (gatewayWs?.readyState === WebSocket.OPEN) {
-        gatewayWs.send(raw)
-        return
-      }
-      // No Gateway socket (offline, pairing, retrying): answer RPCs now with
-      // the reason instead of dropping them — dropping left the browser's
-      // sendRpc waiting its full 30s for a bare "RPC timeout: chat.send".
-      try {
-        const frame = JSON.parse(raw) as { type?: unknown; id?: unknown; method?: unknown }
-        if (frame?.type === 'req' && (typeof frame.id === 'string' || typeof frame.id === 'number')) {
-          ws.send(JSON.stringify({
-            type: 'res',
-            id: frame.id,
-            ok: false,
-            error: { message: `Gateway not connected (${gatewayLink.state})` },
-          }))
-        }
-      } catch { /* not JSON — nothing to answer */ }
+      // Forward to the Gateway only once MCC's own handshake is done; before
+      // that OpenClaw would close our socket ("invalid handshake"). Requests
+      // are answered at once with the reason instead of a 30s browser timeout.
+      const route = routeBrowserFrameToGateway(raw, {
+        socketOpen: gatewayWs?.readyState === WebSocket.OPEN,
+        state: gatewayLink.state,
+      })
+      if (route.kind === 'forward') gatewayWs!.send(raw)
+      else if (route.kind === 'reply') ws.send(route.frame)
     })
 
     ws.on('close', () => {

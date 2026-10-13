@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
-// Safety valve: nothing in these tests may spawn a process (no real
-// `openclaw`, no systemctl). The state machine takes `approve` by injection;
-// if anything ever reaches child_process, fail loudly instead of running it.
+// What actually keeps these tests from spawning `openclaw`: the state machine
+// takes `approve` by injection, and no test imports server.ts (it is only read
+// as text) or tryAutoApproveDevice. The child_process mock below is a backstop
+// in case a future import pulls a spawner into this file's module graph.
 vi.mock('child_process', () => {
   const boom = () => { throw new Error('child_process must not be used in pairing-retry tests') }
   return { spawn: boom, execFile: boom, exec: boom, execSync: boom, execFileSync: boom, fork: boom, default: {} }
@@ -141,7 +142,7 @@ describe('PairingRetry', () => {
     expect(reconnect).toHaveBeenCalledTimes(1)
   })
 
-  it('on success resets failures and reconnects after 1s', async () => {
+  it('on CLI success reconnects after 1s but keeps the failure count until hello-ok', async () => {
     const { machine, reconnect, attempts } = setup()
     machine.onPairingRequired()
     attempts[0].d.resolve(false)
@@ -156,11 +157,58 @@ describe('PairingRetry', () => {
     machine.onPairingRequired()
     attempts[2].d.resolve(true)
     await flush()
-    expect(machine.snapshot()).toMatchObject({ phase: 'waiting-retry', failures: 0 })
+    expect(machine.snapshot()).toMatchObject({ phase: 'waiting-retry', failures: 2, lastOutcome: 'approved' })
+    expect(vi.getTimerCount()).toBe(1) // just the reconnect; the attempt timeout is gone
     const before = reconnect.mock.calls.length
     await vi.advanceTimersByTimeAsync(PAIRING_RECONNECT_AFTER_APPROVAL_MS)
     expect(reconnect).toHaveBeenCalledTimes(before + 1)
     expect(machine.snapshot().phase).toBe('idle')
+    expect(vi.getTimerCount()).toBe(0)
+
+    machine.onAuthenticated()
+    expect(machine.snapshot()).toEqual({ phase: 'idle', failures: 0, lastOutcome: null, nextRetryAt: null })
+  })
+
+  it('an approval that does not take (1008 again before hello-ok) counts as a failure and backs off', async () => {
+    const { machine, reconnect, attempts, approve, logs } = setup()
+    machine.onPairingRequired()
+    attempts[0].d.resolve(true)
+    await flush()
+    await vi.advanceTimersByTimeAsync(PAIRING_RECONNECT_AFTER_APPROVAL_MS)
+    expect(reconnect).toHaveBeenCalledTimes(1)
+
+    // The reconnect is met by `pairing required` again.
+    expect(machine.onPairingRequired()).toBe('approval-not-effective')
+    expect(approve).toHaveBeenCalledTimes(1) // no CLI on this 1008 — it waits out the backoff
+    expect(machine.snapshot()).toMatchObject({ phase: 'waiting-retry', failures: 1, lastOutcome: 'failed' })
+    expect(logs.some(([l, m]) => l === 'warn' && m.includes('still requires pairing'))).toBe(true)
+    await vi.advanceTimersByTimeAsync(1_999)
+    expect(reconnect).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(reconnect).toHaveBeenCalledTimes(2)
+
+    // Next 1008 runs the CLI again.
+    expect(machine.onPairingRequired()).toBe('started')
+    expect(approve).toHaveBeenCalledTimes(2)
+  })
+
+  it('a CLI that always "succeeds" without the Gateway accepting it does not loop every second', async () => {
+    const { machine, reconnect, attempts } = setup()
+    let n = 0
+    const start = Date.now()
+    // 10 approve→reconnect→1008 cycles.
+    for (let cycle = 0; cycle < 10; cycle++) {
+      expect(machine.onPairingRequired()).toBe('started')
+      attempts[n++].d.resolve(true)
+      await flush()
+      await vi.advanceTimersByTimeAsync(PAIRING_RECONNECT_AFTER_APPROVAL_MS)
+      expect(machine.onPairingRequired()).toBe('approval-not-effective')
+      await vi.advanceTimersByTimeAsync(pairingRetryDelayMs(cycle))
+    }
+    expect(reconnect).toHaveBeenCalledTimes(20)
+    expect(machine.snapshot().failures).toBe(10)
+    // 10 × 1s + 2+4+8+16+30×6 = 220s, versus ~10s for a tight 1s loop.
+    expect(Date.now() - start).toBe(220_000)
   })
 
   it('after a successful handshake, a later 1008 pairs again from the first backoff step', async () => {
@@ -175,7 +223,7 @@ describe('PairingRetry', () => {
     expect(machine.snapshot().failures).toBe(3)
 
     machine.onAuthenticated()
-    expect(machine.snapshot()).toEqual({ phase: 'idle', failures: 0, nextRetryAt: null })
+    expect(machine.snapshot()).toEqual({ phase: 'idle', failures: 0, lastOutcome: null, nextRetryAt: null })
 
     // Next redeploy wipes pairing again: no permanent "already attempted" flag.
     expect(machine.onPairingRequired()).toBe('started')
@@ -195,11 +243,12 @@ describe('PairingRetry', () => {
     machine.onAuthenticated() // e.g. someone approved by hand
     expect(attempts[0].signal.aborted).toBe(true)
     expect(machine.snapshot().phase).toBe('idle')
+    expect(vi.getTimerCount()).toBe(0)
 
     attempts[0].d.resolve(false)
     await vi.advanceTimersByTimeAsync(120_000)
     expect(reconnect).not.toHaveBeenCalled()
-    expect(machine.snapshot()).toEqual({ phase: 'idle', failures: 0, nextRetryAt: null })
+    expect(machine.snapshot()).toEqual({ phase: 'idle', failures: 0, lastOutcome: null, nextRetryAt: null })
   })
 
   it('handshake while a retry is pending cancels the retry', async () => {
@@ -207,7 +256,9 @@ describe('PairingRetry', () => {
     machine.onPairingRequired()
     attempts[0].d.resolve(false)
     await flush()
+    expect(vi.getTimerCount()).toBe(1)
     machine.onAuthenticated()
+    expect(vi.getTimerCount()).toBe(0)
     await vi.advanceTimersByTimeAsync(60_000)
     expect(reconnect).not.toHaveBeenCalled()
   })
@@ -220,6 +271,7 @@ describe('PairingRetry', () => {
     await vi.advanceTimersByTimeAsync(1)
     expect(attempts[0].signal.aborted).toBe(true)
     expect(machine.snapshot()).toMatchObject({ phase: 'waiting-retry', failures: 1 })
+    expect(vi.getTimerCount()).toBe(1) // only the retry; the attempt timer fired
 
     attempts[0].d.resolve(true) // too late — must not reset or double-schedule
     await flush()
@@ -246,7 +298,9 @@ describe('PairingRetry', () => {
   it('dispose stops pending work', async () => {
     const { machine, attempts, reconnect } = setup()
     machine.onPairingRequired()
+    expect(vi.getTimerCount()).toBe(1) // attempt timeout
     machine.dispose()
+    expect(vi.getTimerCount()).toBe(0)
     expect(attempts[0].signal.aborted).toBe(true)
     attempts[0].d.resolve(false)
     await vi.advanceTimersByTimeAsync(120_000)
@@ -262,10 +316,17 @@ describe('server.ts wiring', () => {
   })
 
   it('routes pairing-required closes through PairingRetry without scheduling its own reconnect', () => {
-    const branch = src.match(/if \(code === 1008 && reasonStr\.includes\('pairing required'\)\) \{([\s\S]*?)\n {6}\}/)
+    const branch = src.match(/if \(closeKind === 'pairing'\) \{([\s\S]*?)\n {6}\}/)
     expect(branch).not.toBeNull()
     expect(branch![1]).toContain('pairing.onPairingRequired()')
     expect(branch![1]).not.toMatch(/setTimeout|connectGateway/)
+  })
+
+  it('forwards browser frames only through the linked-only router, and server RPCs wait for linked', () => {
+    expect(src).toContain('routeBrowserFrameToGateway(raw,')
+    expect(src).not.toMatch(/if \(gatewayWs\?\.readyState === WebSocket\.OPEN\) \{\s*gatewayWs\.send\(raw\)/)
+    const rpc = src.slice(src.indexOf('__gatewayRpc = '), src.indexOf("reject(new Error('Gateway WebSocket not connected'))"))
+    expect(rpc).toContain("gatewayLink.state !== 'linked'")
   })
 
   it('resets pairing and marks the link linked on hello-ok', () => {

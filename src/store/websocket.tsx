@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import { useTranslations } from 'next-intl'
-import { parseGatewayStatusFrame, type GatewayLinkStatus } from '@/lib/gateway/link-status'
+import { isGatewayReady, parseGatewayStatusFrame, type GatewayLinkStatus } from '@/lib/gateway/link-status'
 
 interface ActivityEvent {
   id: string
@@ -57,6 +57,8 @@ interface WebSocketContextValue {
   connected: boolean
   /** MCC's own link to the Gateway, pushed by server.ts; null until known. */
   gatewayStatus: GatewayLinkStatus | null
+  /** Gateway-backed RPCs can be sent now (linked, or Hermes mode). Re-fetch when it turns true. */
+  gatewayReady: boolean
   events: ActivityEvent[]
   sendMessage: (msg: object) => void
   agentStatuses: Record<string, string>
@@ -69,6 +71,7 @@ interface WebSocketContextValue {
 const WebSocketContext = createContext<WebSocketContextValue>({
   connected: false,
   gatewayStatus: null,
+  gatewayReady: false,
   events: [],
   sendMessage: () => {},
   agentStatuses: {},
@@ -303,7 +306,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [connect])
 
   return (
-    <WebSocketContext.Provider value={{ connected, gatewayStatus, events, sendMessage, agentStatuses, sendRpc, addChatListener, addToolStreamListener, addGatewayEventListener }}>
+    <WebSocketContext.Provider value={{ connected, gatewayStatus, gatewayReady: isGatewayReady(gatewayStatus, connected), events, sendMessage, agentStatuses, sendRpc, addChatListener, addToolStreamListener, addGatewayEventListener }}>
       {children}
     </WebSocketContext.Provider>
   )

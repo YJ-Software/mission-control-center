@@ -30,7 +30,9 @@ const EXPIRY_GRACE_MS = 10_000
  * broadcast while the socket was down are gone.
  */
 export function usePendingInteractions(sessionKey: string | null) {
-  const { connected, sendRpc, addGatewayEventListener } = useWebSocket()
+  // Seed once the Gateway handshake is done, not merely when this tab reached
+  // MCC — and again after every re-link, since events sent while down are gone.
+  const { gatewayReady, sendRpc, addGatewayEventListener } = useWebSocket()
   const [items, setItems] = useState<PendingInteraction[]>([])
   // Events arriving while the list calls are in flight, replayed onto the seed.
   const eventsDuringSeedRef = useRef<Array<[string, unknown]> | null>(null)
@@ -46,7 +48,7 @@ export function usePendingInteractions(sessionKey: string | null) {
   )
 
   useEffect(() => {
-    if (!connected) return
+    if (!gatewayReady) return
     let cancelled = false
     eventsDuringSeedRef.current = []
     const list = (method: string) => sendRpc(method, {}).catch(() => null)
@@ -65,7 +67,7 @@ export function usePendingInteractions(sessionKey: string | null) {
       cancelled = true
       eventsDuringSeedRef.current = null
     }
-  }, [connected, sendRpc])
+  }, [gatewayReady, sendRpc])
 
   useEffect(() => {
     const timer = setInterval(() => setItems((prev) => pruneExpired(prev, Date.now() - EXPIRY_GRACE_MS)), 5_000)

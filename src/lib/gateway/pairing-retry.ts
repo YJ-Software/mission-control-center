@@ -17,9 +17,13 @@
  *     what retries: it yields a fresh `pairing required` (and a fresh pending
  *     request if the Gateway restarted and lost the old one), which starts the
  *     next approval;
- *   - on success, resets and reconnects after a short pause;
- *   - resets on a successful handshake (`hello-ok`), so a later 1008 — e.g. the
- *     next redeploy — pairs again.
+ *   - on CLI success, reconnects after a short pause — but does NOT reset the
+ *     failure count: only a completed handshake (`hello-ok`) proves the
+ *     approval took. If the reconnect is met by `pairing required` again
+ *     (role/scope upgrade, a superseded request, …), that counts as a failure
+ *     and backs off, instead of looping approve → 1s → 1008 every second;
+ *   - resets on a successful handshake, so a later 1008 — e.g. the next
+ *     redeploy — pairs again from the first backoff step.
  *
  * No I/O here: approval, reconnect, timers and logging are injected, so the
  * whole thing is unit-testable without spawning anything.
@@ -49,8 +53,10 @@ export type PairingPhase = 'idle' | 'approving' | 'waiting-retry'
 
 export interface PairingSnapshot {
   phase: PairingPhase
-  /** Consecutive failed approvals since the last success / handshake. */
+  /** Consecutive failed approvals since the last completed handshake. */
   failures: number
+  /** Outcome of the latest attempt; 'approved' while reconnecting after a CLI success. */
+  lastOutcome: 'approved' | 'failed' | null
   /** Epoch ms of the scheduled retry while phase is 'waiting-retry'. */
   nextRetryAt: number | null
 }
@@ -80,10 +86,18 @@ export type PairingRequiredResult =
   | 'in-flight'
   /** A retry is already scheduled; it will reconnect. */
   | 'scheduled'
+  /**
+   * The previous CLI approval "succeeded" but the Gateway still wants
+   * pairing: counted as a failure, reconnect scheduled with backoff.
+   */
+  | 'approval-not-effective'
 
 export class PairingRetry {
   private phase: PairingPhase = 'idle'
   private failures = 0
+  private lastOutcome: PairingSnapshot['lastOutcome'] = null
+  /** Set after a CLI success until the next handshake or `pairing required`. */
+  private awaitingHandshake = false
   private nextRetryAt: number | null = null
   private timer: unknown = null
   private attemptTimer: unknown = null
@@ -106,13 +120,23 @@ export class PairingRetry {
   }
 
   snapshot(): PairingSnapshot {
-    return { phase: this.phase, failures: this.failures, nextRetryAt: this.nextRetryAt }
+    return {
+      phase: this.phase,
+      failures: this.failures,
+      lastOutcome: this.lastOutcome,
+      nextRetryAt: this.nextRetryAt,
+    }
   }
 
   /** The Gateway closed our socket with `1008 pairing required`. */
   onPairingRequired(): PairingRequiredResult {
     if (this.phase === 'approving') return 'in-flight'
     if (this.phase === 'waiting-retry') return 'scheduled'
+    if (this.awaitingHandshake) {
+      this.awaitingHandshake = false
+      this.fail('CLI approved our device but the Gateway still requires pairing')
+      return 'approval-not-effective'
+    }
     this.startAttempt()
     return 'started'
   }
@@ -125,6 +149,8 @@ export class PairingRetry {
     this.abandonAttempt()
     this.clearRetryTimer()
     this.failures = 0
+    this.lastOutcome = null
+    this.awaitingHandshake = false
     this.setPhase('idle')
   }
 
@@ -132,6 +158,7 @@ export class PairingRetry {
   dispose(): void {
     this.abandonAttempt()
     this.clearRetryTimer()
+    this.awaitingHandshake = false
     this.setPhase('idle')
   }
 
@@ -170,17 +197,24 @@ export class PairingRetry {
     }
 
     if (approved) {
-      this.failures = 0
+      // Failures are NOT reset here — only hello-ok proves the approval took.
+      this.lastOutcome = 'approved'
+      this.awaitingHandshake = true
       this.log('info', `[Gateway] Device approved, reconnecting in ${PAIRING_RECONNECT_AFTER_APPROVAL_MS / 1000}s...`)
       this.scheduleReconnect(PAIRING_RECONNECT_AFTER_APPROVAL_MS)
       return
     }
 
+    this.fail(reason ?? 'unknown')
+  }
+
+  private fail(reason: string): void {
     const delay = pairingRetryDelayMs(this.failures)
     this.failures++
+    this.lastOutcome = 'failed'
     this.log(
       'warn',
-      `[Gateway] Auto-approval failed (${reason ?? 'unknown'}); retry #${this.failures} in ${delay / 1000}s. `
+      `[Gateway] Auto-approval failed (${reason}); retry #${this.failures} in ${delay / 1000}s. `
         + 'Manual fallback: openclaw devices approve --latest',
     )
     this.scheduleReconnect(delay)

@@ -75,7 +75,7 @@ function summarizeOutput(output: unknown): string {
 // ---------------------------------------------------------------------------
 
 export function useChatSession(sessionKey: string | null) {
-  const { sendRpc, addChatListener, addToolStreamListener, connected } = useWebSocket()
+  const { sendRpc, addChatListener, addToolStreamListener, connected, gatewayReady } = useWebSocket()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingText, setStreamingText] = useState('')
@@ -98,7 +98,9 @@ export function useChatSession(sessionKey: string | null) {
   }, [sessionKey])
 
   const refreshHistory = useCallback(() => {
-    if (!sessionKey || !connected) return
+    // Wait for the Gateway handshake (re-runs on re-link) — before that the
+    // request is refused and the history would just stay empty.
+    if (!sessionKey || !gatewayReady) return
     setMessages([])
     setStreamingText('')
     streamingTextRef.current = ''
@@ -157,7 +159,7 @@ export function useChatSession(sessionKey: string | null) {
         }
       })
       .catch(() => {})
-  }, [sessionKey, connected, sendRpc])
+  }, [sessionKey, gatewayReady, sendRpc])
 
   // Load history when sessionKey or connection changes
   useEffect(() => {

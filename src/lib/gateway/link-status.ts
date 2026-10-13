@@ -104,3 +104,14 @@ export function gatewayStatusView(
     case 'offline': return { tone: 'error', labelKey: 'offline' }
   }
 }
+
+/**
+ * Whether Gateway-backed data (chat.history, pending interactions, …) can be
+ * fetched right now: this tab reached MCC AND MCC's Gateway handshake is done.
+ * Hermes mode has no Gateway — the chat bridge answers as soon as the tab is
+ * connected. Hooks re-fetch when this flips to true.
+ */
+export function isGatewayReady(status: GatewayLinkStatus | null, browserConnected: boolean): boolean {
+  if (!browserConnected || !status) return false
+  return status.runtime === 'hermes' || status.state === 'linked'
+}
