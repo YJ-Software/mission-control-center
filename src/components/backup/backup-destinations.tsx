@@ -342,7 +342,11 @@ function DestCard({ dest }: DestCardProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: dest.id, ...payload }),
       })
-      if (!res.ok) throw new Error('Update failed')
+      if (!res.ok) {
+        // 與刪除相同：顯示後端訊息（例如改了主機／帳號卻沒重新輸入密碼的 400）
+        const body = await res.json().catch(() => null) as { error?: string } | null
+        throw new Error(body?.error ?? 'Update failed')
+      }
       return res.json()
     },
     onSuccess: () => {
@@ -435,6 +439,9 @@ function DestCard({ dest }: DestCardProps) {
             onCancel={() => setExpanded(false)}
             saving={updateMutation.isPending}
           />
+          {updateMutation.isError && (
+            <p className="mt-2 text-xs font-mono text-red-400/80">{updateMutation.error.message}</p>
+          )}
 
           {/* Delete section */}
           <div className="mt-4 pt-4 border-t border-white/[0.06] flex items-center gap-3 flex-wrap">

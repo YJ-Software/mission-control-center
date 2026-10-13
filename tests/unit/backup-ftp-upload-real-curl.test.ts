@@ -62,10 +62,18 @@ function startFakeFtp(opts: { acceptLogin: boolean }) {
 
 let tmp: string
 let file: string
+let curlBin: string
 beforeEach(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mcc-ftp-real-'))
   file = path.join(tmp, 'mcc-backup_test.tar.gz')
   fs.writeFileSync(file, 'payload-123')
+  // 測試專用包裝：隔離開發機環境（proxy 環境變數、~/.curlrc）。`-q` 必須是 curl 的第一個參數。
+  // 產品程式碼的 uploadToFtp 不加這些，proxy 行為維持不變。
+  curlBin = path.join(tmp, 'curl-isolated')
+  fs.writeFileSync(curlBin, `#!/bin/sh
+export NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost
+exec /usr/bin/curl -q "$@"
+`, { mode: 0o755 })
 })
 afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }))
 
@@ -83,7 +91,7 @@ describe.skipIf(!HAS_CURL)('uploadToFtp × 真實 curl × 假 FTP 伺服器', ()
       const ftp = startFakeFtp({ acceptLogin: true })
       const port = await ftp.ready
       try {
-        await uploadToFtp(file, { ip: '127.0.0.1', port, user, password, mode: 'passive', path: '/bk' })
+        await uploadToFtp(file, { ip: '127.0.0.1', port, user, password, mode: 'passive', path: '/bk' }, { curlBin })
         const s = ftp.sessions[0]
         expect(s.user).toBe(user)
         expect(s.pass).toBe(password)
@@ -101,7 +109,7 @@ describe.skipIf(!HAS_CURL)('uploadToFtp × 真實 curl × 假 FTP 伺服器', ()
     const port = await ftp.ready
     try {
       const password = 'Real-Curl-Secret-77'
-      const err = await uploadToFtp(file, { ip: '127.0.0.1', port, user: 'bob', password, mode: 'passive', path: '/bk' })
+      const err = await uploadToFtp(file, { ip: '127.0.0.1', port, user: 'bob', password, mode: 'passive', path: '/bk' }, { curlBin })
         .then(() => null, (e: Error) => e)
       expect(err).toBeInstanceOf(Error)
       expect(err!.message).toMatch(/FTP 上傳失敗（curl 結束碼 67）/)
