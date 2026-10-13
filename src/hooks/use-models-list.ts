@@ -8,7 +8,7 @@ export interface ModelInfo {
 }
 
 export function useModelsList() {
-  const { sendRpc, connected } = useWebSocket()
+  const { sendRpc, gatewayReady } = useWebSocket()
   const [models, setModels] = useState<ModelInfo[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -31,9 +31,10 @@ export function useModelsList() {
     }
   }, [sendRpc])
 
+  // Fetch once the Gateway handshake is done, and again after every re-link.
   useEffect(() => {
-    if (connected) refresh()
-  }, [connected, refresh])
+    if (gatewayReady) refresh()
+  }, [gatewayReady, refresh])
 
   return { models, loading, refresh }
 }

@@ -18,7 +18,7 @@ function extractAgentId(key: string): string | undefined {
 }
 
 export function useSessionsList() {
-  const { sendRpc, connected } = useWebSocket()
+  const { sendRpc, gatewayReady } = useWebSocket()
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -59,11 +59,12 @@ export function useSessionsList() {
     }
   }, [sendRpc])
 
+  // Fetch once the Gateway handshake is done, and again after every re-link.
   useEffect(() => {
-    if (connected) {
+    if (gatewayReady) {
       refresh()
     }
-  }, [connected, refresh])
+  }, [gatewayReady, refresh])
 
   return { sessions, loading, refresh }
 }
