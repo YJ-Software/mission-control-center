@@ -1793,6 +1793,7 @@
       "username": "使用者名稱",
       "password": "密碼",
       "passwordKeepHint": "已設定密碼，留空代表不變更",
+      "passwordRequiredOnChange": "已變更主機或帳號，請重新輸入密碼",
       "mode": "模式",
       "active": "主動",
       "passive": "被動",

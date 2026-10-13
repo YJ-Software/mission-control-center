@@ -6,7 +6,7 @@ import { backupExtraFolder } from './extra-folder'
 import { getScriptsDir, getBackupOutputDir, formatBytes, checkScriptsAvailable } from './helpers'
 import { classifyBackupFile, type BackupKind } from './archive-format'
 import { resolveInsideDirs } from './path-guard'
-import { buildCurlAuthConfig, redactSecrets } from './secrets'
+import { buildCurlAuthConfig, redactSecretValues } from './secrets'
 
 const execFileAsync = promisify(execFile)
 
@@ -108,7 +108,7 @@ export async function uploadToFtp(
   const args = ['-K', '-', '-sS', '-T', localFile, remotePath]
   if (config.mode === 'passive') args.push('--ftp-pasv')
   args.push('--connect-timeout', '30', '--max-time', '600')
-  const secrets = [config.password]
+  const creds = [{ user: config.user, password: config.password }]
 
   await new Promise<void>((resolve, reject) => {
     let settled = false
@@ -132,7 +132,7 @@ export async function uploadToFtp(
     })
     child.on('close', (code, signal) => {
       if (code === 0) return finish()
-      const tail = redactSecrets(stderr.trim().slice(-STDERR_TAIL_CHARS), secrets)
+      const tail = redactSecretValues(stderr.trim().slice(-STDERR_TAIL_CHARS), creds)
       const reason = timedOut
         ? `逾時（${FTP_UPLOAD_TIMEOUT_MS / 1000} 秒）`
         : code !== null ? `curl 結束碼 ${code}` : `curl 被訊號 ${signal} 終止`

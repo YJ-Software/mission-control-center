@@ -3,7 +3,7 @@ import { db, initDb } from '@/lib/db'
 import { backupDestinations, backupJobs } from '@/lib/backup/schema'
 import { eq } from 'drizzle-orm'
 import { newId } from '@/lib/backup/helpers'
-import { toPublicDestination, mergeDestinationConfig } from '@/lib/backup/secrets'
+import { toPublicDestination, mergeDestinationConfig, PasswordRequiredError } from '@/lib/backup/secrets'
 
 initDb()
 
@@ -37,7 +37,12 @@ export async function PUT(req: NextRequest) {
     // 空密碼或遮罩值代表「不變更」：沿用 DB 裡的既有密碼
     const existing = db.select().from(backupDestinations).where(eq(backupDestinations.id, id)).get()
     const type = updates.type ?? existing?.type
-    set.config = JSON.stringify(mergeDestinationConfig(existing?.config, updates.config || {}, type))
+    try {
+      set.config = JSON.stringify(mergeDestinationConfig(existing?.config, updates.config || {}, type))
+    } catch (err) {
+      if (err instanceof PasswordRequiredError) return NextResponse.json({ error: err.message }, { status: 400 })
+      throw err
+    }
   }
   if (updates.enabled !== undefined) set.enabled = updates.enabled
 

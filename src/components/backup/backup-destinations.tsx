@@ -131,6 +131,14 @@ function DestForm({ initial, onSave, onCancel, saving }: DestFormProps) {
   const tc = useTranslations('backup.common')
 
   const [form, setForm] = useState<DestFormState>(() => initFormState(initial))
+  const [initialFtp] = useState<FtpConfig>(() => initFormState(initial).ftp)
+  // 已存密碼只會沿用到同一個主機／連接埠／帳號；改了任何一項就必須重新輸入（後端也會擋）
+  const keepsSavedPassword = initial?.type === 'ftp' && !!initial.hasPassword
+  const ftpTargetChanged = keepsSavedPassword && (
+    form.ftp.ip !== initialFtp.ip ||
+    String(form.ftp.port) !== String(initialFtp.port) ||
+    form.ftp.user !== initialFtp.user
+  )
 
   const inputCls =
     'bg-white/[0.06] text-white/70 border border-white/[0.1] rounded-md px-3 py-2 text-sm w-full focus:outline-none focus:border-cyan-500/50'
@@ -220,7 +228,9 @@ function DestForm({ initial, onSave, onCancel, saving }: DestFormProps) {
                 type="password"
                 className={inputCls}
                 value={form.ftp.password}
-                placeholder={initial?.type === 'ftp' && initial.hasPassword ? t('destinations.passwordKeepHint') : undefined}
+                placeholder={!keepsSavedPassword ? undefined
+                  : ftpTargetChanged ? t('destinations.passwordRequiredOnChange') : t('destinations.passwordKeepHint')}
+                required={ftpTargetChanged}
                 autoComplete="new-password"
                 onChange={(e) => setFtp({ password: e.target.value })}
               />

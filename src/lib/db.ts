@@ -6,7 +6,7 @@ import os from 'os'
 import fs from 'fs'
 import { applyPendingDbRestoreOnce } from './backup/pending-db-restore'
 import { reconcileStaleBackupLogs } from './backup/reconcile'
-import { redactStoredBackupLogErrors } from './backup/secrets'
+import { runBackupSecretsCleanup } from './backup/secrets'
 import { registerDbConnection } from './db-close'
 
 export { closeDb } from './db-close'
@@ -363,15 +363,12 @@ export function initDb() {
     }
   }
 
-  // M7：舊版 FTP 上傳失敗會把 `--user 帳:密` 寫進 backup_logs.error；一次性遮罩（旗標記在 settings，冪等）。
-  // 測試行程不可改開發者的真實 DB。
-  if (!process.env.VITEST) {
-    try {
-      const n = redactStoredBackupLogErrors(sqlite)
-      if (n > 0) console.log(`[Backup] 已遮罩 ${n} 筆備份紀錄錯誤訊息中的 FTP 帳密`)
-    } catch (err) {
-      console.warn('[Backup] 遮罩備份紀錄中的 FTP 帳密失敗：', (err as Error).message)
-    }
+  // M7：v0.4.0／0.4.1 的 FTP 上傳失敗會把 `--user 帳:密` 寫進 backup_logs.error 與 backup-run job log；
+  // 一次性遮罩（旗標記在 settings；每個行程最多嘗試一次；錯誤只記 log）。測試行程不可改開發者的真實資料。
+  const gs = globalThis as unknown as { __mccBackupSecretsCleaned?: boolean }
+  if (!gs.__mccBackupSecretsCleaned && !process.env.VITEST) {
+    gs.__mccBackupSecretsCleaned = true
+    runBackupSecretsCleanup(sqlite)
   }
 
   // Default upgrade manifest URL — fresh installs poll GitHub raw for the

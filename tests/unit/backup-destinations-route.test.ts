@@ -49,8 +49,21 @@ describe('GET /api/backup/destinations（M7：不回傳密碼本文）', () => {
 
 describe('PUT /api/backup/destinations：空值或遮罩值不覆蓋既有密碼', () => {
   it('password 為空字串：沿用舊密碼，其他欄位更新', async () => {
-    expect((await put({ id: 'f', name: 'NAS2', type: 'ftp', config: { ip: '5.6.7.8', port: 21, user: 'bob', password: '', mode: 'active', path: '/c' } })).status).toBe(200)
-    expect(stored('f')).toEqual({ ip: '5.6.7.8', port: 21, user: 'bob', password: SECRET, mode: 'active', path: '/c' })
+    expect((await put({ id: 'f', name: 'NAS2', type: 'ftp', config: { ip: '1.2.3.4', port: 21, user: 'bob', password: '', mode: 'active', path: '/c' } })).status).toBe(200)
+    expect(stored('f')).toEqual({ ip: '1.2.3.4', port: 21, user: 'bob', password: SECRET, mode: 'active', path: '/c' })
+  })
+
+  it('改了主機或帳號但密碼留空：400，DB 不變（舊密碼不會送到新主機）', async () => {
+    const before = stored('f')
+    const res = await put({ id: 'f', type: 'ftp', config: { ip: '9.9.9.9', port: 21, user: 'bob', password: '', mode: 'passive', path: '/b' } })
+    expect(res.status).toBe(400)
+    expect(stored('f')).toEqual(before)
+    expect((await put({ id: 'f', config: { ip: '1.2.3.4', port: 21, user: 'alice', password: '***', mode: 'passive', path: '/b' } })).status).toBe(400)
+  })
+
+  it('改了主機並輸入新密碼：照存', async () => {
+    expect((await put({ id: 'f', config: { ip: '9.9.9.9', port: 21, user: 'bob', password: 'n3w', mode: 'passive', path: '/b' } })).status).toBe(200)
+    expect(stored('f')).toMatchObject({ ip: '9.9.9.9', password: 'n3w' })
   })
 
   it('password 為遮罩值（前端原樣送回）：沿用舊密碼', async () => {
@@ -66,6 +79,16 @@ describe('PUT /api/backup/destinations：空值或遮罩值不覆蓋既有密碼
   it('只切換 enabled（不帶 config）：config 不動', async () => {
     await put({ id: 'f', enabled: 0 })
     expect(stored('f').password).toBe(SECRET)
+  })
+})
+
+describe('GET：非字串密碼', () => {
+  it('數字密碼也遮罩並標 hasPassword', async () => {
+    sqlite.prepare(`INSERT INTO backup_destinations (id, name, type, config) VALUES ('n', 'Num', 'ftp', ?)`).run(JSON.stringify({ ip: 'h', user: 'u', password: 98765432 }))
+    const text = await (await GET()).text()
+    expect(text).not.toContain('98765432')
+    const n = (JSON.parse(text) as { id: string; config: string; hasPassword: boolean }[]).find(i => i.id === 'n')!
+    expect(n.hasPassword).toBe(true)
   })
 })
 

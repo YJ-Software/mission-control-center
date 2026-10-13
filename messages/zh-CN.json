@@ -1793,6 +1793,7 @@
       "username": "用户名",
       "password": "密码",
       "passwordKeepHint": "已设置密码，留空表示不变更",
+      "passwordRequiredOnChange": "已变更主机或账号，请重新输入密码",
       "mode": "模式",
       "active": "主动",
       "passive": "被动",

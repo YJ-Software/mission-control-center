@@ -14,7 +14,7 @@ import { snapshotMccDb, copyEnvFile, markBackupRowInSnapshot } from './mcc-state
 import { expandHome, getBackupOutputDir, getAllBackupDirs } from './helpers'
 import { BackupBusyError, isBackupOrRestoreBusy, acquireLock, releaseLock } from './lock'
 import { assertNoBlockingJob } from './job-guard'
-import { redactSecrets } from './secrets'
+import { redactSecrets, redactSecretValues } from './secrets'
 import {
   runExtraBackup, uploadToFtp, deleteBackupFile,
 } from './scripts'
@@ -187,7 +187,10 @@ export function startBackupRun(
    */
   const failRun = (phaseName: string, err: unknown, log?: Log) => {
     // 錯誤訊息可能帶 FTP 帳密（例如舊式 curl 命令列）：寫進 job log／DB／UI 之前一律遮罩
-    const msg = redactSecrets(`${phaseName}: ${errText(err)}`, [destConfig.password as string | undefined])
+    // 只有 upload phase 的錯誤可能帶裸密碼（伺服器回顯），其他 phase 只遮 `帳:密` 形狀，避免常見字密碼誤傷路徑
+    const raw = `${phaseName}: ${errText(err)}`
+    const creds = [{ user: destConfig.user, password: destConfig.password }]
+    const msg = phaseName === 'upload' ? redactSecretValues(raw, creds) : redactSecrets(raw, creds)
     safeLog(log)('stderr', msg)
     try { cleanupTemp() } catch { /* ignore */ }
     const values: Record<string, unknown> = {

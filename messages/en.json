@@ -1793,6 +1793,7 @@
       "username": "Username",
       "password": "Password",
       "passwordKeepHint": "Password saved — leave blank to keep it",
+      "passwordRequiredOnChange": "Host or user changed — re-enter the password",
       "mode": "Mode",
       "active": "Active",
       "passive": "Passive",
