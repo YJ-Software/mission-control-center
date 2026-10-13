@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures/login'
-import { sendChatAndExpectReply } from './utils/chat-turn'
+import { sendChatAndExpectReply, sendChatTurnOnCurrentPage } from './utils/chat-turn'
 
 /**
  * Round trip: MCC backup (OpenClaw native backup + MCC DB, one archive) ->
@@ -14,13 +14,16 @@ import { sendChatAndExpectReply } from './utils/chat-turn'
 
 const BACKUP_TIMEOUT = 5 * 60_000
 const RESTORE_TIMEOUT = 10 * 60_000
+/** Post-restore warm-up budget; see the warm-up step below. */
+const WARMUP_LINKED_TIMEOUT = 2 * 60_000
+const WARMUP_TURN_TIMEOUT = 3 * 60_000
 
 type Api = (method: string, path: string, body?: unknown, headers?: Record<string, string>) => Promise<{ status: number; body: any }>
 
 test.describe.configure({ mode: 'serial' })
 
 test('backup -> restore -> health, plugins, marker cron, chat', async ({ loggedInPage: page, baseURL }) => {
-  test.setTimeout(25 * 60_000)
+  test.setTimeout(30 * 60_000)
   if (!baseURL) throw new Error('baseURL undefined')
 
   let cookie = (await page.context().cookies()).map(c => `${c.name}=${c.value}`).join('; ')
@@ -187,6 +190,24 @@ test('backup -> restore -> health, plugins, marker cron, chat', async ({ loggedI
     await expect(async () => { names = await listCronNames(api) }).toPass({ timeout: 3 * 60_000, intervals: [3_000, 5_000] })
     expect(names.includes(markerName), 'marker cron must be gone after restore').toBe(false)
     markerId = null // nothing to clean up
+
+    // Warm-up turn — known upstream stall, not an MCC check. On OpenClaw
+    // 2026.10.3 the first chat turn on the main session after a restore hangs
+    // for ~2 min while the gateway rebuilds its memory index (no model call,
+    // no error; 3 of 4 runs, never on 2026.10.2). That made this spec flaky.
+    // So: wait until MCC's own Gateway link is up (sidebar shows "linked"),
+    // send one throwaway turn with up to 3 min, and only LOG if it fails. The
+    // real check below keeps its original assertions and timeout.
+    await page.goto(`${baseURL}/chat`)
+    try {
+      await expect(page.locator('[data-gateway-state="linked"]').first())
+        .toBeAttached({ timeout: WARMUP_LINKED_TIMEOUT })
+      const t0 = Date.now()
+      await sendChatTurnOnCurrentPage(page, '暖身，回我一個 OK', { timeout: WARMUP_TURN_TIMEOUT })
+      console.log(`[backup-restore] warm-up chat turn ok after ${Math.round((Date.now() - t0) / 1000)}s`)
+    } catch (e) {
+      console.log(`[backup-restore] warm-up failed (ignored, real check follows): ${(e as Error).message.split('\n')[0]}`)
+    }
 
     await sendChatAndExpectReply(page, baseURL, '回我一個 OK')
   } finally {
