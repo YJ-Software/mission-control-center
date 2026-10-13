@@ -217,6 +217,26 @@ describe('SSE 安裝串流', () => {
     expect(hasLongRuns()).toBe(false)
   })
 
+  it('子行程 exit 但 close 未觸發（孫行程握著 stdout）：PID 已清成 null，死 PID 清理不會刪掉登記項，下一步仍在登記中', async () => {
+    _resetLongRunsForTest() // 真的 PID 存活檢查
+    let duringStep2: ReturnType<typeof listLongRuns> = []
+    const stream = createSSEStream([
+      // sh 立刻 exit，背景的 sleep 繼續握著 stdout，close 延後約 0.6 秒
+      { label: 'step one', cmd: 'sh', args: ['-c', '(sleep 0.6) & exit 0'] },
+      { label: 'step two', cmd: 'sh', args: ['-c', 'sleep 0.1'] },
+    ], { name: '孫行程測試', onAfter: () => { duringStep2 = listLongRuns() } })
+    const p = drain(stream)
+    await new Promise((r) => setTimeout(r, 250))
+    // exit 已觸發、close 還沒：登記項仍在，PID 為 null
+    expect(pruneDeadLongRuns()).toEqual([])
+    const mid = listLongRuns()
+    expect(mid).toHaveLength(1)
+    expect(mid[0]).toMatchObject({ name: '孫行程測試', step: 'step one', pid: null })
+    await p
+    expect(duringStep2).toHaveLength(1) // 走完第二步、onAfter 時仍在登記中
+    expect(hasLongRuns()).toBe(false)
+  })
+
   it('步驟失敗時也會註銷', async () => {
     const out = await drain(createSSEStream([{ label: 'fail', cmd: 'sh', args: ['-c', 'exit 3'] }], { name: 'x' }))
     expect(out).toContain('"type":"error"')
@@ -248,6 +268,22 @@ describe('job runner', () => {
       expect(LONG_RUNNING_JOB_KINDS.has(k)).toBe(true)
     }
     expect(LONG_RUNNING_JOB_KINDS.has('restart-mcc')).toBe(false)
+  })
+
+  it('runner：shell phase 的子行程 exit 但 close 未觸發時，登記項仍在、PID 為 null', async () => {
+    _resetLongRunsForTest()
+    let settled!: () => void
+    const done = new Promise<void>((r) => { settled = r })
+    startJob({
+      kind: 'sys-update', label: 'apt（孫行程）', triggeredBy: 'api',
+      phases: [{ name: 'fake', shell: '(sleep 0.6) & exit 0' }],
+      onSettled: () => settled(),
+    })
+    await new Promise((r) => setTimeout(r, 250))
+    expect(pruneDeadLongRuns()).toEqual([])
+    expect(listLongRuns()).toEqual([expect.objectContaining({ name: 'apt（孫行程）', pid: null, kind: 'sys-update' })])
+    await done
+    expect(hasLongRuns()).toBe(false)
   })
 
   it('sys-update 執行中登記（shell phase 帶 PID），結束後註銷；restart-mcc 不登記', async () => {

@@ -110,6 +110,9 @@ export function createSSEStream(
                 },
               })
               updateLongRun(runId, { pid: proc.pid ?? null })
+              // exit 時就清掉 PID（close 可能因孫行程握著 stdout 延後很久）：PID 只在子行程活著時存在，
+              // 死 PID 清理才不會把仍在進行的串流整筆註銷；登記項本身留到串流結束才註銷
+              proc.on('exit', () => updateLongRun(runId, { pid: null }))
               proc.stdout?.on('data', (chunk: Buffer) => {
                 for (const line of chunk.toString().split('\n').filter(Boolean)) {
                   enqueue({ type: 'log', data: line })

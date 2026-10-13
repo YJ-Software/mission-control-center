@@ -81,8 +81,9 @@ function pidAlive(pid: number): boolean {
 }
 
 /**
- * 登記項的子行程已經不在（close 事件沒觸發、行程被外部殺掉）卻沒註銷時，當場註銷並記 log，
- * 不讓一筆殘留永遠擋住重啟。沒有 PID 的登記項（兩步之間、或 execFile 類）無從判斷，保留。
+ * 登記項的 PID 已經不存在卻還掛著時，當場註銷並記 log，不讓一筆殘留永遠擋住重啟。
+ * 呼叫端在子行程 exit 時就把 PID 清成 null，所以「PID 非 null 且 ESRCH」只會是真正的殘留，
+ * 不會是 exit 了但 close 還沒觸發、後面還有步驟的串流。沒有 PID 的登記項無從判斷，保留。
  */
 export function pruneDeadLongRuns(): LongRunEntry[] {
   const removed: LongRunEntry[] = []

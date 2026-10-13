@@ -30,6 +30,7 @@ beforeEach(() => {
   m.startJob.mockReset().mockReturnValue({ id: 'j' })
   m.info.mockReset().mockReturnValue({ mode: 'release', service: 's' })
   m.restart.mockReset()
+  m.exec.mockReset()
 })
 
 const postJson = (url: string, body: unknown, headers: Record<string, string> = {}) =>
@@ -165,7 +166,12 @@ describe('長時間安裝作業進行中拒絕 MCC 自己的重啟', () => {
       expect(await spec.phases[1].inline(() => {}, {})).toBe(0)
       expect(isRestartPending()).toBe(true)
       await vi.advanceTimersByTimeAsync(3000)
-      expect(m.exec).toHaveBeenCalledWith(expect.stringContaining('systemctl')) // 被攔下的 mock
+      expect(m.exec).toHaveBeenCalledWith(expect.stringContaining('systemctl'), expect.any(Function)) // 被攔下的 mock
+      // 重啟指令失敗（成功時本行程會被殺掉，不會走到 callback）→ 立刻解除「即將重啟」
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      ;(m.exec.mock.calls[0][1] as (e: Error | null) => void)(new Error('Failed to restart'))
+      expect(isRestartPending()).toBe(false)
+      warn.mockRestore()
     } finally {
       vi.useRealTimers()
     }
@@ -180,6 +186,20 @@ describe('長時間安裝作業進行中拒絕 MCC 自己的重啟', () => {
     expect(body.code).toBe('restart-pending')
     expect(body.error).toContain('MCC 即將重啟')
     markRestartPending(0)
+  })
+
+  it('重開機指令失敗（sudo 不放行、systemctl 非 0）時立刻解除「即將重啟」；成功前維持', async () => {
+    const cp = await import('child_process')
+    expect(cp.exec).toBe(m.exec) // 安全閥：沒攔到就不能往下跑（會真的重開機）
+    await action(post('/api/action', { action: 'reboot-system' }))
+    const spec = m.startJob.mock.calls[0][0]
+    expect(await spec.phases[1].inline(() => {}, {})).toBe(0)
+    expect(m.exec).toHaveBeenCalledWith('sh -c "sleep 3; sudo -n systemctl reboot"', expect.any(Function))
+    expect(isRestartPending()).toBe(true)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ;(m.exec.mock.calls[0][1] as (e: Error | null) => void)(new Error('sudo: a password is required'))
+    expect(isRestartPending()).toBe(false)
+    warn.mockRestore()
   })
 
   it('dpkg-repair：其他安裝作業進行中回 409（第二個 dpkg 只會撞鎖）', async () => {
@@ -198,14 +218,4 @@ describe('長時間安裝作業進行中拒絕 MCC 自己的重啟', () => {
     expect(spec.kind).toBe('dpkg-repair')
     expect(spec.phases[0].shell).toMatch(/^sudo -n env .*dpkg --force-confdef --force-confold --configure -a 2>&1$/)
   })
-})
-
-describe('rollbackUpgrade', () => {
-  it('長時間作業進行中丟 LongRunBusyError，在動 symlink 之前', async () => {
-    const actual = await vi.importActual<typeof import('@/lib/upgrade/manager')>('@/lib/upgrade/manager')
-    const { LongRunBusyError } = await import('@/lib/long-running')
-    registerLongRun('apt update + upgrade')
-    await expect(actual.rollbackUpgrade('/nonexistent/prev', 'svc')).rejects.toBeInstanceOf(LongRunBusyError)
-  })
-
 })

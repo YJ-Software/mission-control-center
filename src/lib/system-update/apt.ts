@@ -54,9 +54,15 @@ export function buildSystemUpdatePhases(): UpdatePhase[] {
   ]
 }
 
-/** Reboot, detached so the HTTP response gets out first. Running `systemctl
- * reboot` inline kills the server mid-reply and the dashboard shows a network
- * error instead of a confirmation. */
+/** Reboot after a short delay so the HTTP response gets out first. Running
+ * `systemctl reboot` inline kills the server mid-reply and the dashboard shows a
+ * network error instead of a confirmation.
+ *
+ * Not backgrounded with `&`: the caller runs it through an async exec and needs
+ * the exit status. On success the host goes down and the callback never runs;
+ * if sudo refuses (`-n`: no password prompt to hang on) or systemctl fails, the
+ * caller must clear the "restart pending" flag at once instead of blocking new
+ * installs for the whole ttl. */
 export function buildRebootCommand(): string {
-  return 'sh -c "sleep 3; sudo systemctl reboot" >/dev/null 2>&1 &'
+  return 'sh -c "sleep 3; sudo -n systemctl reboot"'
 }

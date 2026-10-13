@@ -3,7 +3,7 @@ import { exec } from 'child_process'
 import { startJob } from '@/lib/jobs/runner'
 import type { TriggerSource } from '@/lib/jobs/types'
 import { isBackupOrRestoreBusy } from '@/lib/backup/lock'
-import { listLongRuns, longRunBusyBody, markRestartPending, RestartPendingError } from '@/lib/long-running'
+import { clearRestartPending, listLongRuns, longRunBusyBody, markRestartPending, RestartPendingError } from '@/lib/long-running'
 import { checkRestartGate, parseForce, waitForInstallsPhase } from '@/lib/restart-guard'
 
 /** 備份/還原進行中，這些動作會把它打斷（還原中途被重啟可能留下搬到一半的資料） */
@@ -73,7 +73,13 @@ const actions: Record<string, ActionHandler> = {
             log('stdout', 'scheduling restart in 2s')
             log('system', 'this process will be replaced; log resumes after restart')
             setTimeout(() => {
-              exec('systemctl restart mission-control 2>/dev/null || systemctl --user restart mission-control 2>/dev/null')
+              exec('systemctl restart mission-control 2>/dev/null || systemctl --user restart mission-control 2>/dev/null', (err) => {
+                // 成功時本行程被重啟殺掉，不會走到這裡；失敗就立刻解除「即將重啟」
+                if (err) {
+                  clearRestartPending()
+                  console.warn(`[restart] restart-dashboard failed: ${err.message}; cleared restart-pending`)
+                }
+              })
             }, 2000)
             return 0
           },
@@ -137,7 +143,13 @@ const actions: Record<string, ActionHandler> = {
           inline: async (log) => {
             markRestartPending(10 * 60_000)
             log('system', 'reboot scheduled; the host goes down in a few seconds')
-            exec(buildRebootCommand())
+            // 失敗（sudo 不放行、systemctl 非 0）就立刻解除「即將重啟」；成功時主機關機，callback 不會執行
+            exec(buildRebootCommand(), (err) => {
+              if (err) {
+                clearRestartPending()
+                console.warn(`[reboot] reboot command failed: ${err.message}; cleared restart-pending`)
+              }
+            })
             return 0
           },
         },

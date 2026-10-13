@@ -98,7 +98,11 @@ async function runShellPhase(jobId: string, phaseIndex: number, cmd: string, lon
       env: childEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
-    if (longRunId !== null) updateLongRun(longRunId, { pid: child.pid ?? null })
+    if (longRunId !== null) {
+      updateLongRun(longRunId, { pid: child.pid ?? null })
+      // exit 時就清掉 PID（close 可能延後）：登記項留到 job 結束才註銷，死 PID 清理不會誤刪
+      child.on('exit', () => updateLongRun(longRunId, { pid: null }))
+    }
     child.stdout.setEncoding('utf8')
     child.stderr.setEncoding('utf8')
     child.stdout.on('data', (d: string) => logTo(jobId, phaseIndex, 'stdout', d))

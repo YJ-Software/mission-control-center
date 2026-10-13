@@ -25,7 +25,8 @@ import crypto from 'node:crypto'
 
 import { getVersionInfo } from '@/lib/version'
 import type { ValidatedBackends } from '@/lib/release-validation'
-import { assertNoLongRuns, markRestartPending } from '@/lib/long-running'
+import { clearRestartPending, LongRunBusyError, markRestartPending } from '@/lib/long-running'
+import { checkRestartGate } from '@/lib/restart-guard'
 
 const execFileP = promisify(execFile)
 
@@ -256,6 +257,13 @@ export function scheduleServiceRestart(service: string, delaySeconds = 2): void 
     detached: true,
     stdio: 'ignore',
   })
+  // 成功時這個行程會被重啟殺掉；只有失敗才會走到這裡：立刻解除「即將重啟」，不讓安裝被擋到 ttl 結束
+  child.on('exit', (code) => {
+    if (code !== 0) {
+      clearRestartPending()
+      console.warn(`[restart] systemctl --user restart ${service} failed (exit ${code}); cleared restart-pending`)
+    }
+  })
   child.unref()
 }
 
@@ -264,8 +272,10 @@ export function scheduleServiceRestart(service: string, delaySeconds = 2): void 
  * post-upgrade health check fails.
  */
 export async function rollbackUpgrade(prevTarget: string, service: string, opts: { force?: boolean } = {}): Promise<void> {
-  // 長時間安裝作業進行中不重啟（會連同 apt/dpkg 一起殺掉）：丟 LongRunBusyError，在動 symlink 之前
-  if (!opts.force) assertNoLongRuns()
+  // 長時間安裝作業進行中不重啟（會連同 apt/dpkg 一起殺掉）：丟 LongRunBusyError，在動 symlink 之前。
+  // force 時放行，並與其他重啟路徑一樣記「使用者強制重啟，略過進行中：…」
+  const gate = checkRestartGate(opts.force === true)
+  if (gate.blocked) throw new LongRunBusyError(gate.blocked)
   const info = getInstallInfo()
   const currentLink = path.join(info.prefix, 'current')
   await execFileP('ln', ['-sfn', prevTarget, currentLink])
