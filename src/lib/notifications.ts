@@ -8,6 +8,7 @@ export type NotificationType =
   | 'mcc-upgrade'
   | 'openclaw-upgrade'
   | 'cs-storage'
+  | 'backup'
   | 'system'
 
 export type NotificationSeverity = 'info' | 'warning' | 'error'

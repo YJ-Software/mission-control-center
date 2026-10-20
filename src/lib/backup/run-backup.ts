@@ -15,6 +15,7 @@ import { expandHome, getBackupOutputDir, getAllBackupDirs } from './helpers'
 import { BackupBusyError, isBackupOrRestoreBusy, acquireLock, releaseLock } from './lock'
 import { assertNoBlockingJob } from './job-guard'
 import { redactSecrets, redactSecretValues } from './secrets'
+import { notifyBackupOutcome } from './failure-alert'
 import {
   runExtraBackup, uploadToFtp, deleteBackupFile,
 } from './scripts'
@@ -40,6 +41,8 @@ export interface BackupRunDeps {
   hostname: () => string
   mccVersion: () => string
   findBlockingJob?: () => import('@/lib/jobs/types').JobMeta | null
+  /** 執行結束後檢查同 job 的連續失敗並發告警／已恢復通知（見 failure-alert.ts）；不可丟錯 */
+  notifyOutcome?: typeof notifyBackupOutcome
   dbPath: string
   envPath: string
 }
@@ -72,6 +75,7 @@ const defaultDeps = (): BackupRunDeps => ({
   tar: defaultTar,
   uploadToFtp,
   runExtraBackup,
+  notifyOutcome: notifyBackupOutcome,
   now: () => new Date(),
   hostname: () => os.hostname(),
   mccVersion: () => getVersionInfo().mccVersion,
@@ -170,12 +174,17 @@ export function startBackupRun(
     if (st.tarDir) rmQuiet(st.tarDir)
     if (st.extraDir) rmQuiet(st.extraDir)
   }
-  /** 清理與解鎖：無條件、可重複呼叫、絕不丟錯 */
+  /** runner 的 job id（系統紀錄連結用）；startJob 回傳後才有值，phase 都在其後才結束 */
+  let runJobId: string | null = null
+  /** 清理與解鎖：無條件、可重複呼叫、絕不丟錯。此時 backup_logs 已是最終狀態，順便檢查連續失敗告警 */
   const finalize = () => {
     if (st.finished) return
     st.finished = true
     try { cleanupTemp() } catch { /* ignore */ }
     releaseLock(lockToken)
+    if (jobId) {
+      try { deps.notifyOutcome?.({ jobId, logId, runJobId }) } catch { /* 告警絕不可影響備份流程 */ }
+    }
   }
   const safeLog = (log?: Log): Log => (stream, text) => {
     try { log?.(stream, text) } catch { /* job log I/O（例如 ENOSPC）不可打斷清理 */ }
@@ -418,6 +427,7 @@ export function startBackupRun(
         }
       },
     })
+    runJobId = meta.id
     return { logId, jobMetaId: meta.id }
   } catch (e) {
     failRun('start job', e)
