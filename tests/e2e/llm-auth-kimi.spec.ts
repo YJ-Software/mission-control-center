@@ -1,4 +1,6 @@
+import type { Page } from '@playwright/test'
 import { test, expect } from './fixtures/login'
+import { sendChatTurnOnCurrentPage } from './utils/chat-turn'
 
 /**
  * E2E for the new LLM 管理 page (v0.3.42+).
@@ -15,6 +17,9 @@ import { test, expect } from './fixtures/login'
  */
 
 const SAVE_TIMEOUT = 30_000
+// POST /api/openclaw/models/agent-override spawns several `openclaw config`
+// CLIs (read, set, verify — with one retry); measured 15.7 s on 2026.10.5.
+const OVERRIDE_SAVE_TIMEOUT = 90_000
 // The login job installs/consents the provider plugin before pasting the key,
 // and that phase alone varies with the OpenClaw release: measured on 2026.9.6,
 // plugin consent 21.2s + paste-api-key 9.0s + provider registration 6.2s =
@@ -30,6 +35,39 @@ const CHAT_REPLY_TIMEOUT = 90_000
 // newest name first.
 const OVERRIDE_PRIMARY_CANDIDATES = ['kimi/kimi-for-coding', 'kimi/kimi-code']
 const PROVIDER_PROFILE_PREFIX = 'kimi:'
+
+/**
+ * provider/model that answered the user message containing `tag`, read from the
+ * chat.history response /chat loads (OpenClaw stamps every assistant message
+ * with the provider/model that actually answered). A non-empty reply alone
+ * proves nothing about routing: the default model answers just as well.
+ */
+async function replyRoute(page: Page, baseURL: string, tag: string): Promise<string> {
+  let onFrame: ((f: { payload: string | Buffer }) => void) | undefined
+  const route = new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`no chat.history reply to ${tag}`)), 30_000)
+    onFrame = (f) => {
+      let j: { type?: string; payload?: { messages?: unknown } } | undefined
+      try { j = JSON.parse(String(f.payload)) } catch { return }
+      const msgs = j?.type === 'res' ? j.payload?.messages : undefined
+      if (!Array.isArray(msgs)) return
+      type Msg = { role?: string; content?: unknown; provider?: string; model?: string }
+      const list = msgs as Msg[]
+      const asked = list.findIndex((m) => m.role === 'user' && JSON.stringify(m.content ?? '').includes(tag))
+      if (asked < 0) return
+      // The last assistant message of the turn (a tool-using turn has several).
+      const turn = list.slice(asked + 1)
+      const end = turn.findIndex((m) => m.role === 'user')
+      const reply = (end < 0 ? turn : turn.slice(0, end)).filter((m) => m.role === 'assistant').pop()
+      if (!reply) return
+      clearTimeout(timer)
+      resolve(`${reply.provider}/${reply.model}`)
+    }
+  })
+  page.on('websocket', (ws) => ws.on('framereceived', onFrame!))
+  await page.goto(`${baseURL}/chat`)
+  return route
+}
 
 async function api(
   baseURL: string,
@@ -115,26 +153,31 @@ test.describe('LLM 管理 — kimi auth + per-agent override + chat', () => {
     }
     await primarySelect.selectOption(overridePrimary)
 
+    // The 已覆寫 badge below is an optimistic cache update — it shows before the
+    // server has written anything. 2026-10-21 (OpenClaw 2026.10.5) the spec
+    // left for /chat while this POST was still running; the override landed
+    // ~18 s after chat.send, the turn went to the default yuanjhen model, and
+    // the spec passed. Wait for the real save.
+    const saveResponse = page.waitForResponse(
+      (r) => r.url().includes('/api/openclaw/models/agent-override') && r.request().method() === 'POST',
+      { timeout: OVERRIDE_SAVE_TIMEOUT },
+    )
     await page.getByRole('button', { name: /^儲存$|^Save$/i }).click()
+    const saved = await saveResponse
+    expect(saved.status(), `override save failed: ${await saved.text()}`).toBe(200)
 
-    // The "已覆寫" badge appears immediately via optimistic cache update;
-    // also asserts the API call eventually persists.
     await expect(page.getByText(/已覆寫|Override/i).first()).toBeVisible({
       timeout: SAVE_TIMEOUT,
     })
 
     // ── Phase 3: /chat — verify the override actually routes ───────────
     await page.goto(`${baseURL}/chat`)
-    const input = page.locator('textarea').first()
-    await expect(input).toBeVisible({ timeout: 15_000 })
-    await input.fill('回我一個 OK')
-    await input.press('Enter')
-
-    const lastAssistant = page.locator('[data-role="assistant"]').last()
-    await expect(lastAssistant).toBeVisible({ timeout: CHAT_REPLY_TIMEOUT })
-    await expect(async () => {
-      expect((await lastAssistant.innerText()).trim().length).toBeGreaterThan(0)
-    }).toPass({ timeout: CHAT_REPLY_TIMEOUT, intervals: [500, 1_000, 2_000] })
+    const tag = `kimi-route-${Date.now()}`
+    await sendChatTurnOnCurrentPage(page, `回我一個 OK (${tag})`, { timeout: CHAT_REPLY_TIMEOUT })
+    const route = await replyRoute(page, baseURL, tag)
+    // Compare the provider only: the plugin may normalise the model id
+    // (kimi-code → kimi-for-coding).
+    expect(route.split('/')[0], `chat turn was answered by ${route}, not the ${overridePrimary} override`).toBe('kimi')
 
     // ── Cleanup: clear override + remove kimi profile so the env stays
     // idempotent across re-runs. Auth cookie is on `page.context()`. ────
