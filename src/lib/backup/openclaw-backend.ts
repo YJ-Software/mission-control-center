@@ -24,6 +24,26 @@ function tail(s: string, n = 300): string {
   return s.length > n ? s.slice(-n) : s
 }
 
+const REASON_PREFIX = '[openclaw] Reason: '
+const CLI_HINT_LINE = /^\[openclaw\] (Debug|Try|Help):/
+const MAX_REASON = 1000
+
+/**
+ * OpenClaw CLI 失敗時 stderr 是「[openclaw] 標題 / Reason: … / Debug・Try・Help 提示」幾行。
+ * 真正原因在 Reason 行，而且常含很長的封存路徑：只取尾端 300 字元會把原因本身切掉
+ * （2026-10-20 實機：只剩「T22-00-38…supplier-search -> …」，看不到 symlink 被拒）。
+ * 有 Reason 就從開頭保留完整原因；沒有才退回去掉提示行後的尾端。
+ */
+export function summarizeOpenclawStderr(stderr: string): string {
+  const lines = stderr.split('\n').map((l) => l.trimEnd()).filter((l) => l.length > 0)
+  const reasons = lines.filter((l) => l.startsWith(REASON_PREFIX)).map((l) => l.slice(REASON_PREFIX.length))
+  if (reasons.length > 0) {
+    const r = reasons.join(' / ')
+    return r.length > MAX_REASON ? `${r.slice(0, MAX_REASON)}…` : r
+  }
+  return tail(lines.filter((l) => !CLI_HINT_LINE.test(l)).join('\n'))
+}
+
 /** stdout 前面可能有非 JSON 的雜訊（例如 doctor 警告框）：用 extractJson 跳過。 */
 function parseJson(stdout: string, what: string, stderr: string): Record<string, unknown> {
   try {
@@ -31,7 +51,7 @@ function parseJson(stdout: string, what: string, stderr: string): Record<string,
     if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Error('not a JSON object')
     return v as Record<string, unknown>
   } catch (e) {
-    throw new Error(`${what}: unparseable output (${(e as Error).message}) ${tail(stderr)}`)
+    throw new Error(`${what}: unparseable output (${(e as Error).message}) ${summarizeOpenclawStderr(stderr)}`)
   }
 }
 
@@ -44,9 +64,9 @@ export async function verifyOpenClawBackup(
   deps: Pick<OpenClawBackendDeps, 'run' | 'log'>,
 ): Promise<{ runtimeVersion: string | null }> {
   const r = await deps.run(['backup', 'verify', archivePath, '--json'], VERIFY_TIMEOUT_MS)
-  if (r.code !== 0) throw new Error(`openclaw backup verify failed (exit ${r.code}): ${tail(r.stderr)}`)
+  if (r.code !== 0) throw new Error(`openclaw backup verify failed (exit ${r.code}): ${summarizeOpenclawStderr(r.stderr)}`)
   const j = parseJson(r.stdout, 'openclaw backup verify', r.stderr)
-  if (j.ok !== true) throw new Error(`openclaw backup verify reported not ok: ${tail(r.stderr)}`)
+  if (j.ok !== true) throw new Error(`openclaw backup verify reported not ok: ${summarizeOpenclawStderr(r.stderr)}`)
   return { runtimeVersion: typeof j.runtimeVersion === 'string' ? j.runtimeVersion : null }
 }
 
@@ -55,9 +75,9 @@ export async function createOpenClawBackup(
   deps: OpenClawBackendDeps,
 ): Promise<{ archivePath: string; version: string | null; warnings: string[] }> {
   const r = await deps.run(['backup', 'create', '--output', outDir, '--verify', '--json'], CREATE_TIMEOUT_MS)
-  if (r.code !== 0) throw new Error(`openclaw backup create failed (exit ${r.code}): ${tail(r.stderr)}`)
+  if (r.code !== 0) throw new Error(`openclaw backup create failed (exit ${r.code}): ${summarizeOpenclawStderr(r.stderr)}`)
   const j = parseJson(r.stdout, 'openclaw backup create', r.stderr)
-  if (j.verified !== true) throw new Error(`openclaw backup create: archive not verified: ${tail(r.stderr)}`)
+  if (j.verified !== true) throw new Error(`openclaw backup create: archive not verified: ${summarizeOpenclawStderr(r.stderr)}`)
   if (typeof j.archivePath !== 'string' || !j.archivePath) {
     throw new Error('openclaw backup create: no archivePath in output')
   }
@@ -109,7 +129,7 @@ export async function restoreOpenClawBackup(
   let stagedSkillNames: string[] = []
   try {
     const r = await deps.run(['backup', 'restore', archivePath, '--target', staging, '--json'], RESTORE_TIMEOUT_MS)
-    if (r.code !== 0) throw new Error(`openclaw backup restore failed (exit ${r.code}): ${tail(r.stderr)}`)
+    if (r.code !== 0) throw new Error(`openclaw backup restore failed (exit ${r.code}): ${summarizeOpenclawStderr(r.stderr)}`)
     const j = parseJson(r.stdout, 'openclaw backup restore', r.stderr)
     let root = typeof j.archiveRoot === 'string' ? j.archiveRoot : ''
     if (!root) {

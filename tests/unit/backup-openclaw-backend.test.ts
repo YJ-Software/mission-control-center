@@ -1,4 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// 安全閥：本檔所有測試都走注入的 deps.run；任何真的 spawn/exec 都要立刻失敗，
+// 絕不可對本機 openclaw / systemctl 動手。
+vi.mock('node:child_process', () => {
+  const boom = () => { throw new Error('child_process must not be used in backup-openclaw-backend tests') }
+  return { spawn: boom, exec: boom, execFile: boom, execSync: boom, execFileSync: boom, spawnSync: boom, default: {} }
+})
+vi.mock('child_process', () => {
+  const boom = () => { throw new Error('child_process must not be used in backup-openclaw-backend tests') }
+  return { spawn: boom, exec: boom, execFile: boom, execSync: boom, execFileSync: boom, spawnSync: boom, default: {} }
+})
 import {
   createOpenClawBackup,
   verifyOpenClawBackup,
@@ -189,6 +200,39 @@ describe('createOpenClawBackup / verify', () => {
     const { deps } = setup()
     deps.run = async () => ({ code: 2, stdout: '', stderr: 'disk full' })
     await expect(createOpenClawBackup('/out', deps)).rejects.toThrow(/disk full/)
+  })
+  it('non-zero exit keeps the OpenClaw Reason line instead of a tail that cuts it off (2026-10-20 regression)', async () => {
+    // 實機 stderr 形狀（OpenClaw 2026.8.2 formatCliFailureLines）：Reason 行很長、後面接三行提示。
+    // 舊實作取最後 300 字元，剛好切掉「Archive symbolic link target must be relative」這段真正原因。
+    const stderr = [
+      '[openclaw] The CLI command failed.',
+      '[openclaw] Reason: Backup archive write failed: Archive symbolic link target must be relative: ' +
+        '2026-10-20T22-00-38.721+08-00-openclaw-backup/payload/posix/home/moni/.openclaw/skills/supplier-search' +
+        ' -> /home/moni/projects/direct-b2c/skills/supplier-search (after 1 attempt)',
+      '[openclaw] Debug: set OPENCLAW_DEBUG=1 to include the stack trace.',
+      '[openclaw] Try: openclaw doctor',
+      '[openclaw] Help: openclaw --help',
+      '',
+    ].join('\n')
+    const { deps } = setup()
+    deps.run = async () => ({ code: 1, stdout: '', stderr })
+    const err = await createOpenClawBackup('/out', deps).then(() => null, (e: Error) => e)
+    expect(err).toBeInstanceOf(Error)
+    const msg = (err as Error).message
+    expect(msg).toContain('Archive symbolic link target must be relative')
+    expect(msg).toContain('-> /home/moni/projects/direct-b2c/skills/supplier-search')
+    expect(msg).not.toContain('OPENCLAW_DEBUG')
+  })
+  it('non-zero exit without a Reason line still reports the stderr tail, minus CLI hint lines', async () => {
+    const { deps } = setup()
+    deps.run = async () => ({
+      code: 1,
+      stdout: '',
+      stderr: 'some raw failure text\n[openclaw] Try: openclaw doctor\n[openclaw] Help: openclaw --help\n',
+    })
+    const msg = await createOpenClawBackup('/out', deps).then(() => '', (e: Error) => e.message)
+    expect(msg).toContain('some raw failure text')
+    expect(msg).not.toContain('openclaw doctor')
   })
   it('throws when the post-create verify fails (unverified backup is not good)', async () => {
     const { deps } = setup()
