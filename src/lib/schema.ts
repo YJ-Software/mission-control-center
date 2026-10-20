@@ -177,7 +177,7 @@ export const csOutboundFilterHits = sqliteTable('cs_outbound_filter_hits', {
 // alerts. Read-state is per-row; "cleared" = deleted.
 export const notifications = sqliteTable('notifications', {
   id: text('id').primaryKey(),
-  type: text('type').notNull(),                  // 'mcc-upgrade' | 'openclaw-upgrade' | 'cs-storage' | 'system'
+  type: text('type').notNull(),                  // 'mcc-upgrade' | 'openclaw-upgrade' | 'cs-storage' | 'backup' | 'system'
   severity: text('severity').notNull().default('info'),  // 'info' | 'warning' | 'error'
   title: text('title').notNull(),
   body: text('body'),
