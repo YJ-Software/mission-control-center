@@ -51,15 +51,18 @@ export async function sendChatTurnOnCurrentPage(page: Page, text: string, opts: 
   // ('streaming' | 'complete' | 'error' | 'aborted').
   let turn: TurnResult | null = null
   await expect(async () => {
-    turn = await page.evaluate((m) => {
+    const seen = await page.evaluate((m) => {
       const els = Array.from(document.querySelectorAll<HTMLElement>('[data-role]'))
       const userIdx = els.findIndex((e) => e.dataset.role === 'user' && (e.innerText || '').includes(m))
-      if (userIdx < 0) return null
+      if (userIdx < 0) return { missing: 'user', state: null, text: '' }
       const reply = els.slice(userIdx + 1).find((e) => e.dataset.role === 'assistant')
-      if (!reply) return null
-      return { state: reply.dataset.state ?? null, text: (reply.innerText || '').trim() }
+      if (!reply) return { missing: 'assistant', state: null, text: '' }
+      return { missing: null, state: reply.dataset.state ?? null, text: (reply.innerText || '').trim() }
     }, marker)
-    expect(turn, 'no assistant reply after our message yet').not.toBeNull()
+    // A vanished user bubble (history re-render replaced the optimistic message) is a different failure.
+    expect(seen.missing, 'our user message is no longer on the page').not.toBe('user')
+    expect(seen.missing, 'no assistant reply after our message yet').not.toBe('assistant')
+    turn = { state: seen.state, text: seen.text }
     expect(turn!.state, 'assistant reply still streaming').not.toBe('streaming')
     expect(turn!.text.length, 'assistant reply is empty').toBeGreaterThan(0)
   }).toPass({ timeout, intervals: [500, 1_000, 2_000] })

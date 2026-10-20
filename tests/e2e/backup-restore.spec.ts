@@ -1,4 +1,5 @@
 import { test, expect } from './fixtures/login'
+import type { WebSocket as PwWebSocket } from '@playwright/test'
 import { sendChatAndExpectReply, sendChatTurnOnCurrentPage } from './utils/chat-turn'
 
 /**
@@ -198,6 +199,14 @@ test('backup -> restore -> health, plugins, marker cron, chat', async ({ loggedI
     // So: wait until MCC's own Gateway link is up (sidebar shows "linked"),
     // send one throwaway turn with up to 3 min, and only LOG if it fails. The
     // real check below keeps its original assertions and timeout.
+    // Diagnostic: which chat events did the browser actually receive (state@runId only).
+    const chatFrames: string[] = []
+    const onWs = (ws: PwWebSocket) => ws.on('framereceived', ({ payload }) => {
+      const s = typeof payload === 'string' ? payload : payload.toString()
+      if (!s.includes('"event":"chat"')) return
+      try { const m = JSON.parse(s); chatFrames.push(`${m.payload?.state ?? m.payload?.stream}@${m.payload?.runId}`) } catch {}
+    })
+    page.on('websocket', onWs)
     await page.goto(`${baseURL}/chat`)
     try {
       await expect(page.locator('[data-gateway-state="linked"]').first())
@@ -207,6 +216,24 @@ test('backup -> restore -> health, plugins, marker cron, chat', async ({ loggedI
       console.log(`[backup-restore] warm-up chat turn ok after ${Math.round((Date.now() - t0) / 1000)}s`)
     } catch (e) {
       console.log(`[backup-restore] warm-up failed (ignored, real check follows): ${(e as Error).message.split('\n')[0]}`)
+      console.log(`[backup-restore] warm-up chat frames seen by browser: ${chatFrames.slice(-10).join(', ') || 'none'}`)
+      let verdict = 'unknown'
+      try {
+        await page.reload()
+        await expect(async () => {
+          verdict = await page.evaluate(() => {
+            const els = Array.from(document.querySelectorAll<HTMLElement>('[data-role]'))
+            let i = -1
+            els.forEach((el, k) => { if (el.dataset.role === 'user' && (el.innerText || '').includes('暖身，回我一個 OK')) i = k })
+            if (i < 0) return 'warm-up message not in history'
+            return els.slice(i + 1).some((el) => el.dataset.role === 'assistant') ? 'reply IS in history' : 'no reply in history'
+          })
+          expect(verdict).not.toBe('warm-up message not in history')
+        }).toPass({ timeout: 30_000 })
+      } catch {}
+      console.log(`[backup-restore] warm-up after reload: ${verdict}`)
+    } finally {
+      page.off('websocket', onWs)
     }
 
     await sendChatAndExpectReply(page, baseURL, '回我一個 OK')
