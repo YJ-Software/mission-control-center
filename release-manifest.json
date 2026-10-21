@@ -1,28 +1,42 @@
 {
   "latest": {
-    "version": "0.4.4",
-    "mccVersion": "0.4.4",
-    "openclawVersion": "2026.10.3",
+    "version": "0.4.5",
+    "mccVersion": "0.4.5",
+    "openclawVersion": "2026.10.5",
     "validated": {
       "openclaw": [
         "2026.9.9",
         "2026.10.2",
-        "2026.10.3"
+        "2026.10.3",
+        "2026.10.5"
       ]
     },
-    "releaseDate": "2026-10-13T18:28:19.536Z",
-    "notes": "- fix(gateway): **gateway 啟動中的重連改為 2.5 秒短重試**。gateway 剛啟動時會以 `1013 gateway starting` 關線，先前 MCC 把它當一般斷線並沿用已累積的 20–60 秒退避，gateway 就緒後要 18–60 秒才連上；現在固定 2.5 秒重試、不計入一般退避（連續約 2 分鐘仍在啟動中才退回遞增），實測就緒後 1–3 秒內連上。側欄新增「Gateway 啟動中…」狀態\n  - 一般斷線的退避只在握手完成後歸零，避免 gateway 反覆接受又關閉連線時日誌爆量\n- test(e2e): 備份還原 spec 還原後先等 gateway 連線並送暖身訊息，涵蓋 OpenClaw 2026.10.3 還原後重建記憶體索引的停頓\n- 驗證：OpenClaw 2026.10.3 上 E2E 23/23（含還原後聊天連跑 3 次全綠），正式將 2026.10.3 列入已驗證版本",
+    "releaseDate": "2026-10-21T09:27:05.611Z",
+    "notes": "- fix(backup): OpenClaw 備份失敗訊息保留 [openclaw] Reason: 行，不再被尾端截斷切掉真正原因\n- test(e2e): kimi spec 等覆寫 POST 落地並斷言 provider，修正誤判通過\n- test(e2e): 還原後暖身聊天記錄收到的事件，供定位頁面未更新原因\n- 驗證：OpenClaw 2026.10.5 全新部署 23/23 + Telegram；本版 throwaway 0.4.4→0.4.5 升級 smoke 23/23",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.4/mission-control-v0.4.4-linux-x64.tar.gz",
-        "sha256": "6d2f00200f82d927db7aa04454033674ba0ea72ef72a02a8382841a963c77522",
-        "size": 26563579
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.5/mission-control-v0.4.5-linux-x64.tar.gz",
+        "sha256": "10b71bb9b4fdf873211482db283a2fd4122c43cf2cf94bb7bccdd25299eaaf29",
+        "size": 26563862
       }
     ]
   },
   "history": [
+    {
+      "version": "0.4.4",
+      "mccVersion": "0.4.4",
+      "openclawVersion": "2026.10.3",
+      "validated": {
+        "openclaw": [
+          "2026.9.9",
+          "2026.10.2",
+          "2026.10.3"
+        ]
+      },
+      "releaseDate": "2026-10-13T18:28:19.536Z"
+    },
     {
       "version": "0.4.3",
       "mccVersion": "0.4.3",
@@ -107,12 +121,6 @@
       "mccVersion": "0.3.89",
       "openclawVersion": "2026.9.3",
       "releaseDate": "2026-09-14T09:30:22.557Z"
-    },
-    {
-      "version": "2026.9.3-v0.3.88",
-      "mccVersion": "0.3.88",
-      "openclawVersion": "2026.9.3",
-      "releaseDate": "2026-09-09T07:50:18.419Z"
     }
   ]
 }
