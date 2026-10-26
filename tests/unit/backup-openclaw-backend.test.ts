@@ -191,6 +191,25 @@ describe('createOpenClawBackup / verify', () => {
     expect(calls[1]).toEqual(['backup', 'verify', '/out/a.tar.gz', '--json'])
     expect(logs).toContain('w1')
   })
+  it('create 的逾時給到 30 分鐘：2026-10-26 實機封存 2.1 GB 光 create --verify 就要 ~600 s，舊的 10 分鐘一半以上被砍', async () => {
+    const { deps } = setup()
+    const timeouts: Record<string, number> = {}
+    const orig = deps.run
+    deps.run = async (args, t) => {
+      timeouts[args[1]] = t
+      return orig(args, t)
+    }
+    await createOpenClawBackup('/out', deps)
+    expect(timeouts.create).toBeGreaterThanOrEqual(30 * 60_000)
+    expect(timeouts.verify).toBeGreaterThanOrEqual(5 * 60_000)
+  })
+  it('逾時（code 124）的錯誤訊息要說出逾時，不可只有空白原因', async () => {
+    const { deps } = setup()
+    deps.run = async () => ({ code: 124, stdout: '', stderr: '\ntimed out after 1800000ms' })
+    const msg = await createOpenClawBackup('/out', deps).then(() => '', (e: Error) => e.message)
+    expect(msg).toMatch(/timed out after 30 min/)
+    expect(msg).not.toMatch(/: $/)
+  })
   it('throws when verified is false, including stderr tail', async () => {
     const { deps } = setup()
     deps.run = async () => ({ code: 0, stdout: '{"verified":false,"archivePath":"/x"}', stderr: 'bad-sum' })

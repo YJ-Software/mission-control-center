@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { EventEmitter } from 'node:events'
 
-const m = vi.hoisted(() => ({ mode: 'hang' as 'hang' | 'ok' | 'selfkill' }))
+const m = vi.hoisted(() => ({ mode: 'hang' as 'hang' | 'ok' | 'selfkill' | 'trap143' }))
 vi.mock('node:child_process', async (orig) => {
   const actual = await orig<typeof import('node:child_process')>()
   const { EventEmitter } = await import('node:events')
@@ -11,7 +11,11 @@ vi.mock('node:child_process', async (orig) => {
       const child: any = new EventEmitter()
       child.stdout = Object.assign(new EventEmitter(), { setEncoding() {} })
       child.stderr = Object.assign(new EventEmitter(), { setEncoding() {} })
-      child.kill = (sig: string) => { setTimeout(() => child.emit('close', null, sig), 0); return true }
+      // trap143：真正的 openclaw 是 node 包裝器，收到 SIGTERM 會轉給子行程、自己以 exit 143 結束（code 不是 null）
+      child.kill = (sig: string) => {
+        setTimeout(() => (m.mode === 'trap143' ? child.emit('close', 143, null) : child.emit('close', null, sig)), 0)
+        return true
+      }
       if (m.mode === 'ok') setTimeout(() => child.emit('close', 0, null), 0)
       if (m.mode === 'selfkill') setTimeout(() => child.emit('close', null, 'SIGKILL'), 0)
       return child
@@ -27,6 +31,12 @@ beforeEach(() => { m.mode = 'hang'; resetBackupAvailabilityCache() })
 describe('runOpenclaw 被訊號終止', () => {
   it('逾時 → code 124 並註明 timed out', async () => {
     const r = await runOpenclaw(['backup', '--help'], 30)
+    expect(r.code).toBe(124)
+    expect(r.stderr).toContain('timed out after 30ms')
+  })
+  it('逾時後包裝器自己以 exit 143 結束 → 仍是 124 並註明 timed out（2026-10-26 實機：原因欄是空的）', async () => {
+    m.mode = 'trap143'
+    const r = await runOpenclaw(['backup', 'create'], 30)
     expect(r.code).toBe(124)
     expect(r.stderr).toContain('timed out after 30ms')
   })

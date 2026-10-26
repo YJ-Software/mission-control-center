@@ -15,7 +15,9 @@ export interface OpenClawBackendDeps {
   log(stream: 'stdout' | 'stderr' | 'system', text: string): void
 }
 
-const CREATE_TIMEOUT_MS = 600_000
+// 2026-10-26 實機（OpenClaw 10.5、封存 2.1 GB）：create --verify 本身約 600 s，舊的 10 分鐘讓一半以上的排程被砍。
+// 與 run-backup 打包用的 tar 同為 30 分鐘；排程每 2 小時，不會疊到下一輪。
+const CREATE_TIMEOUT_MS = 30 * 60_000
 const VERIFY_TIMEOUT_MS = 300_000
 const RESTORE_TIMEOUT_MS = 600_000
 const HEALTH_TIMEOUT_MS = 120_000
@@ -44,6 +46,12 @@ export function summarizeOpenclawStderr(stderr: string): string {
   return tail(lines.filter((l) => !CLI_HINT_LINE.test(l)).join('\n'))
 }
 
+/** runOpenclaw 逾時回 124：直接說逾時，stderr 通常是空的，原因欄才不會只剩「exit 143: 」 */
+function cliFailure(what: string, r: { code: number; stderr: string }, timeoutMs: number): Error {
+  if (r.code === 124) return new Error(`${what} timed out after ${Math.round(timeoutMs / 60_000)} min and was killed`)
+  return new Error(`${what} failed (exit ${r.code}): ${summarizeOpenclawStderr(r.stderr)}`)
+}
+
 /** stdout 前面可能有非 JSON 的雜訊（例如 doctor 警告框）：用 extractJson 跳過。 */
 function parseJson(stdout: string, what: string, stderr: string): Record<string, unknown> {
   try {
@@ -64,7 +72,7 @@ export async function verifyOpenClawBackup(
   deps: Pick<OpenClawBackendDeps, 'run' | 'log'>,
 ): Promise<{ runtimeVersion: string | null }> {
   const r = await deps.run(['backup', 'verify', archivePath, '--json'], VERIFY_TIMEOUT_MS)
-  if (r.code !== 0) throw new Error(`openclaw backup verify failed (exit ${r.code}): ${summarizeOpenclawStderr(r.stderr)}`)
+  if (r.code !== 0) throw cliFailure('openclaw backup verify', r, VERIFY_TIMEOUT_MS)
   const j = parseJson(r.stdout, 'openclaw backup verify', r.stderr)
   if (j.ok !== true) throw new Error(`openclaw backup verify reported not ok: ${summarizeOpenclawStderr(r.stderr)}`)
   return { runtimeVersion: typeof j.runtimeVersion === 'string' ? j.runtimeVersion : null }
@@ -75,7 +83,7 @@ export async function createOpenClawBackup(
   deps: OpenClawBackendDeps,
 ): Promise<{ archivePath: string; version: string | null; warnings: string[] }> {
   const r = await deps.run(['backup', 'create', '--output', outDir, '--verify', '--json'], CREATE_TIMEOUT_MS)
-  if (r.code !== 0) throw new Error(`openclaw backup create failed (exit ${r.code}): ${summarizeOpenclawStderr(r.stderr)}`)
+  if (r.code !== 0) throw cliFailure('openclaw backup create', r, CREATE_TIMEOUT_MS)
   const j = parseJson(r.stdout, 'openclaw backup create', r.stderr)
   if (j.verified !== true) throw new Error(`openclaw backup create: archive not verified: ${summarizeOpenclawStderr(r.stderr)}`)
   if (typeof j.archivePath !== 'string' || !j.archivePath) {
@@ -129,7 +137,7 @@ export async function restoreOpenClawBackup(
   let stagedSkillNames: string[] = []
   try {
     const r = await deps.run(['backup', 'restore', archivePath, '--target', staging, '--json'], RESTORE_TIMEOUT_MS)
-    if (r.code !== 0) throw new Error(`openclaw backup restore failed (exit ${r.code}): ${summarizeOpenclawStderr(r.stderr)}`)
+    if (r.code !== 0) throw cliFailure('openclaw backup restore', r, RESTORE_TIMEOUT_MS)
     const j = parseJson(r.stdout, 'openclaw backup restore', r.stderr)
     let root = typeof j.archiveRoot === 'string' ? j.archiveRoot : ''
     if (!root) {

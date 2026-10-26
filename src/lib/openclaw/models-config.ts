@@ -63,10 +63,15 @@ export function runOpenclaw(args: string[], timeoutMs = 15000): Promise<RunResul
     })
     child.on('close', (code, signal) => {
       clearTimeout(timer)
+      // 逾時一律回 124（同 timeout(1)），不看 code：openclaw 是 node 包裝器，收到 SIGTERM 會轉給
+      // 子行程後自己 exit 143，code 不是 null（2026-10-26 實機：錯誤只剩「exit 143: 」看不出是逾時）。
+      if (timedOut) {
+        resolve({ code: 124, stdout, stderr: `${stderr}\ntimed out after ${timeoutMs}ms` })
+        return
+      }
       if (code === null) {
-        // 被訊號終止：絕不當成成功。逾時回 124（同 timeout(1)）。
-        const why = timedOut ? `timed out after ${timeoutMs}ms` : `terminated by signal ${signal ?? 'unknown'}`
-        resolve({ code: timedOut ? 124 : 128, stdout, stderr: `${stderr}\n${why}` })
+        // 被訊號終止：絕不當成成功
+        resolve({ code: 128, stdout, stderr: `${stderr}\nterminated by signal ${signal ?? 'unknown'}` })
         return
       }
       resolve({ code, stdout, stderr })
