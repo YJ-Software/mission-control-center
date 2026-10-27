@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { guardAgentsDuring } from '@/lib/openclaw/config-guard'
-import { readAgentsConfig, runOpenclaw } from '@/lib/openclaw/models-config'
+import { readAgentsConfig, writeAgentsConfigPath } from '@/lib/openclaw/models-config'
 import { invalidateStoredProfiles, listAgents, removeProfile } from '@/lib/openclaw/auth-profiles'
 
 const SAFE_ID = /^[a-zA-Z0-9_.-]+$/
@@ -44,10 +44,7 @@ export async function POST(req: NextRequest) {
       },
       {
         readAgents: readAgentsConfig,
-        writeAgents: async (v) => {
-          const r = await runOpenclaw(['config', 'set', 'agents', JSON.stringify(v), '--strict-json'])
-          if (r.code !== 0) throw new Error(`config set agents failed (${r.code}): ${r.stderr.trim()}`)
-        },
+        writeAgents: (v) => writeAgentsConfigPath('agents', v),
         log: (m) => console.warn(`[auth/remove] ${m}`),
       },
     )

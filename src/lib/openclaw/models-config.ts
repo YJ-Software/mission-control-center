@@ -40,7 +40,15 @@ export interface RunResult {
   stderr: string
 }
 
-export function runOpenclaw(args: string[], timeoutMs = 15000): Promise<RunResult> {
+// 舊的 15 s 一體適用預設在 2026.10.7 的小 VPS 上連讀都不夠，逾時要分讀寫兩種。
+/** 讀設定的子指令（config get、models list/status、models auth list）。10.7 的 `models --status-json`
+ * 會先載入外掛：E5-2620 v3 限 2 核實測 15.8 s（user 14.5 s），已超過舊的 15 s；LLM 頁還會同時發好幾支互搶 CPU。 */
+export const OPENCLAW_READ_TIMEOUT_MS = 60_000
+/** 寫設定的子指令（config set、models set/fallbacks/aliases、models auth logout、plugins enable/disable/remove）。
+ * 10.7 寫入前先載入 4 個外掛：2 vCPU 閒置 throwaway 實測 15.7–19.5 s，15 s 每次都把 agent 覆寫砍成 124。 */
+export const OPENCLAW_WRITE_TIMEOUT_MS = 90_000
+
+export function runOpenclaw(args: string[], timeoutMs = OPENCLAW_READ_TIMEOUT_MS): Promise<RunResult> {
   return new Promise((resolve) => {
     // `--log-level silent` + `--no-color` suppress most banners, but openclaw
     // 2026.6.1+ still prints the clack "Doctor warnings" box to stdout for
@@ -77,6 +85,11 @@ export function runOpenclaw(args: string[], timeoutMs = 15000): Promise<RunResul
       resolve({ code, stdout, stderr })
     })
   })
+}
+
+/** 會寫 openclaw.json 的子指令一律走這裡，用寫入逾時。 */
+export function runOpenclawWrite(args: string[]): Promise<RunResult> {
+  return runOpenclaw(args, OPENCLAW_WRITE_TIMEOUT_MS)
 }
 
 /** Extract the first balanced JSON object/array from `s`, skipping any
@@ -207,29 +220,29 @@ function assertSafeAlias(alias: string) {
 // --agent. Per-agent overrides exist but require manual agent-config edits.
 export async function setDefault(_agent: string, model: string): Promise<void> {
   assertSafeModelId(model)
-  const r = await runOpenclaw(['models', 'set', model])
+  const r = await runOpenclawWrite(['models', 'set', model])
   if (r.code !== 0) throw new Error(`models set failed (${r.code}): ${r.stderr.trim()}`)
 }
 
 export async function addFallback(agent: string, model: string): Promise<void> {
   assertSafeModelId(model)
-  const r = await runOpenclaw(['models', '--agent', agent, 'fallbacks', 'add', model])
+  const r = await runOpenclawWrite(['models', '--agent', agent, 'fallbacks', 'add', model])
   if (r.code !== 0) throw new Error(`fallbacks add failed (${r.code}): ${r.stderr.trim()}`)
 }
 
 export async function removeFallback(agent: string, model: string): Promise<void> {
   assertSafeModelId(model)
-  const r = await runOpenclaw(['models', '--agent', agent, 'fallbacks', 'remove', model])
+  const r = await runOpenclawWrite(['models', '--agent', agent, 'fallbacks', 'remove', model])
   if (r.code !== 0) throw new Error(`fallbacks remove failed (${r.code}): ${r.stderr.trim()}`)
 }
 
 export async function reorderFallbacks(agent: string, models: string[]): Promise<void> {
   for (const m of models) assertSafeModelId(m)
   // No native "set list" command — clear then re-add in order.
-  const clear = await runOpenclaw(['models', '--agent', agent, 'fallbacks', 'clear'])
+  const clear = await runOpenclawWrite(['models', '--agent', agent, 'fallbacks', 'clear'])
   if (clear.code !== 0) throw new Error(`fallbacks clear failed (${clear.code}): ${clear.stderr.trim()}`)
   for (const m of models) {
-    const r = await runOpenclaw(['models', '--agent', agent, 'fallbacks', 'add', m])
+    const r = await runOpenclawWrite(['models', '--agent', agent, 'fallbacks', 'add', m])
     if (r.code !== 0) throw new Error(`fallbacks add failed for ${m}: ${r.stderr.trim()}`)
   }
 }
@@ -237,13 +250,13 @@ export async function reorderFallbacks(agent: string, models: string[]): Promise
 export async function addAlias(agent: string, alias: string, model: string): Promise<void> {
   assertSafeAlias(alias)
   assertSafeModelId(model)
-  const r = await runOpenclaw(['models', '--agent', agent, 'aliases', 'add', alias, model])
+  const r = await runOpenclawWrite(['models', '--agent', agent, 'aliases', 'add', alias, model])
   if (r.code !== 0) throw new Error(`alias add failed (${r.code}): ${r.stderr.trim()}`)
 }
 
 export async function removeAlias(agent: string, alias: string): Promise<void> {
   assertSafeAlias(alias)
-  const r = await runOpenclaw(['models', '--agent', agent, 'aliases', 'remove', alias])
+  const r = await runOpenclawWrite(['models', '--agent', agent, 'aliases', 'remove', alias])
   if (r.code !== 0) throw new Error(`alias remove failed (${r.code}): ${r.stderr.trim()}`)
 }
 
@@ -384,6 +397,12 @@ export async function clearAgentModelOverride(agentId: string): Promise<void> {
   await writeAgentOverride(agentId, undefined)
 }
 
+/** `config set <path> <json>`：成功前不回傳，失敗（含逾時 124）就丟錯。 */
+export async function writeAgentsConfigPath(path: string, value: unknown): Promise<void> {
+  const r = await runOpenclawWrite(['config', 'set', path, JSON.stringify(value), '--strict-json'])
+  if (r.code !== 0) throw new Error(`config set ${path} failed (${r.code}): ${r.stderr.trim()}`)
+}
+
 export interface WriteOverrideDeps {
   read(): Promise<unknown>
   write(path: string, value: unknown): Promise<void>
@@ -392,10 +411,7 @@ export interface WriteOverrideDeps {
 
 const defaultWriteDeps: WriteOverrideDeps = {
   read: readAgentsConfig,
-  write: async (path, value) => {
-    const r = await runOpenclaw(['config', 'set', path, JSON.stringify(value), '--strict-json'])
-    if (r.code !== 0) throw new Error(`config set failed (${r.code}): ${r.stderr.trim()}`)
-  },
+  write: writeAgentsConfigPath,
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 }
 

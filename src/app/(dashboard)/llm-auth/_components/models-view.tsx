@@ -622,9 +622,9 @@ function SingleAgentOverride({
       setError(null)
       // Snapshot for rollback if the API call fails.
       const previous = qc.getQueryData<OverridesResponse>(['openclaw-models-overrides'])
-      // Optimistic update — server-side `agent-override` triggers an
-      // `openclaw config set/unset` that re-spawns openclaw (~3s); without
-      // this the badge would lag behind the spinner.
+      // Optimistic update — server-side `agent-override` reads, writes and
+      // re-reads via `openclaw config` CLIs (roughly 20–30 s on a 2 vCPU box with
+      // OpenClaw 2026.10.7); without this the badge would lag behind the spinner.
       qc.setQueryData<OverridesResponse | undefined>(
         ['openclaw-models-overrides'],
         (old) => {

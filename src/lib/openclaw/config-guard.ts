@@ -7,20 +7,24 @@ import { agentsToList, type AgentModelOverride } from './models-config'
 
 const norm = (v: unknown): unknown => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
 
-/** Poll until the agent's model equals `expected` (undefined = no model key). */
+/** Poll until the agent's model equals `expected` (undefined = no model key).
+ * 每次 read 本身就是一支 `config get`（10.7 小機器上數秒），只累計 sleep 會讓
+ * 10 s 的視窗變成 20 次讀取；所以同時用實際經過時間封頂。 */
 export async function waitForAgentOverride(
   agentId: string,
   expected: AgentModelOverride | undefined,
-  deps: { read(): Promise<unknown>; sleep(ms: number): Promise<void> },
+  deps: { read(): Promise<unknown>; sleep(ms: number): Promise<void>; now?(): number },
   opts: { timeoutMs?: number; intervalMs?: number } = {},
 ): Promise<boolean> {
   const { timeoutMs = 10_000, intervalMs = 500 } = opts
+  const now = deps.now ?? Date.now
   const want = norm(expected)
+  const start = now()
   let waited = 0
   for (;;) {
     const entry = agentsToList(await deps.read()).find((a) => a.id === agentId)
     if (isDeepStrictEqual(norm(entry?.model), want)) return true
-    if (waited >= timeoutMs) return false
+    if (waited >= timeoutMs || now() - start >= timeoutMs) return false
     await deps.sleep(intervalMs)
     waited += intervalMs
   }

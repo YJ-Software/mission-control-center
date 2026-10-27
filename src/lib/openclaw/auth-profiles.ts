@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto'
 import os from 'node:os'
 import { spawn } from 'node:child_process'
 import Database from 'better-sqlite3'
-import { augmentedPath, extractJson, runOpenclaw } from './models-config'
+import { augmentedPath, extractJson, OPENCLAW_WRITE_TIMEOUT_MS, runOpenclaw } from './models-config'
 
 const AGENTS_ROOT = join(os.homedir(), '.openclaw', 'agents')
 const CONFIG_PATH = join(os.homedir(), '.openclaw', 'openclaw.json')
@@ -344,10 +344,12 @@ function pickExpiry(entry: AuthProfileEntry): number | undefined {
 }
 
 /** How long a single openclaw subcommand may run before we SIGTERM it. A
- * `models auth logout` measures ~5s on a healthy box, so this is generous —
- * but a busy box does blow through it, and the timeout has to be
- * distinguishable from a real non-zero exit or the caller cannot say why. */
-export const CLI_TIMEOUT_MS = 30_000
+ * `models auth logout` measures ~5s on a healthy box, but it rewrites
+ * openclaw.json, and on 2026.10.7 a config write first loads the plugins
+ * (15.7–19.5 s on a 2 vCPU box) — so it gets the shared write budget. The
+ * timeout has to be distinguishable from a real non-zero exit or the caller
+ * cannot say why. */
+export const CLI_TIMEOUT_MS = OPENCLAW_WRITE_TIMEOUT_MS
 
 /** Cap on the child output we keep. Bounded so a chatty or runaway command
  * cannot push an unbounded string into an error message and out to the UI. */

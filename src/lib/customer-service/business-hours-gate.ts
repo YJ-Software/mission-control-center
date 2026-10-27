@@ -15,6 +15,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { homedir } from 'os'
 import { getServerEnv } from '@/lib/server-env'
+import { OPENCLAW_WRITE_TIMEOUT_MS } from '@/lib/openclaw/models-config'
 
 const execFileAsync = promisify(execFile)
 
@@ -210,7 +211,7 @@ export async function installPlugin(): Promise<{ output: string }> {
   }
 
   try {
-    output += '\n' + (await runPluginCmd(['plugins', 'enable', PLUGIN_ID], ['--accept-capabilities'], 30000))
+    output += '\n' + (await runPluginCmd(['plugins', 'enable', PLUGIN_ID], ['--accept-capabilities'], OPENCLAW_WRITE_TIMEOUT_MS))
   } catch (err: any) {
     output += '\n' + (err?.stderr ?? err?.message ?? '')
   }
@@ -232,7 +233,7 @@ export async function installPlugin(): Promise<{ output: string }> {
         }
       }
       try {
-        output += '\n[id-injector] ' + (await runPluginCmd(['plugins', 'enable', ID_INJECTOR_PLUGIN_ID], ['--accept-capabilities'], 30000)).trim()
+        output += '\n[id-injector] ' + (await runPluginCmd(['plugins', 'enable', ID_INJECTOR_PLUGIN_ID], ['--accept-capabilities'], OPENCLAW_WRITE_TIMEOUT_MS)).trim()
       } catch (err: any) {
         output += '\n[id-injector] WARN: enable failed: ' + (err?.stderr ?? err?.message ?? '')
       }
@@ -250,13 +251,13 @@ export async function uninstallPlugin(): Promise<{ output: string }> {
   let output = ''
 
   try {
-    output += await runOpenclaw(['plugins', 'disable', PLUGIN_ID], 15000)
+    output += await runOpenclaw(['plugins', 'disable', PLUGIN_ID], OPENCLAW_WRITE_TIMEOUT_MS)
   } catch (err: any) {
     output += err?.stderr ?? ''
   }
 
   try {
-    output += '\n' + (await runOpenclaw(['plugins', 'remove', PLUGIN_ID], 30000))
+    output += '\n' + (await runOpenclaw(['plugins', 'remove', PLUGIN_ID], OPENCLAW_WRITE_TIMEOUT_MS))
   } catch (err: any) {
     output += '\n' + (err?.stderr ?? err?.message ?? '')
   }

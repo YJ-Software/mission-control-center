@@ -25,6 +25,20 @@ describe('waitForAgentOverride', () => {
     expect(sleep).toHaveBeenCalledTimes(4)
   })
 
+  it('caps the window by elapsed time, not just by sleeps, when each read is slow', async () => {
+    // 10.7 on a 2 vCPU box: every read is a `config get` of several seconds.
+    // Counting only sleeps let a 10 s window run 21 reads.
+    let clock = 0
+    const read = vi.fn(async () => {
+      clock += 6_000
+      return withModel({ primary: 'old' })
+    })
+    const sleep = vi.fn(async (ms: number) => { clock += ms })
+    const ok = await waitForAgentOverride('main', { primary: 'new' }, { read, sleep, now: () => clock })
+    expect(ok).toBe(false)
+    expect(read).toHaveBeenCalledTimes(2)
+  })
+
   it('treats a missing model as a match when expected is undefined', async () => {
     const sleep = vi.fn(async () => {})
     expect(await waitForAgentOverride('main', undefined, { read: async () => withModel(), sleep })).toBe(true)
