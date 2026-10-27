@@ -1,7 +1,15 @@
 import { execFile } from 'node:child_process'
 import { accessSync, constants, existsSync, readFileSync, realpathSync } from 'node:fs'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import zhTW from '../../../messages/zh-TW.json'
+import {
+  NODE_BLOCK_MESSAGE_KEY,
+  fillMessageTemplate,
+  nodeBlockMessageValues,
+  type NodePreflightBlockDetails,
+} from './node-preflight-message'
 
 const execFileP = promisify(execFile)
 
@@ -10,12 +18,14 @@ const execFileP = promisify(execFile)
  *
  * OpenClaw 2026.10.6 起把 package.json 的 `engines.node` 拉高到 `>=24.22.1 <25 || >=26.12.1`
  * （10.5 是 `>=24.16.0 <25 || >=26.1.0`）；套件自己的 node-version.mjs 也是同一組下限：Node 24、26
- * 各有同大版的最低版本，25 不支援，27 以上視為支援。`openclaw update` 會先向 registry 取目標版的
- * `engines.node`，執行它的 Node 不符合時拒絕升級（或試著另找／自備一個 Node）。
+ * 各有同大版的最低版本，25 不支援，27 以上視為支援。
  *
- * MCC 在送出 `openclaw update --yes` 之前做同樣的比對，讓使用者在畫面上看到「目前 Node 幾版、要幾版」，
- * 而不是在 job log 裡翻 OpenClaw 的錯誤。規則一律取目標版的 `engines.node`（與 OpenClaw 自己的
- * updater 同源），不寫死；取不到目標版或偵測不到 Node 時只警告、不擋。
+ * 真正執行升級的是**已安裝的舊版** updater（客戶機上目前是 10.5）：它向 registry 取目標版的
+ * `engines.node`，先試 gateway 服務定義裡的 Node（unit ExecStart 的直譯器），不符合再試 CLI 這支、
+ * 再試自己找或安裝相容的 Node，全部失敗才拒絕，而且拒絕前不會改動任何東西。所以 MCC 只在
+ * 「CLI 與 gateway 服務的 Node 都確定不符合」時擋；服務的 Node 讀不到時退而只看 CLI，但文案只說「可能」
+ * 被拒，並指向「仍要嘗試」。規則一律取目標版的 `engines.node`（與 updater 同源），不寫死；
+ * 取不到目標版或偵測不到 CLI 的 Node 時只警告、不擋。
  */
 
 /** OpenClaw 2026.10.6／10.7 的 engines.node（npm view 實測），測試與文件用 */
@@ -114,39 +124,60 @@ export interface OpenclawTarget {
 export type NodePreflight =
   | { verdict: 'ok' }
   | { verdict: 'warn'; message: string }
-  | { verdict: 'block'; message: string; nodeVersion: string; nodePath: string; targetVersion: string; nodeEngine: string }
+  | { verdict: 'block'; message: string; details: NodePreflightBlockDetails }
 
-/** 預檢判斷（純函式）：只有「確定不符合」才擋；其餘不確定一律放行並帶警告 */
-export function decideNodePreflight(input: { target: OpenclawTarget | null; node: NodeRuntime | null }): NodePreflight {
-  const { target, node } = input
+function blockMessage(details: NodePreflightBlockDetails): string {
+  const template = zhTW.openclawNodePreflight[NODE_BLOCK_MESSAGE_KEY[details.reason]]
+  return fillMessageTemplate(template, nodeBlockMessageValues(details))
+}
+
+/**
+ * 預檢判斷（純函式）。只有 CLI 的 Node 確定不符合、且 gateway 服務的 Node 不是「確定符合」時才擋：
+ * 服務的 Node 符合 → OpenClaw updater 會優先用它，只警告；服務的 Node 讀不到 → 擋，但文案說「可能」被拒。
+ * 其餘不確定一律放行並帶警告。
+ */
+export function decideNodePreflight(input: {
+  target: OpenclawTarget | null
+  cli: NodeRuntime | null
+  service: NodeRuntime | null
+}): NodePreflight {
+  const { target, cli, service } = input
   if (!target) {
     return { verdict: 'warn', message: 'Node 版本預檢略過：取不到 OpenClaw 最新版資訊（npm registry 無回應），無法確認新版需要的 Node 版本' }
   }
-  if (!target.nodeEngine) return { verdict: 'ok' }
-  if (!node) {
+  const engine = target.nodeEngine
+  if (!engine) return { verdict: 'ok' }
+  if (!cli) {
     return {
       verdict: 'warn',
-      message: `Node 版本預檢略過：偵測不到 openclaw 會用哪個 Node 執行；OpenClaw ${target.version} 需要 Node ${target.nodeEngine}，不符合時升級會被 OpenClaw 拒絕`,
+      message: `Node 版本預檢略過：偵測不到 openclaw 會用哪個 Node 執行；OpenClaw ${target.version} 需要 Node ${engine}，不符合時 OpenClaw 可能會拒絕升級`,
     }
   }
-  const ok = nodeSatisfiesEngine(node.version, target.nodeEngine)
-  if (ok === null) {
+  const cliOk = nodeSatisfiesEngine(cli.version, engine)
+  if (cliOk === null) {
     return {
       verdict: 'warn',
-      message: `Node 版本預檢略過：看不懂 OpenClaw ${target.version} 的 Node 需求「${target.nodeEngine}」（目前 Node ${node.version}）`,
+      message: `Node 版本預檢略過：看不懂 OpenClaw ${target.version} 的 Node 需求「${engine}」（目前 Node ${cli.version}）`,
     }
   }
-  if (ok) return { verdict: 'ok' }
-  return {
-    verdict: 'block',
-    message:
-      `OpenClaw ${target.version} 需要 Node ${target.nodeEngine}，但 openclaw 目前用 Node ${node.version}（${node.path}）執行，` +
-      `升級會被 OpenClaw 拒絕。請先把這台主機的 Node 升級到符合的版本（例如 26.x 最新版），再升級 OpenClaw。`,
-    nodeVersion: node.version,
-    nodePath: node.path,
-    targetVersion: target.version,
-    nodeEngine: target.nodeEngine,
+  if (cliOk) return { verdict: 'ok' }
+
+  const serviceOk = service ? nodeSatisfiesEngine(service.version, engine) : null
+  if (service && serviceOk) {
+    return {
+      verdict: 'warn',
+      message:
+        `OpenClaw ${target.version} 需要 Node ${engine}；openclaw CLI 用的 Node ${cli.version}（${cli.path}）不符合，` +
+        `但 gateway 服務用的 Node ${service.version}（${service.path}）符合，OpenClaw 會改用它升級`,
+    }
   }
+  const details: NodePreflightBlockDetails = service && serviceOk === false
+    ? {
+        reason: 'both-fail', targetVersion: target.version, nodeEngine: engine,
+        cliVersion: cli.version, cliPath: cli.path, serviceVersion: service.version, servicePath: service.path,
+      }
+    : { reason: 'service-unknown', targetVersion: target.version, nodeEngine: engine, cliVersion: cli.version, cliPath: cli.path }
+  return { verdict: 'block', message: blockMessage(details), details }
 }
 
 // ---------------------------------------------------------------------------
@@ -203,14 +234,63 @@ export async function detectOpenclawNodeRuntime(pathEnv: string): Promise<NodeRu
     const shebang = parseNodeShebang(firstLine)
     if (!shebang) return null
     const nodePath = shebang.kind === 'absolute' ? shebang.path : whichIn(shebang.name, pathEnv)
-    if (!nodePath || !existsSync(nodePath)) return null
+    if (!nodePath) return null
+    return await nodeRuntimeAt(nodePath)
+  } catch {
+    return null
+  }
+}
 
-    if (safeRealpath(nodePath) === safeRealpath(process.execPath)) {
-      return { version: process.versions.node, path: nodePath }
-    }
-    const { stdout } = await execFileP(nodePath, ['--version'], { timeout: 5000 })
-    const v = parseNodeVersion(stdout.trim())
-    return v ? { version: v.join('.'), path: nodePath } : null
+/** 某支 node 的版本：是 MCC 自己這支就用 process.versions，否則跑 `<node> --version`；失敗回 null */
+async function nodeRuntimeAt(nodePath: string): Promise<NodeRuntime | null> {
+  if (!path.isAbsolute(nodePath) || !existsSync(nodePath)) return null
+  if (safeRealpath(nodePath) === safeRealpath(process.execPath)) {
+    return { version: process.versions.node, path: nodePath }
+  }
+  const { stdout } = await execFileP(nodePath, ['--version'], { timeout: 5000 })
+  const v = parseNodeVersion(String(stdout).trim())
+  return v ? { version: v.join('.'), path: nodePath } : null
+}
+
+/**
+ * gateway user unit 的候選路徑，順序照 OpenClaw 的 resolveGatewaySystemdServiceNameCandidates
+ * （`openclaw-gateway`，舊安裝是 `openclaw`），目錄依 XDG_CONFIG_HOME（未設時 ~/.config）
+ */
+export function gatewayUnitCandidates(env: Record<string, string | undefined> = process.env, home: string = homedir()): string[] {
+  const configHome = env.XDG_CONFIG_HOME?.trim() || path.join(home, '.config')
+  return ['openclaw-gateway', 'openclaw'].map(name => path.join(configHome, 'systemd', 'user', `${name}.service`))
+}
+
+function splitExecArgs(line: string): string[] {
+  const args: string[] = []
+  const re = /"((?:[^"\\]|\\.)*)"|'([^']*)'|(\S+)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(line))) args.push(m[1] ?? m[2] ?? m[3])
+  return args
+}
+
+/**
+ * 從 unit 內容取出 gateway 用的 Node，規則同 OpenClaw 的 resolveManagedServiceNodeRunner：
+ * ExecStart 的參數裡 `gateway` 出現在第 2 個之後，且第 1 個的檔名是 node，才把第 1 個當成 Node。
+ */
+export function parseServiceNodeRunner(unitText: string): string | null {
+  for (const raw of unitText.split('\n')) {
+    const m = /^\s*ExecStart\s*=\s*(.*)$/.exec(raw)
+    if (!m || !m[1].trim()) continue
+    const args = splitExecArgs(m[1].trim().replace(/^[-@:+!]+/, ''))
+    const runner = args.indexOf('gateway') > 1 ? args[0] : undefined
+    return runner && /^node(\.exe)?$/i.test(path.basename(runner)) ? runner : null
+  }
+  return null
+}
+
+/** gateway 服務定義裡的 Node（OpenClaw updater 優先用的那支）；沒有 unit、不是 node 啟動或讀不到版本回 null */
+export async function detectGatewayServiceNodeRuntime(unitPaths: string[] = gatewayUnitCandidates()): Promise<NodeRuntime | null> {
+  try {
+    const unit = unitPaths.find(p => existsSync(p))
+    if (!unit) return null
+    const runner = parseServiceNodeRunner(readFileSync(unit, 'utf8'))
+    return runner ? await nodeRuntimeAt(runner) : null
   } catch {
     return null
   }
@@ -235,11 +315,13 @@ export async function fetchOpenclawLatestTarget(): Promise<OpenclawTarget | null
 
 export async function runOpenclawNodePreflight(deps: {
   fetchTarget: () => Promise<OpenclawTarget | null>
-  detectNode: () => Promise<NodeRuntime | null>
+  detectCliNode: () => Promise<NodeRuntime | null>
+  detectServiceNode: () => Promise<NodeRuntime | null>
 }): Promise<NodePreflight> {
-  const [target, node] = await Promise.all([
+  const [target, cli, service] = await Promise.all([
     deps.fetchTarget().catch(() => null),
-    deps.detectNode().catch(() => null),
+    deps.detectCliNode().catch(() => null),
+    deps.detectServiceNode().catch(() => null),
   ])
-  return decideNodePreflight({ target, node })
+  return decideNodePreflight({ target, cli, service })
 }

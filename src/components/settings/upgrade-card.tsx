@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Download, Loader2, CheckCircle2, AlertCircle, ArrowUpCircle, Package, Settings, Save, Terminal, Copy, Check, ScrollText } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { useLongRunGuard } from '@/hooks/use-long-run-guard'
+import { NODE_BLOCK_MESSAGE_KEY, isNodePreflightBlockDetails, nodeBlockMessageValues } from '@/lib/openclaw/node-preflight-message'
 
 interface UpgradeStatus {
   mode: 'release' | 'dev' | 'unknown'
@@ -84,6 +86,7 @@ export function UpgradeCard() {
   const [phase, setPhase] = useState<Phase>('idle')
   const [message, setMessage] = useState<string>('')
   const guard = useLongRunGuard()
+  const tn = useTranslations('openclawNodePreflight')
   const [showManifestConfig, setShowManifestConfig] = useState(false)
   const [manifestUrlDraft, setManifestUrlDraft] = useState('')
   const [manifestSaved, setManifestSaved] = useState(false)
@@ -252,9 +255,16 @@ export function UpgradeCard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'update-openclaw', triggeredBy: 'settings-card', ...(force ? { force: true } : {}) }),
       })
-      const data = (await res.json()) as JobStartResponse & { success?: boolean; code?: string; error?: string; warning?: string }
+      const data = (await res.json()) as JobStartResponse & { success?: boolean; code?: string; error?: string; warning?: string; preflight?: unknown }
       if (data?.jobId) setOpenclawJobId(data.jobId)
-      if (data?.code === 'node-unsupported') setOpenclawNotice({ kind: 'blocked', text: data.error ?? '' })
+      if (data?.code === 'node-unsupported') {
+        setOpenclawNotice({
+          kind: 'blocked',
+          text: isNodePreflightBlockDetails(data.preflight)
+            ? tn(NODE_BLOCK_MESSAGE_KEY[data.preflight.reason], nodeBlockMessageValues(data.preflight))
+            : (data.error ?? ''),
+        })
+      }
       else if (data?.success === false) setOpenclawNotice({ kind: 'error', text: data.error ?? `upgrade failed (${res.status})` })
       else if (data?.warning) setOpenclawNotice({ kind: 'warning', text: data.warning })
       if (!data?.jobId) return
@@ -517,7 +527,7 @@ export function UpgradeCard() {
                       disabled={openclawUpgrading}
                       className="block text-[11px] underline text-red-200/80 hover:text-red-100 disabled:opacity-40"
                     >
-                      Try anyway (OpenClaw re-checks Node itself and refuses if it finds no compatible runtime)
+                      {tn('tryAnyway')}
                     </button>
                   )}
                 </div>

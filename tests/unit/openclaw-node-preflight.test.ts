@@ -41,11 +41,23 @@ vi.mock('@/lib/jobs/runner', () => ({ startJob: m.startJob, jobShellPath: () => 
 import {
   OPENCLAW_2026_10_6_NODE_ENGINE,
   decideNodePreflight,
+  detectGatewayServiceNodeRuntime,
   detectOpenclawNodeRuntime,
+  gatewayUnitCandidates,
   nodeSatisfiesEngine,
   parseNodeShebang,
+  parseServiceNodeRunner,
   runOpenclawNodePreflight,
 } from '@/lib/openclaw/node-preflight'
+import {
+  NODE_BLOCK_MESSAGE_KEY,
+  fillMessageTemplate,
+  nodeBlockMessageValues,
+  type NodePreflightBlockDetails,
+} from '@/lib/openclaw/node-preflight-message'
+import en from '../../messages/en.json'
+import zhTW from '../../messages/zh-TW.json'
+import zhCN from '../../messages/zh-CN.json'
 
 beforeEach(() => {
   m.unexpected.length = 0
@@ -138,43 +150,112 @@ describe('parseNodeShebang', () => {
 
 describe('decideNodePreflight', () => {
   const target = { version: '2026.10.7', nodeEngine: OPENCLAW_2026_10_6_NODE_ENGINE }
+  const oldCli = { version: '24.16.0', path: '/x/cli/node' }
+  const goodCli = { version: '26.12.1', path: '/x/cli/node' }
+  const oldSvc = { version: '26.12.0', path: '/x/svc/node' }
+  const goodSvc = { version: '26.12.1', path: '/x/svc/node' }
 
-  it('blocks when the detected Node is below the target requirement, naming both', () => {
-    const r = decideNodePreflight({ target, node: { version: '26.12.0', path: '/usr/bin/node' } })
+  it('gateway service Node OK + CLI Node too old → no block, warn (the installed updater prefers the service Node)', () => {
+    const r = decideNodePreflight({ target, cli: oldCli, service: goodSvc })
+    expect(r.verdict).toBe('warn')
+    if (r.verdict === 'warn') {
+      expect(r.message).toContain('24.16.0')
+      expect(r.message).toContain('/x/svc/node')
+    }
+  })
+
+  it('both CLI and gateway service Node too old → block (both-fail), naming both', () => {
+    const r = decideNodePreflight({ target, cli: oldCli, service: oldSvc })
     expect(r.verdict).toBe('block')
     if (r.verdict !== 'block') return
-    expect(r.message).toContain('26.12.0')
-    expect(r.message).toContain(OPENCLAW_2026_10_6_NODE_ENGINE)
-    expect(r.message).toContain('2026.10.7')
-    expect(r.message).toContain('/usr/bin/node')
+    expect(r.details).toEqual({
+      reason: 'both-fail', targetVersion: '2026.10.7', nodeEngine: OPENCLAW_2026_10_6_NODE_ENGINE,
+      cliVersion: '24.16.0', cliPath: '/x/cli/node', serviceVersion: '26.12.0', servicePath: '/x/svc/node',
+    })
+    for (const part of ['2026.10.7', OPENCLAW_2026_10_6_NODE_ENGINE, '24.16.0', '/x/cli/node', '26.12.0', '/x/svc/node', '仍要嘗試']) {
+      expect(r.message).toContain(part)
+    }
   })
 
-  it('blocks Node 25 too (not a supported line)', () => {
-    expect(decideNodePreflight({ target, node: { version: '25.9.0', path: '/x/node' } }).verdict).toBe('block')
+  it('gateway service Node unknown + CLI Node too old → block with the softened "may refuse" text', () => {
+    const r = decideNodePreflight({ target, cli: oldCli, service: null })
+    expect(r.verdict).toBe('block')
+    if (r.verdict !== 'block') return
+    expect(r.details.reason).toBe('service-unknown')
+    expect(r.message.startsWith('OpenClaw 可能會拒絕這次升級')).toBe(true)
+    expect(r.message).toContain('仍要嘗試')
+    expect(r.message).toContain('自己改用或安裝相容的 Node')
+    expect(r.message).not.toContain('這台主機的 Node')
   })
 
-  it('passes a compatible Node', () => {
-    expect(decideNodePreflight({ target, node: { version: '26.12.1', path: '/usr/bin/node' } })).toEqual({ verdict: 'ok' })
+  it('treats a service Node version the range cannot judge as unknown (softened block)', () => {
+    const r = decideNodePreflight({ target, cli: oldCli, service: { version: 'garbage', path: '/x/svc/node' } })
+    expect(r.verdict === 'block' && r.details.reason).toBe('service-unknown')
+  })
+
+  it('blocks Node 25 on both sides too (not a supported line)', () => {
+    const n25 = { version: '25.9.0', path: '/x/node' }
+    expect(decideNodePreflight({ target, cli: n25, service: n25 }).verdict).toBe('block')
+  })
+
+  it('passes a compatible CLI Node regardless of the service Node (OpenClaw handles that side)', () => {
+    expect(decideNodePreflight({ target, cli: goodCli, service: oldSvc })).toEqual({ verdict: 'ok' })
+    expect(decideNodePreflight({ target, cli: goodCli, service: null })).toEqual({ verdict: 'ok' })
   })
 
   it('passes when the target declares no Node requirement', () => {
-    expect(decideNodePreflight({ target: { version: '2026.10.7', nodeEngine: null }, node: null })).toEqual({ verdict: 'ok' })
+    expect(decideNodePreflight({ target: { version: '2026.10.7', nodeEngine: null }, cli: null, service: null })).toEqual({ verdict: 'ok' })
   })
 
   it('warns but does not block when the target is unknown', () => {
-    const r = decideNodePreflight({ target: null, node: { version: '20.0.0', path: '/usr/bin/node' } })
-    expect(r.verdict).toBe('warn')
+    expect(decideNodePreflight({ target: null, cli: oldCli, service: oldSvc }).verdict).toBe('warn')
   })
 
-  it('warns but does not block when Node cannot be detected', () => {
-    const r = decideNodePreflight({ target, node: null })
+  it('warns but does not block when the CLI Node cannot be detected, even if the service Node is old', () => {
+    const r = decideNodePreflight({ target, cli: null, service: oldSvc })
     expect(r.verdict).toBe('warn')
     if (r.verdict === 'warn') expect(r.message).toContain(OPENCLAW_2026_10_6_NODE_ENGINE)
   })
 
   it('warns but does not block on an engines range it cannot parse', () => {
-    const r = decideNodePreflight({ target: { version: '2027.1.1', nodeEngine: '24 - 26' }, node: { version: '20.0.0', path: '/n' } })
+    const r = decideNodePreflight({ target: { version: '2027.1.1', nodeEngine: '24 - 26' }, cli: oldCli, service: oldSvc })
     expect(r.verdict).toBe('warn')
+  })
+})
+
+describe('block message i18n', () => {
+  const locales = { en, 'zh-TW': zhTW, 'zh-CN': zhCN }
+  const details: NodePreflightBlockDetails = {
+    reason: 'both-fail', targetVersion: '2026.10.7', nodeEngine: OPENCLAW_2026_10_6_NODE_ENGINE,
+    cliVersion: '24.16.0', cliPath: '/a/node', serviceVersion: '26.12.0', servicePath: '/b/node',
+  }
+
+  it('server message is the zh-TW template filled in (no drift between API error and UI)', () => {
+    for (const service of [{ version: '26.12.0', path: '/b/node' }, null]) {
+      const r = decideNodePreflight({
+        target: { version: '2026.10.7', nodeEngine: OPENCLAW_2026_10_6_NODE_ENGINE },
+        cli: { version: '24.16.0', path: '/a/node' },
+        service,
+      })
+      if (r.verdict !== 'block') throw new Error('expected block')
+      const template = zhTW.openclawNodePreflight[NODE_BLOCK_MESSAGE_KEY[r.details.reason]]
+      expect(r.message).toBe(fillMessageTemplate(template, nodeBlockMessageValues(r.details)))
+      expect(r.message).not.toMatch(/\{\w+\}/)
+    }
+  })
+
+  it('every locale has both block texts with the same placeholders, says "may" and points to try-anyway', () => {
+    for (const [loc, msgs] of Object.entries(locales)) {
+      const ns = msgs.openclawNodePreflight
+      for (const key of Object.values(NODE_BLOCK_MESSAGE_KEY)) {
+        const placeholders = (ns[key].match(/\{\w+\}/g) ?? []).sort()
+        expect(placeholders, `${loc}.${key}`).toEqual((zhTW.openclawNodePreflight[key].match(/\{\w+\}/g) ?? []).sort())
+        expect(ns[key], `${loc}.${key}`).toContain(ns.tryAnyway)
+      }
+      expect(fillMessageTemplate(ns.blockedBothFail, nodeBlockMessageValues(details))).toContain('/b/node')
+    }
+    expect(en.openclawNodePreflight.blockedServiceUnknown.startsWith('OpenClaw may refuse this upgrade')).toBe(true)
+    expect(zhCN.openclawNodePreflight.blockedServiceUnknown.startsWith('OpenClaw 可能会拒绝这次升级')).toBe(true)
   })
 })
 
@@ -182,9 +263,42 @@ describe('runOpenclawNodePreflight', () => {
   it('treats failing lookups as unknown → warn, never throws', async () => {
     const r = await runOpenclawNodePreflight({
       fetchTarget: () => Promise.reject(new Error('offline')),
-      detectNode: () => Promise.reject(new Error('boom')),
+      detectCliNode: () => Promise.reject(new Error('boom')),
+      detectServiceNode: () => Promise.reject(new Error('boom')),
     })
     expect(r.verdict).toBe('warn')
+  })
+
+  it('a failing service lookup counts as unknown → softened block on a bad CLI Node', async () => {
+    const r = await runOpenclawNodePreflight({
+      fetchTarget: async () => ({ version: '2026.10.7', nodeEngine: OPENCLAW_2026_10_6_NODE_ENGINE }),
+      detectCliNode: async () => ({ version: '24.16.0', path: '/a/node' }),
+      detectServiceNode: () => Promise.reject(new Error('boom')),
+    })
+    expect(r.verdict === 'block' && r.details.reason).toBe('service-unknown')
+  })
+})
+
+describe('gateway service Node (same rule as OpenClaw resolveManagedServiceNodeRunner)', () => {
+  it('takes the ExecStart interpreter when it is node and `gateway` comes after the script', () => {
+    const unit = '[Service]\nType=simple\nExecStart=/opt/n/bin/node /p/openclaw/dist/index.js gateway --port 18789\n'
+    expect(parseServiceNodeRunner(unit)).toBe('/opt/n/bin/node')
+    expect(parseServiceNodeRunner('ExecStart=-"/opt/my node/node" /p/index.js gateway')).toBe('/opt/my node/node')
+  })
+
+  it('returns null when the service is not started through node', () => {
+    expect(parseServiceNodeRunner('ExecStart=/usr/local/bin/openclaw gateway --port 1')).toBeNull()
+    expect(parseServiceNodeRunner('ExecStart=/opt/bun /p/index.js gateway')).toBeNull()
+    expect(parseServiceNodeRunner('ExecStart=/opt/n/bin/node /p/index.js serve')).toBeNull()
+    expect(parseServiceNodeRunner('[Service]\nType=simple\n')).toBeNull()
+  })
+
+  it('looks for openclaw-gateway then openclaw user units under XDG_CONFIG_HOME or ~/.config', () => {
+    expect(gatewayUnitCandidates({}, '/home/u')).toEqual([
+      '/home/u/.config/systemd/user/openclaw-gateway.service',
+      '/home/u/.config/systemd/user/openclaw.service',
+    ])
+    expect(gatewayUnitCandidates({ XDG_CONFIG_HOME: '/cfg' }, '/home/u')[0]).toBe('/cfg/systemd/user/openclaw-gateway.service')
   })
 })
 
@@ -223,6 +337,28 @@ describe('detectOpenclawNodeRuntime', () => {
   it('returns null when openclaw is not on the PATH', async () => {
     expect(await detectOpenclawNodeRuntime(path.join(dir, 'empty'))).toBeNull()
   })
+
+  it('reads the gateway unit ExecStart node and asks it for its version (execFile mocked)', async () => {
+    const svcNode = path.join(dir, 'svc', 'bin', 'node')
+    writeExec(svcNode, '#!/bin/sh\necho v0\n')
+    const unit = path.join(dir, 'systemd', 'user', 'openclaw-gateway.service')
+    mkdirSync(path.dirname(unit), { recursive: true })
+    writeFileSync(unit, `[Service]\nExecStart=${svcNode} /p/dist/index.js gateway --port 18789\n`)
+    m.execFile.mockImplementation((file: string, args: string[], _opts: unknown, cb: (e: unknown, r: unknown) => void) => {
+      expect(file).toBe(svcNode)
+      expect(args).toEqual(['--version'])
+      cb(null, { stdout: 'v26.12.1\n', stderr: '' })
+    })
+    expect(await detectGatewayServiceNodeRuntime([unit, path.join(dir, 'nope.service')])).toEqual({ version: '26.12.1', path: svcNode })
+  })
+
+  it('gateway unit missing or its node gone → null, nothing executed', async () => {
+    expect(await detectGatewayServiceNodeRuntime([path.join(dir, 'none.service')])).toBeNull()
+    const unit = path.join(dir, 'openclaw-gateway.service')
+    writeFileSync(unit, `ExecStart=${path.join(dir, 'gone', 'node')} /p/index.js gateway\n`)
+    expect(await detectGatewayServiceNodeRuntime([unit])).toBeNull()
+    expect(m.execFile).not.toHaveBeenCalled()
+  })
 })
 
 describe('/api/action update-openclaw preflight', () => {
@@ -235,23 +371,25 @@ describe('/api/action update-openclaw preflight', () => {
       runOpenclawNodePreflight: m.preflight,
       fetchOpenclawLatestTarget: vi.fn(),
       detectOpenclawNodeRuntime: vi.fn(),
+      detectGatewayServiceNodeRuntime: vi.fn(),
     }))
   })
   afterEach(() => { vi.doUnmock('@/lib/openclaw/node-preflight') })
 
   const load = async () => (await import('@/app/api/action/route')).POST
 
-  const blocked = {
-    verdict: 'block', message: 'OpenClaw 2026.10.7 需要 Node >=24.22.1 <25 || >=26.12.1，但 openclaw 目前用 Node 26.12.0',
-    nodeVersion: '26.12.0', nodePath: '/usr/bin/node', targetVersion: '2026.10.7', nodeEngine: OPENCLAW_2026_10_6_NODE_ENGINE,
+  const details: NodePreflightBlockDetails = {
+    reason: 'service-unknown', targetVersion: '2026.10.7', nodeEngine: OPENCLAW_2026_10_6_NODE_ENGINE,
+    cliVersion: '26.12.0', cliPath: '/usr/bin/node',
   }
+  const blocked = { verdict: 'block', message: 'OpenClaw 可能會拒絕這次升級：… Node 26.12.0 …', details }
 
   it('stops before starting the job when Node is too old (409 node-unsupported)', async () => {
     m.preflight.mockResolvedValue(blocked)
     const res = await (await load())(post({ action: 'update-openclaw', triggeredBy: 'settings-card' }))
     expect(res.status).toBe(409)
     const body = await res.json()
-    expect(body).toMatchObject({ success: false, code: 'node-unsupported' })
+    expect(body).toMatchObject({ success: false, code: 'node-unsupported', preflight: details })
     expect(body.error).toContain('26.12.0')
     expect(m.startJob).not.toHaveBeenCalled()
   })

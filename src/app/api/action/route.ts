@@ -32,7 +32,7 @@ function run(cmd: string, timeout = 30000): Promise<{ success: boolean; output?:
   })
 }
 
-type ActionResult = { success: boolean; output?: string; error?: string; message?: string; jobId?: string; status?: number; code?: string; warning?: string }
+type ActionResult = { success: boolean; output?: string; error?: string; message?: string; jobId?: string; status?: number; code?: string; warning?: string; preflight?: unknown }
 type ActionHandler = (ctx: { triggeredBy: TriggerSource; force: boolean }) => Promise<ActionResult>
 
 // All action keys are validated against this allowlist — no arbitrary command execution
@@ -113,16 +113,19 @@ const actions: Record<string, ActionHandler> = {
   },
 
   'update-openclaw': async ({ triggeredBy, force }) => {
-    // 新版 OpenClaw 對 Node 有下限（10.6 起 >=24.22.1 <25 || >=26.12.1），不符合時 `openclaw update` 會拒絕：
-    // 先比對再開 job，畫面上直接講清楚目前幾版、要幾版。取不到資訊只警告不擋；force（使用者看過訊息仍要試）
-    // 就照跑，OpenClaw 自己還會再檢查一次（它可能找得到或自備相容的 Node）
-    const { runOpenclawNodePreflight, fetchOpenclawLatestTarget, detectOpenclawNodeRuntime } = await import('@/lib/openclaw/node-preflight')
+    // 新版 OpenClaw 對 Node 有下限（10.6 起 >=24.22.1 <25 || >=26.12.1）。先比對再開 job：CLI 與 gateway 服務的
+    // Node 都不符合（或服務的讀不到）才擋，畫面上講清楚幾版、要幾版。取不到資訊只警告不擋；force（使用者看過
+    // 訊息仍要試）就照跑，OpenClaw 自己還會再檢查一次（它可能改用或自備相容的 Node）
+    const {
+      runOpenclawNodePreflight, fetchOpenclawLatestTarget, detectOpenclawNodeRuntime, detectGatewayServiceNodeRuntime,
+    } = await import('@/lib/openclaw/node-preflight')
     const preflight = await runOpenclawNodePreflight({
       fetchTarget: fetchOpenclawLatestTarget,
-      detectNode: () => detectOpenclawNodeRuntime(jobShellPath()),
+      detectCliNode: () => detectOpenclawNodeRuntime(jobShellPath()),
+      detectServiceNode: () => detectGatewayServiceNodeRuntime(),
     })
     if (preflight.verdict === 'block' && !force) {
-      return { success: false, code: 'node-unsupported', error: preflight.message, status: 409 }
+      return { success: false, code: 'node-unsupported', error: preflight.message, preflight: preflight.details, status: 409 }
     }
     const notice = preflight.verdict === 'warn'
       ? preflight.message

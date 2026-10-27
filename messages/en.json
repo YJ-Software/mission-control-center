@@ -5,7 +5,6 @@
     "updateMccConfirm": "Upgrade MCC to {version}? The service will restart and the page will briefly disconnect.",
     "updateMccFailed": "MCC upgrade failed: {error}",
     "updateOpenclawFailed": "OpenClaw upgrade failed: {error}",
-    "updateOpenclawNodeBlocked": "{error}\n\nTry the upgrade anyway? OpenClaw checks Node again itself and may find or install a compatible runtime; if not, it refuses without changing anything.",
     "updating": "Updating...",
     "viewLog": "View log",
     "updateSystem": "{count} system updates",
@@ -318,7 +317,6 @@
     "checking": "Checking...",
     "actionSuccess": "Action completed",
     "actionFailed": "Action failed",
-    "openclawNodeBlocked": "{error}\n\nTry the upgrade anyway? OpenClaw checks Node again itself and may find or install a compatible runtime; if not, it refuses without changing anything.",
     "confirmRestartOpenclaw": "Restart OpenClaw? This will interrupt running tasks.",
     "confirmRestartDashboard": "Restart Dashboard? Page will reload.",
     "confirmRestartTailscale": "Restart Tailscale? Network may drop briefly.",
@@ -2668,5 +2666,11 @@
     "force": "Restart anyway",
     "forceConfirm": "Force the restart? The work below will be interrupted. If it was a package install, use “Repair” in the notification center afterwards, or run sudo dpkg --configure -a.",
     "forceConfirmButton": "Force restart"
+  },
+  "openclawNodePreflight": {
+    "blockedServiceUnknown": "OpenClaw may refuse this upgrade: OpenClaw {target} requires Node {engine}. The Node the openclaw CLI uses, {cliVersion} ({cliPath}), does not match, and the gateway service's Node could not be read. OpenClaw may switch to or install a compatible Node itself; choose \"Try anyway\" to let it check. If it finds none, it refuses without changing anything. You can also upgrade the Node openclaw uses to a matching version first.",
+    "blockedBothFail": "OpenClaw will likely refuse this upgrade: OpenClaw {target} requires Node {engine}, and neither the openclaw CLI's Node {cliVersion} ({cliPath}) nor the gateway service's Node {serviceVersion} ({servicePath}) matches. OpenClaw may still find or install a compatible Node itself; choose \"Try anyway\" to let it check. If it finds none, it refuses without changing anything. You can also upgrade the Node both of them use to a matching version first.",
+    "confirmTryAnyway": "Try the upgrade anyway?",
+    "tryAnyway": "Try anyway"
   }
 }

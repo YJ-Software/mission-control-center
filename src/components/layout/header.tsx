@@ -4,6 +4,7 @@ import { Globe, Menu, RefreshCw, ArrowUpCircle, Loader2, ScrollText, Package, Po
 import { useState } from 'react'
 import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
+import { NODE_BLOCK_MESSAGE_KEY, isNodePreflightBlockDetails, nodeBlockMessageValues } from '@/lib/openclaw/node-preflight-message'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import type { OpenClawVersionInfo } from '@/lib/services-status'
@@ -36,6 +37,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   const [rebooting, setRebooting] = useState(false)
   const [rebootJobId, setRebootJobId] = useState<string | null>(null)
   const t = useTranslations('header')
+  const tn = useTranslations('openclawNodePreflight')
   const guard = useLongRunGuard()
   const queryClient = useQueryClient()
 
@@ -85,7 +87,11 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
       if (data?.jobId) setOcJobId(data.jobId)
       // Node 版本不符合新版 OpenClaw：講清楚目前幾版、要幾版，使用者確認後才略過預檢重送
       if (data?.code === 'node-unsupported') {
-        if (confirm(t('updateOpenclawNodeBlocked', { error: data.error ?? '' }))) void handleUpdate(true)
+        const details: unknown = data.preflight
+        const msg = isNodePreflightBlockDetails(details)
+          ? tn(NODE_BLOCK_MESSAGE_KEY[details.reason], nodeBlockMessageValues(details))
+          : (data.error ?? '')
+        if (confirm(`${msg}\n\n${tn('confirmTryAnyway')}`)) void handleUpdate(true)
       } else if (data?.success === false) {
         alert(t('updateOpenclawFailed', { error: data?.error ?? 'unknown' }))
       }

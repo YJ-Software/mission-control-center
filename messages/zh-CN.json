@@ -5,7 +5,6 @@
     "updateMccConfirm": "升级 MCC 到 {version}？升级期间服务会重启、页面会短暂断线。",
     "updateMccFailed": "MCC 升级失败：{error}",
     "updateOpenclawFailed": "OpenClaw 升级失败：{error}",
-    "updateOpenclawNodeBlocked": "{error}\n\n仍要尝试升级吗？OpenClaw 会再自行检查 Node，可能找到或安装兼容的版本；找不到时会拒绝升级、不会改动任何东西。",
     "updating": "更新中...",
     "viewLog": "查看 log",
     "updateSystem": "系统更新 {count}",
@@ -318,7 +317,6 @@
     "checking": "Checking...",
     "actionSuccess": "Action completed",
     "actionFailed": "Action failed",
-    "openclawNodeBlocked": "{error}\n\n仍要尝试升级吗？OpenClaw 会再自行检查 Node，可能找到或安装兼容的版本；找不到时会拒绝升级、不会改动任何东西。",
     "confirmRestartOpenclaw": "确定要重启 OpenClaw？这会中断正在执行的任务。",
     "confirmRestartDashboard": "确定要重启 Dashboard？页面将会重新加载。",
     "confirmRestartTailscale": "确定要重启 Tailscale？网络可能会短暂中断。",
@@ -2668,5 +2666,11 @@
     "force": "仍要重启",
     "forceConfirm": "确定要强制重启？以下作业会被中断。若中断的是软件包安装，之后可在通知中心点“修复”，或手动执行 sudo dpkg --configure -a。",
     "forceConfirmButton": "确定强制重启"
+  },
+  "openclawNodePreflight": {
+    "blockedServiceUnknown": "OpenClaw 可能会拒绝这次升级：OpenClaw {target} 需要 Node {engine}，openclaw CLI 目前用的 Node {cliVersion}（{cliPath}）不符合，也读不到 gateway 服务用哪个 Node。OpenClaw 可能会自己改用或安装兼容的 Node，按「仍要尝试」让它自己检查；找不到兼容的 Node 时它会拒绝升级，不会改动任何东西。也可以先把 openclaw 使用的 Node 升级到符合的版本。",
+    "blockedBothFail": "OpenClaw 很可能会拒绝这次升级：OpenClaw {target} 需要 Node {engine}，openclaw CLI 用的 Node {cliVersion}（{cliPath}）和 gateway 服务用的 Node {serviceVersion}（{servicePath}）都不符合。OpenClaw 仍可能自己找到或安装兼容的 Node，按「仍要尝试」让它自己检查；找不到时它会拒绝升级，不会改动任何东西。也可以先把这两处使用的 Node 升级到符合的版本。",
+    "confirmTryAnyway": "仍要尝试升级吗？",
+    "tryAnyway": "仍要尝试"
   }
 }

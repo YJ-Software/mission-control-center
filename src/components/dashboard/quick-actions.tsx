@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { Zap } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { NODE_BLOCK_MESSAGE_KEY, isNodePreflightBlockDetails, nodeBlockMessageValues } from '@/lib/openclaw/node-preflight-message'
 import { useLongRunGuard } from '@/hooks/use-long-run-guard'
 
 interface ActionDef {
@@ -27,6 +28,7 @@ const actionDefs: ActionDef[] = [
 
 export function QuickActions() {
   const t = useTranslations('quickActions')
+  const tn = useTranslations('openclawNodePreflight')
   const guard = useLongRunGuard()
   const [loading, setLoading] = useState<Record<string, boolean>>({})
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' } | null>(null)
@@ -62,7 +64,11 @@ export function QuickActions() {
         }
       } else if (data.code === 'node-unsupported') {
         // Node 版本不符合新版 OpenClaw：使用者看過訊息仍要試才帶 force 重送（OpenClaw 自己還會再檢查）
-        if (window.confirm(t('openclawNodeBlocked', { error: data.error ?? '' }))) void handleActionRef.current(action, true)
+        const details: unknown = data.preflight
+        const msg = isNodePreflightBlockDetails(details)
+          ? tn(NODE_BLOCK_MESSAGE_KEY[details.reason], nodeBlockMessageValues(details))
+          : (data.error ?? '')
+        if (window.confirm(`${msg}\n\n${tn('confirmTryAnyway')}`)) void handleActionRef.current(action, true)
       } else if (!guard.handle(data, () => { void handleActionRef.current(action, true) })) {
         showToast(t('actionFailed') + ': ' + (data.error || 'Unknown error'), 'warning')
       }
@@ -71,7 +77,7 @@ export function QuickActions() {
     } finally {
       setLoading(prev => ({ ...prev, [action.id]: false }))
     }
-  }, [t, showToast, guard.handle])
+  }, [t, tn, showToast, guard.handle])
   const handleActionRef = useRef(handleAction)
   handleActionRef.current = handleAction
 
