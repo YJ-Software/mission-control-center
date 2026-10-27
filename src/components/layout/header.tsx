@@ -40,6 +40,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   const t = useTranslations('header')
   const tn = useTranslations('openclawNodePreflight')
   const tm = useTranslations('openclawMemoryPreflight')
+  const tu = useTranslations('openclawUpgrade')
   const guard = useLongRunGuard()
   const queryClient = useQueryClient()
 
@@ -78,6 +79,8 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   const sysHasUpdate = sys?.manager === 'apt' && sys.updates > 0
 
   async function handleUpdate(force = false) {
+    // 升級期間 gateway 會停 4–15 分鐘：第一次送出前先確認（預檢擋下後的「仍要嘗試」不再問）
+    if (!force && !confirm(tu('downtimeConfirm'))) return
     setUpdating(true)
     try {
       const res = await fetch('/api/action', {

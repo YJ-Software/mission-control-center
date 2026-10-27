@@ -31,6 +31,7 @@ export function QuickActions() {
   const t = useTranslations('quickActions')
   const tn = useTranslations('openclawNodePreflight')
   const tm = useTranslations('openclawMemoryPreflight')
+  const tu = useTranslations('openclawUpgrade')
   const guard = useLongRunGuard()
   const [loading, setLoading] = useState<Record<string, boolean>>({})
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' } | null>(null)
@@ -43,6 +44,8 @@ export function QuickActions() {
 
   const handleAction = useCallback(async (action: ActionDef, force = false) => {
     // force 重送時使用者已在長時間作業對話框確認過兩次，不再問一次
+    // 升級 OpenClaw 會讓 gateway 停 4–15 分鐘：第一次送出前先講清楚（預檢擋下後的「仍要嘗試」不再問）
+    if (action.id === 'update-openclaw' && !force && !window.confirm(tu('downtimeConfirm'))) return
     if (action.confirm && !force) {
       const msg = t(action.confirm)
       if (!window.confirm(msg)) return
@@ -86,7 +89,7 @@ export function QuickActions() {
     } finally {
       setLoading(prev => ({ ...prev, [action.id]: false }))
     }
-  }, [t, tn, tm, showToast, guard.handle])
+  }, [t, tn, tm, tu, showToast, guard.handle])
   const handleActionRef = useRef(handleAction)
   handleActionRef.current = handleAction
 

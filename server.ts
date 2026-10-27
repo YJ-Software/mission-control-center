@@ -850,6 +850,17 @@ app.prepare().then(async () => {
       if (unit === 'updated') console.log('[ServiceUnit] unit refreshed — applies on next restart')
     })().catch((err) => console.warn('[Startup] post-listen setup skipped:', (err as Error).message))
 
+    // 上一個 MCC 行程在升級 OpenClaw 途中停掉 gateway 之後就結束了（強制重啟、OOM、crash），收尾 phase 沒跑到：
+    // 依標記檔把 gateway 啟動回來。KillMode=control-group 保證舊行程底下的 updater 已一起結束。絕不致命。
+    void (async () => {
+      const { recoverGatewayStoppedForUpgrade } = await import('./src/lib/openclaw/update-memory-guard')
+      const { listLongRuns } = await import('./src/lib/long-running')
+      await recoverGatewayStoppedForUpgrade({ upgradeRunning: () => listLongRuns().some(r => r.kind === 'upgrade-openclaw') })
+      // 被打斷的升級 job 屬於上一個行程，立刻標為失敗（一般的孤兒回收要等 10 分鐘，開機那次又太早，畫面會一直顯示升級中）
+      const { reconcileOrphanedJobs } = await import('./src/lib/jobs/recovery')
+      reconcileOrphanedJobs(j => j.kind === 'upgrade-openclaw')
+    })().catch((err) => console.warn('[OpenClawUpgrade] gateway recovery skipped:', (err as Error).message))
+
     // 上次 apt/dpkg 被重啟或主機重開打斷時，寫一則通知（含一鍵修復）。延後執行避開開機尖峰；絕不致命。
     setTimeout(() => {
       import('./src/lib/system-update/dpkg-boot-check')

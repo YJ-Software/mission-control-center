@@ -10,6 +10,11 @@ import { NextRequest } from 'next/server'
  */
 
 const m = vi.hoisted(() => {
+  // 標記檔寫在 MCC 資料目錄（jobsDir）底下：測試一律指到暫存目錄，不碰真實的 ~/.mission-control
+  const fsx = require('node:fs') as typeof import('node:fs')
+  const osx = require('node:os') as typeof import('node:os')
+  const pathx = require('node:path') as typeof import('node:path')
+  process.env.MISSION_CONTROL_DATA_DIR = fsx.mkdtempSync(pathx.join(osx.tmpdir(), 'mcc-memguard-data-'))
   const unexpected: string[] = []
   const guard = (name: string) => (...args: unknown[]) => {
     unexpected.push(`${name} ${JSON.stringify(args[0])} ${JSON.stringify(args[1])}`)
@@ -48,12 +53,19 @@ import {
   parseStatusAnonKb,
   parseSystemctlShow,
   readGatewayAnonKb,
+  readGatewayStopMarker,
+  recoverGatewayStoppedForUpgrade,
   resolveGatewayUnitName,
   runOpenclawMemoryPreflight,
+  shouldStartGatewayAfterUpdate,
   startGatewayPhase,
   stopGatewayPhase,
+  writeGatewayStopMarker,
+  gatewayStopMarkerPath,
+  clearGatewayStopMarker,
   type GatewayService,
 } from '@/lib/openclaw/update-memory-guard'
+import { existsSync } from 'node:fs'
 import {
   MEMORY_BLOCK_MESSAGE_KEY,
   isMemoryPreflightBlockDetails,
@@ -184,6 +196,18 @@ describe('block message i18n', () => {
     }
   })
 
+  it('downtime confirm: every locale warns the gateway (Telegram etc.) is offline ~4–15 min, and all three entry points ask before the first submit', async () => {
+    for (const loc of [en, zhTW, zhCN]) {
+      expect(loc.openclawUpgrade.downtimeConfirm).toMatch(/4–15/)
+      expect(loc.openclawUpgrade.downtimeConfirm).toContain('Telegram')
+    }
+    const { readFileSync } = await import('node:fs')
+    for (const f of ['src/components/dashboard/quick-actions.tsx', 'src/components/layout/header.tsx', 'src/components/settings/upgrade-card.tsx']) {
+      const src = readFileSync(path.join(__dirname, '../..', f), 'utf8')
+      expect(src, f).toMatch(/!force && !(window\.)?confirm\(tu\('downtimeConfirm'\)\)/)
+    }
+  })
+
   it('recognises the 409 details shape', () => {
     expect(isMemoryPreflightBlockDetails(details)).toBe(true)
     expect(isMemoryPreflightBlockDetails({ ...details, gatewayMb: '700' })).toBe(false)
@@ -220,10 +244,10 @@ describe('gateway service detection (systemctl mocked)', () => {
   })
 
   it('inspects the unit through systemctl --user show', async () => {
-    respond([{ match: systemctl('--user', 'show', 'openclaw-gateway.service'), stdout: 'LoadState=loaded\nActiveState=active\nMainPID=0\nControlGroup=\n' }])
-    expect(await inspectGatewayService('openclaw-gateway')).toEqual({ unit: 'openclaw-gateway', running: true, anonKb: null })
-    respond([{ match: systemctl('--user', 'show', 'openclaw-gateway.service'), stdout: 'LoadState=loaded\nActiveState=inactive\nMainPID=0\n' }])
-    expect(await inspectGatewayService('openclaw-gateway')).toEqual({ unit: 'openclaw-gateway', running: false, anonKb: 0 })
+    respond([{ match: systemctl('--user', 'show', 'openclaw-gateway.service'), stdout: 'LoadState=loaded\nActiveState=active\nUnitFileState=enabled\nMainPID=0\nControlGroup=\n' }])
+    expect(await inspectGatewayService('openclaw-gateway')).toEqual({ unit: 'openclaw-gateway', running: true, activeState: 'active', enabled: true, anonKb: null })
+    respond([{ match: systemctl('--user', 'show', 'openclaw-gateway.service'), stdout: 'LoadState=loaded\nActiveState=inactive\nUnitFileState=disabled\nMainPID=0\n' }])
+    expect(await inspectGatewayService('openclaw-gateway')).toEqual({ unit: 'openclaw-gateway', running: false, activeState: 'inactive', enabled: false, anonKb: 0 })
     respond([{ match: systemctl('--user', 'show', 'openclaw-gateway.service'), stdout: 'LoadState=not-found\nActiveState=inactive\n' }])
     expect(await inspectGatewayService('openclaw-gateway')).toBeNull()
     respond([{ match: systemctl('--user', 'show'), code: 1, stderr: 'Failed to connect to bus' }])
@@ -252,46 +276,201 @@ describe('gateway service detection (systemctl mocked)', () => {
   })
 })
 
+/**
+ * 假的 systemd：依指令改狀態並回應；`tick` 在每次輪詢的 sleep 時呼叫，用來模擬 gateway 起來、crash 等時間變化。
+ * 沒處理到的 systemctl 指令一樣走 guard（記一筆並丟錯）。
+ */
+function fakeSystemd(init: { ActiveState: string; SubState?: string; NRestarts?: number; NeedDaemonReload?: string }, opts: {
+  startCode?: number
+  onStart?: (st: Record<string, string | number>) => void
+} = {}) {
+  const st: Record<string, string | number> = { SubState: 'dead', NRestarts: 0, NeedDaemonReload: 'no', ...init }
+  const calls: string[] = []
+  m.execFile.mockImplementation((file: string, args: string[], _o: unknown, cb: ExecCb) => {
+    const verb = args[1]
+    calls.push(verb)
+    const reply = (code: number, stdout = '', stderr = '') => {
+      const err = code === 0 ? null : Object.assign(new Error(`exit ${code}`), { code })
+      queueMicrotask(() => cb(err, stdout, stderr))
+      return {}
+    }
+    if (file !== 'systemctl' || args[0] !== '--user') return m.guard('execFile')(file, args)
+    if (verb === 'show') return reply(0, Object.entries(st).map(([k, v]) => `${k}=${v}`).join('\n') + '\n')
+    if (verb === 'daemon-reload') { st.NeedDaemonReload = 'no'; return reply(0) }
+    if (verb === 'start') {
+      if (opts.startCode) return reply(opts.startCode, '', 'Job for x failed')
+      st.ActiveState = 'active'; st.SubState = 'running'
+      opts.onStart?.(st)
+      return reply(0)
+    }
+    if (verb === 'stop') { st.ActiveState = 'inactive'; return reply(0) }
+    return m.guard('execFile')(file, args)
+  })
+  return { st, calls }
+}
+
+/** 假時鐘：sleep 只推進時間並呼叫 tick，不真的等 */
+function fakeClock(tick: (t: number) => void = () => {}) {
+  let t = 0
+  return { now: () => t, sleep: async (ms: number) => { t += ms; tick(t) } }
+}
+
 describe('gateway stop / start phases (systemctl mocked)', () => {
   const logs = () => {
     const lines: string[] = []
     return { lines, log: (_s: string, t: string) => { lines.push(t) } }
   }
+  afterEach(() => clearGatewayStopMarker())
 
-  it('stop phase stops the unit; a failed stop fails the phase', async () => {
-    respond([{ match: systemctl('--user', 'stop', 'openclaw-gateway.service') }])
+  it('stop phase writes the recovery marker BEFORE stopping; a failed stop fails the phase', async () => {
+    let markerAtStop: unknown = 'unset'
+    m.execFile.mockImplementation((file: string, args: string[], _o: unknown, cb: ExecCb) => {
+      if (file !== 'systemctl' || args[1] !== 'stop') return m.guard('execFile')(file, args)
+      markerAtStop = readGatewayStopMarker()
+      queueMicrotask(() => cb(null, '', ''))
+      return {}
+    })
     expect(await stopGatewayPhase('openclaw-gateway').inline(logs().log)).toBe(0)
+    expect(markerAtStop).toMatchObject({ unit: 'openclaw-gateway' })
+
     respond([{ match: systemctl('--user', 'stop', 'openclaw-gateway.service'), code: 5, stderr: 'Unit not loaded' }])
     const l = logs()
     expect(await stopGatewayPhase('openclaw-gateway').inline(l.log)).toBe(5)
     expect(l.lines.join('\n')).toContain('Unit not loaded')
   })
 
-  it('start phase is alwaysRun and starts a stopped gateway (the OpenClaw updater leaves an externally stopped gateway stopped)', async () => {
-    respond([
-      { match: systemctl('--user', 'is-active', 'openclaw-gateway.service'), code: 3, stdout: 'inactive\n' },
-      { match: systemctl('--user', 'start', 'openclaw-gateway.service') },
-    ])
-    const phase = startGatewayPhase('openclaw-gateway')
+  it('start phase is alwaysRun, starts a stopped gateway, waits until it stays up, then clears the marker', async () => {
+    writeGatewayStopMarker('openclaw-gateway')
+    const sd = fakeSystemd({ ActiveState: 'inactive' })
+    const clock = fakeClock()
+    const phase = startGatewayPhase('openclaw-gateway', clock)
     expect(phase.alwaysRun).toBe(true)
     expect(await phase.inline(logs().log)).toBe(0)
-    expect(m.execFile.mock.calls.map(c => c[1][1])).toEqual(['is-active', 'start'])
+    expect(sd.calls.filter(c => c === 'start')).toHaveLength(1)
+    expect(clock.now()).toBeGreaterThanOrEqual(10_000)
+    expect(existsSync(gatewayStopMarkerPath())).toBe(false)
   })
 
-  it('start phase leaves an already running gateway alone (no second restart)', async () => {
-    respond([{ match: systemctl('--user', 'is-active', 'openclaw-gateway.service'), stdout: 'active\n' }])
-    expect(await startGatewayPhase('openclaw-gateway').inline(logs().log)).toBe(0)
-    expect(m.execFile).toHaveBeenCalledTimes(1)
+  it('reloads systemd first when the update rewrote the unit file', async () => {
+    const sd = fakeSystemd({ ActiveState: 'inactive', NeedDaemonReload: 'yes' })
+    expect(await startGatewayPhase('openclaw-gateway', fakeClock()).inline(logs().log)).toBe(0)
+    expect(sd.calls.indexOf('daemon-reload')).toBeGreaterThan(-1)
+    expect(sd.calls.indexOf('daemon-reload')).toBeLessThan(sd.calls.indexOf('start'))
   })
 
-  it('a failed start fails the phase and tells the user the command to run', async () => {
-    respond([
-      { match: systemctl('--user', 'is-active', 'openclaw-gateway.service'), code: 3, stdout: 'failed\n' },
-      { match: systemctl('--user', 'start', 'openclaw-gateway.service'), code: 1, stderr: 'Job failed' },
-    ])
+  it('does not start an already running gateway again, but still checks it stays up', async () => {
+    const sd = fakeSystemd({ ActiveState: 'active', SubState: 'running' })
+    expect(await startGatewayPhase('openclaw-gateway', fakeClock()).inline(logs().log)).toBe(0)
+    expect(sd.calls).not.toContain('start')
+  })
+
+  it('a gateway that systemd keeps restarting (crash loop) fails the phase and keeps the marker', async () => {
+    writeGatewayStopMarker('openclaw-gateway')
+    const sd = fakeSystemd({ ActiveState: 'inactive' })
+    const clock = fakeClock((t) => { if (t >= 4000) { sd.st.NRestarts = 1; sd.st.ActiveState = 'activating'; sd.st.SubState = 'auto-restart' } })
     const l = logs()
-    expect(await startGatewayPhase('openclaw-gateway').inline(l.log)).toBe(1)
+    expect(await startGatewayPhase('openclaw-gateway', clock).inline(l.log)).toBe(1)
+    expect(l.lines.join('\n')).toMatch(/crash loop/)
+    expect(l.lines.join('\n')).toContain('journalctl --user -u openclaw-gateway.service')
+    expect(existsSync(gatewayStopMarkerPath())).toBe(true)
+  })
+
+  it('a gateway that goes to failed after start fails the phase', async () => {
+    const sd = fakeSystemd({ ActiveState: 'inactive' })
+    const clock = fakeClock((t) => { if (t >= 2000) { sd.st.ActiveState = 'failed'; sd.st.SubState = 'failed' } })
+    const l = logs()
+    expect(await startGatewayPhase('openclaw-gateway', clock).inline(l.log)).toBe(1)
+    expect(l.lines.join('\n')).toContain('failed right after starting')
+  })
+
+  it('a gateway stuck in activating for 30 s fails the phase', async () => {
+    fakeSystemd({ ActiveState: 'inactive' }, { onStart: (st) => { st.ActiveState = 'activating'; st.SubState = 'start' } })
+    const clock = fakeClock()
+    const l = logs()
+    expect(await startGatewayPhase('openclaw-gateway', clock).inline(l.log)).toBe(1)
+    expect(clock.now()).toBeGreaterThanOrEqual(30_000)
+    expect(l.lines.join('\n')).toContain('did not stay active')
+  })
+
+  it('a failed start fails the phase, tells the user the command to run, keeps the marker', async () => {
+    writeGatewayStopMarker('openclaw-gateway')
+    fakeSystemd({ ActiveState: 'failed' }, { startCode: 1 })
+    const l = logs()
+    expect(await startGatewayPhase('openclaw-gateway', fakeClock()).inline(l.log)).toBe(1)
     expect(l.lines.join('\n')).toContain('systemctl --user start openclaw-gateway.service')
+    expect(existsSync(gatewayStopMarkerPath())).toBe(true)
+  })
+})
+
+describe('MCC startup: gateway left stopped by an interrupted upgrade (H1)', () => {
+  afterEach(() => clearGatewayStopMarker())
+  const quiet = { log: () => {} }
+
+  it('no marker → nothing is executed', async () => {
+    expect(await recoverGatewayStoppedForUpgrade(quiet)).toBe('none')
+    expect(m.execFile).not.toHaveBeenCalled()
+  })
+
+  it('marker present → starts the unit and removes the marker', async () => {
+    writeGatewayStopMarker('openclaw-gateway')
+    respond([{ match: systemctl('--user', 'start', 'openclaw-gateway.service') }])
+    const lines: string[] = []
+    expect(await recoverGatewayStoppedForUpgrade({ log: (t) => lines.push(t) })).toBe('started')
+    expect(m.execFile).toHaveBeenCalledTimes(1)
+    expect(existsSync(gatewayStopMarkerPath())).toBe(false)
+    expect(lines.join('\n')).toContain('starting it now')
+  })
+
+  it('the legacy unit name from the marker is used as is', async () => {
+    writeGatewayStopMarker('openclaw')
+    respond([{ match: systemctl('--user', 'start', 'openclaw.service') }])
+    expect(await recoverGatewayStoppedForUpgrade(quiet)).toBe('started')
+  })
+
+  it('start fails → reports it and still removes the marker (no retry loop on every boot)', async () => {
+    writeGatewayStopMarker('openclaw-gateway')
+    respond([{ match: systemctl('--user', 'start', 'openclaw-gateway.service'), code: 1, stderr: 'boom' }])
+    expect(await recoverGatewayStoppedForUpgrade(quiet)).toBe('start-failed')
+    expect(existsSync(gatewayStopMarkerPath())).toBe(false)
+  })
+
+  it('an upgrade job still live in this process → leaves everything alone', async () => {
+    writeGatewayStopMarker('openclaw-gateway')
+    expect(await recoverGatewayStoppedForUpgrade({ ...quiet, upgradeRunning: () => true })).toBe('skipped-live-upgrade')
+    expect(m.execFile).not.toHaveBeenCalled()
+    expect(existsSync(gatewayStopMarkerPath())).toBe(true)
+  })
+
+  it('a tampered marker is dropped without running anything', async () => {
+    const { writeFileSync } = await import('node:fs')
+    writeFileSync(gatewayStopMarkerPath(), JSON.stringify({ unit: 'x; rm -rf /' }))
+    expect(await recoverGatewayStoppedForUpgrade(quiet)).toBe('invalid-marker')
+    expect(m.execFile).not.toHaveBeenCalled()
+    expect(existsSync(gatewayStopMarkerPath())).toBe(false)
+  })
+
+  it('server.ts runs the recovery at startup', async () => {
+    const { readFileSync } = await import('node:fs')
+    const server = readFileSync(path.join(__dirname, '../../server.ts'), 'utf8')
+    expect(server).toMatch(/recoverGatewayStoppedForUpgrade\(/)
+    // 被打斷的升級 job 開機時就標為失敗（不用等 10 分鐘的孤兒回收）
+    expect(server).toMatch(/reconcileOrphanedJobs\(j => j\.kind === 'upgrade-openclaw'\)/)
+  })
+
+  it('the MCC unit template keeps the dashboard alive when the kernel OOM-kills a child (OOMPolicy=continue)', async () => {
+    const { readFileSync } = await import('node:fs')
+    const tmpl = readFileSync(path.join(__dirname, '../../deploy/release/mission-control.service.tmpl'), 'utf8')
+    expect(tmpl).toMatch(/^OOMPolicy=continue$/m)
+  })
+})
+
+describe('shouldStartGatewayAfterUpdate (M2)', () => {
+  const g = (o: Partial<GatewayService>): GatewayService => ({ unit: 'openclaw-gateway', running: false, anonKb: 0, ...o })
+  it('starts it when it was running, failed, or is enabled; leaves a stopped + disabled gateway alone', () => {
+    expect(shouldStartGatewayAfterUpdate(g({ running: true, activeState: 'active', enabled: true }))).toBe(true)
+    expect(shouldStartGatewayAfterUpdate(g({ activeState: 'failed', enabled: false }))).toBe(true)
+    expect(shouldStartGatewayAfterUpdate(g({ activeState: 'inactive', enabled: true }))).toBe(true)
+    expect(shouldStartGatewayAfterUpdate(g({ activeState: 'inactive', enabled: false }))).toBe(false)
   })
 })
 
@@ -386,13 +565,58 @@ describe('/api/action update-openclaw with the memory guard', () => {
     expect(phases.map(p => p.name)).toContain('stop openclaw-gateway (free memory for the update)')
   })
 
-  it('a gateway that is already stopped is neither stopped nor started by the job (and the updater keeps its own restart)', async () => {
+  it('M2: a failed (or stopped but enabled) gateway still gets --no-restart and is started by MCC afterwards, without a stop phase', async () => {
     m.memoryPreflight.mockResolvedValue({
       preflight: { verdict: 'ok', estimateMb: 2600, warnings: [] },
-      gateway: { unit: 'openclaw-gateway', running: false, anonKb: 0 },
+      gateway: { unit: 'openclaw-gateway', running: false, activeState: 'failed', enabled: true, anonKb: 0 },
     })
     await (await load())(post({ action: 'update-openclaw' }))
+    expect(phasesOf().map(p => p.name)).toEqual(['openclaw update --yes --no-restart', 'start openclaw-gateway', 'check leftover update files'])
+  })
+
+  it('M2: a stopped + disabled gateway is left alone, but the updater still must not start it (--no-restart)', async () => {
+    m.memoryPreflight.mockResolvedValue({
+      preflight: { verdict: 'ok', estimateMb: 2600, warnings: [] },
+      gateway: { unit: 'openclaw-gateway', running: false, activeState: 'inactive', enabled: false, anonKb: 0 },
+    })
+    await (await load())(post({ action: 'update-openclaw' }))
+    expect(phasesOf().map(p => p.name)).toEqual(['openclaw update --yes --no-restart', 'check leftover update files'])
+  })
+
+  it('no gateway unit at all → the old path (updater handles the restart)', async () => {
+    m.memoryPreflight.mockResolvedValue({ preflight: { verdict: 'ok', estimateMb: 4000, warnings: [] }, gateway: null })
+    await (await load())(post({ action: 'update-openclaw' }))
     expect(phasesOf().map(p => p.name)).toEqual(['openclaw update --yes', 'check leftover update files'])
+  })
+
+  it('M1: two concurrent requests → only one job; the second is refused while the first is still in its preflight', async () => {
+    let release!: () => void
+    m.memoryPreflight.mockImplementation(() => new Promise(r => {
+      release = () => r({ preflight: { verdict: 'ok', estimateMb: 2600, warnings: [] }, gateway: running })
+    }))
+    const POST = await load()
+    const first = POST(post({ action: 'update-openclaw' }))
+    await vi.waitFor(() => expect(m.memoryPreflight).toHaveBeenCalledTimes(1))
+    const second = await POST(post({ action: 'update-openclaw' }))
+    expect(second.status).toBe(409)
+    expect((await second.json()).code).toBe('openclaw-upgrading')
+    const restart = await POST(post({ action: 'restart-openclaw' }))
+    expect(restart.status).toBe(409)
+    release()
+    expect((await first).status).toBe(200)
+    expect(m.startJob).toHaveBeenCalledTimes(1)
+    expect(m.memoryPreflight).toHaveBeenCalledTimes(1)
+  })
+
+  it('M1: the in-progress guard is released after a 409 block or an error', async () => {
+    const { listLongRuns } = await import('@/lib/long-running')
+    m.memoryPreflight.mockResolvedValueOnce({ preflight: memBlocked, gateway: running })
+    const POST = await load()
+    expect((await POST(post({ action: 'update-openclaw' }))).status).toBe(409)
+    expect(listLongRuns().filter(r => r.kind === 'upgrade-openclaw')).toEqual([])
+    m.memoryPreflight.mockRejectedValueOnce(new Error('boom'))
+    expect((await POST(post({ action: 'update-openclaw' }))).status).toBe(500)
+    expect(listLongRuns().filter(r => r.kind === 'upgrade-openclaw')).toEqual([])
   })
 
   it('while an OpenClaw upgrade job runs, restarting the gateway or starting another upgrade is refused (409)', async () => {

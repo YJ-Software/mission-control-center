@@ -89,6 +89,7 @@ export function UpgradeCard() {
   const guard = useLongRunGuard()
   const tn = useTranslations('openclawNodePreflight')
   const tm = useTranslations('openclawMemoryPreflight')
+  const tu = useTranslations('openclawUpgrade')
   const [showManifestConfig, setShowManifestConfig] = useState(false)
   const [manifestUrlDraft, setManifestUrlDraft] = useState('')
   const [manifestSaved, setManifestSaved] = useState(false)
@@ -249,6 +250,8 @@ export function UpgradeCard() {
   }
 
   const handleUpgradeOpenclaw = async (force = false) => {
+    // 升級期間 gateway 會停 4–15 分鐘：第一次送出前先確認（預檢擋下後的「仍要嘗試」不再問）
+    if (!force && !confirm(tu('downtimeConfirm'))) return
     setOpenclawUpgrading(true)
     setOpenclawNotice(null)
     try {

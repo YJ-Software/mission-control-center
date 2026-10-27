@@ -66,7 +66,7 @@ export interface PhaseSpec {
   allowFailure?: boolean
   /** 前面的 phase 失敗也照跑（收尾用，例如把升級前停掉的服務啟動回來）；它自己失敗一樣讓 job 失敗 */
   alwaysRun?: boolean
-  /** shell phase 的時限：逾時先 SIGTERM 整個行程群組，10 秒後還在就 SIGKILL，phase 以 124 結束 */
+  /** shell phase 的時限：逾時先 SIGTERM 整個行程群組，10 秒後還在就 SIGKILL，phase 以 124 結束（再 15 秒 pipe 仍沒關也不等） */
   timeoutMs?: number
 }
 
@@ -112,7 +112,14 @@ async function runShellPhase(
       detached: timeoutMs !== undefined,
     })
     let timedOut = false
+    let settled = false
     const timers: NodeJS.Timeout[] = []
+    const finish = (code: number) => {
+      if (settled) return
+      settled = true
+      timers.forEach(clearTimeout)
+      resolve(code)
+    }
     const killGroup = (signal: NodeJS.Signals) => {
       try { if (child.pid) process.kill(-child.pid, signal) } catch { /* 已結束 */ }
     }
@@ -121,7 +128,14 @@ async function runShellPhase(
         timedOut = true
         logTo(jobId, phaseIndex, 'stderr', `timed out after ${Math.round(timeoutMs / 1000)}s — sending SIGTERM`)
         killGroup('SIGTERM')
-        timers.push(setTimeout(() => killGroup('SIGKILL'), 10_000))
+        timers.push(setTimeout(() => {
+          killGroup('SIGKILL')
+          // 有子孫行程另開行程群組又握著 stdout pipe 時 'close' 永遠不會來：不再等，讓後面的收尾 phase 照跑
+          timers.push(setTimeout(() => {
+            logTo(jobId, phaseIndex, 'stderr', 'output pipe still open 15s after SIGKILL — a detached child may still be running; giving up on it')
+            finish(124)
+          }, 15_000))
+        }, 10_000))
       }, timeoutMs))
     }
     if (longRunId !== null) {
@@ -134,14 +148,13 @@ async function runShellPhase(
     child.stdout.on('data', (d: string) => logTo(jobId, phaseIndex, 'stdout', d))
     child.stderr.on('data', (d: string) => logTo(jobId, phaseIndex, 'stderr', d))
     child.on('error', (err) => {
-      timers.forEach(clearTimeout)
+      if (settled) return
       logTo(jobId, phaseIndex, 'stderr', `spawn error: ${err.message}`)
-      resolve(127)
+      finish(127)
     })
     child.on('close', (code) => {
-      timers.forEach(clearTimeout)
       if (longRunId !== null) updateLongRun(longRunId, { pid: null })
-      resolve(timedOut ? 124 : (code ?? 0))
+      finish(timedOut ? 124 : (code ?? 0))
     })
   })
 }

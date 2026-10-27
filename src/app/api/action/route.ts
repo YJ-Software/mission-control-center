@@ -3,7 +3,9 @@ import { exec } from 'child_process'
 import { jobShellPath, startJob } from '@/lib/jobs/runner'
 import type { TriggerSource } from '@/lib/jobs/types'
 import { isBackupOrRestoreBusy } from '@/lib/backup/lock'
-import { clearRestartPending, listLongRuns, longRunBusyBody, markRestartPending, RestartPendingError } from '@/lib/long-running'
+import {
+  clearRestartPending, listLongRuns, longRunBusyBody, markRestartPending, registerLongRun, RestartPendingError, unregisterLongRun,
+} from '@/lib/long-running'
 import { checkRestartGate, parseForce, waitForInstallsPhase } from '@/lib/restart-guard'
 
 /** 備份/還原進行中，這些動作會把它打斷（還原中途被重啟可能留下搬到一半的資料） */
@@ -43,6 +45,88 @@ function run(cmd: string, timeout = 30000): Promise<{ success: boolean; output?:
 
 type ActionResult = { success: boolean; output?: string; error?: string; message?: string; jobId?: string; status?: number; code?: string; warning?: string; preflight?: unknown }
 type ActionHandler = (ctx: { triggeredBy: TriggerSource; force: boolean }) => Promise<ActionResult>
+
+async function updateOpenclaw({ triggeredBy, force }: { triggeredBy: TriggerSource; force: boolean }): Promise<ActionResult> {
+  // 兩項預檢同時跑，都在開 job 前：
+  // - 記憶體：updater 本身要 1.5–2 GB，gateway 又佔 1.2 GB 以上，4 GB 無 swap 的主機兩者疊加會 thrash 到失去回應。
+  //   升級前一律先停 gateway、升級後（不論成敗）再啟動；停掉後估計的可用記憶體仍不足就擋（409 memory-insufficient）
+  // - Node：新版 OpenClaw 對 Node 有下限（10.6 起 >=24.22.1 <25 || >=26.12.1）。CLI 與 gateway 服務的 Node 都不符合
+  //   （或服務的讀不到）才擋（409 node-unsupported），畫面上講清楚幾版、要幾版
+  // 兩項都擋時先回記憶體（主機失去回應比 OpenClaw 拒絕升級嚴重，後者不會改動任何東西）。取不到資訊只警告不擋；
+  // force（使用者看過訊息仍要試）就照跑，被略過的預檢寫進 job log
+  const {
+    runOpenclawNodePreflight, fetchOpenclawLatestTarget, detectOpenclawNodeRuntime, detectGatewayServiceNodeRuntime,
+  } = await import('@/lib/openclaw/node-preflight')
+  const {
+    runOpenclawMemoryPreflight, readProcMeminfo, inspectGatewayService, stopGatewayPhase, startGatewayPhase,
+    findLeftoverUpdateStageDirs, shouldStartGatewayAfterUpdate,
+  } = await import('@/lib/openclaw/update-memory-guard')
+  const [preflight, memory] = await Promise.all([
+    runOpenclawNodePreflight({
+      fetchTarget: fetchOpenclawLatestTarget,
+      detectCliNode: () => detectOpenclawNodeRuntime(jobShellPath()),
+      detectServiceNode: () => detectGatewayServiceNodeRuntime(),
+    }),
+    runOpenclawMemoryPreflight({ readMeminfo: readProcMeminfo, inspectGateway: () => inspectGatewayService() }),
+  ])
+  if (!force) {
+    if (memory.preflight.verdict === 'block') {
+      return { success: false, code: 'memory-insufficient', error: memory.preflight.message, preflight: memory.preflight.details, status: 409 }
+    }
+    if (preflight.verdict === 'block') {
+      return { success: false, code: 'node-unsupported', error: preflight.message, preflight: preflight.details, status: 409 }
+    }
+  }
+  const notices = [
+    ...memory.preflight.warnings,
+    ...(memory.preflight.verdict === 'block' ? [`使用者確認後略過記憶體預檢：${memory.preflight.message}`] : []),
+    ...(preflight.verdict === 'warn' ? [preflight.message] : []),
+    ...(preflight.verdict === 'block' ? [`使用者確認後略過 Node 版本預檢：${preflight.message}`] : []),
+  ]
+  const notice = notices.length ? notices.join('\n') : undefined
+  // 找得到 gateway unit 就一律帶 --no-restart、由 MCC 收尾啟動：不帶的話 updater 換版時會在自己還佔著記憶體時
+  // 把 gateway 拉起來（gateway 原本停著或 failed 也一樣）。只停正在跑的；升級後要不要啟動見 shouldStartGatewayAfterUpdate
+  //（停著而且 disabled 視為刻意關掉，維持原狀）
+  const gateway = memory.gateway
+  const stopUnit = gateway?.running ? gateway.unit : null
+  const startUnit = gateway && shouldStartGatewayAfterUpdate(gateway) ? gateway.unit : null
+
+  // `openclaw update --yes` runs the bundled upgrade pipeline: global npm
+  // update + **plugin update sync** (which a plain `npm install -g openclaw`
+  // misses, leaving externally-installed plugins like @openclaw/codex pinned
+  // to their nested openclaw version) + completion refresh + doctor. We rely
+  // on it instead of issuing the steps ourselves.
+  // `--no-restart`：真的換版時 updater 會在自己還佔著約 1.2 GB 時就把 gateway 拉起來驗證，throwaway 實測
+  // MemAvailable 因此掉到約 100 MB。gateway 改由收尾 phase 在 updater 結束、記憶體還回來之後才啟動。
+  // 外層時限只是保底：updater 每一步自己有時限；卡住時 gateway 不能一直停著，逾時收掉 updater、收尾 phase 照樣啟動 gateway
+  const meta = startJob({
+    kind: 'upgrade-openclaw',
+    label: 'Upgrade OpenClaw CLI',
+    triggeredBy,
+    phases: [
+      ...(notice ? [{
+        name: 'Upgrade preflight',
+        inline: async (log: (stream: 'system', text: string) => void) => { log('system', notice); return 0 },
+      }] : []),
+      ...(stopUnit ? [stopGatewayPhase(stopUnit)] : []),
+      gateway
+        ? { name: 'openclaw update --yes --no-restart', shell: 'openclaw update --yes --no-restart 2>&1', timeoutMs: OPENCLAW_UPDATE_TIMEOUT_MS }
+        : { name: 'openclaw update --yes', shell: 'openclaw update --yes 2>&1', timeoutMs: OPENCLAW_UPDATE_TIMEOUT_MS },
+      ...(startUnit ? [startGatewayPhase(startUnit)] : []),
+      {
+        name: 'check leftover update files',
+        alwaysRun: true,
+        inline: async (log: (stream: 'system', text: string) => void) => {
+          for (const dir of findLeftoverUpdateStageDirs(jobShellPath())) {
+            log('system', `OpenClaw updater left a staging directory (often ~600 MB): ${dir} — not removed by MCC; \`openclaw update repair\` reconciles abandoned updates`)
+          }
+          return 0
+        },
+      },
+    ],
+  })
+  return { success: true, jobId: meta.id, message: 'Upgrade job started', ...(notice ? { warning: notice } : {}) }
+}
 
 // All action keys are validated against this allowlist — no arbitrary command execution
 const actions: Record<string, ActionHandler> = {
@@ -122,81 +206,14 @@ const actions: Record<string, ActionHandler> = {
   },
 
   'update-openclaw': async ({ triggeredBy, force }) => {
-    // 兩項預檢同時跑，都在開 job 前：
-    // - 記憶體：updater 本身要 1.5–2 GB，gateway 又佔 1.2 GB 以上，4 GB 無 swap 的主機兩者疊加會 thrash 到失去回應。
-    //   升級前一律先停 gateway、升級後（不論成敗）再啟動；停掉後估計的可用記憶體仍不足就擋（409 memory-insufficient）
-    // - Node：新版 OpenClaw 對 Node 有下限（10.6 起 >=24.22.1 <25 || >=26.12.1）。CLI 與 gateway 服務的 Node 都不符合
-    //   （或服務的讀不到）才擋（409 node-unsupported），畫面上講清楚幾版、要幾版
-    // 兩項都擋時先回記憶體（主機失去回應比 OpenClaw 拒絕升級嚴重，後者不會改動任何東西）。取不到資訊只警告不擋；
-    // force（使用者看過訊息仍要試）就照跑，被略過的預檢寫進 job log
-    const {
-      runOpenclawNodePreflight, fetchOpenclawLatestTarget, detectOpenclawNodeRuntime, detectGatewayServiceNodeRuntime,
-    } = await import('@/lib/openclaw/node-preflight')
-    const {
-      runOpenclawMemoryPreflight, readProcMeminfo, inspectGatewayService, stopGatewayPhase, startGatewayPhase,
-      findLeftoverUpdateStageDirs,
-    } = await import('@/lib/openclaw/update-memory-guard')
-    const [preflight, memory] = await Promise.all([
-      runOpenclawNodePreflight({
-        fetchTarget: fetchOpenclawLatestTarget,
-        detectCliNode: () => detectOpenclawNodeRuntime(jobShellPath()),
-        detectServiceNode: () => detectGatewayServiceNodeRuntime(),
-      }),
-      runOpenclawMemoryPreflight({ readMeminfo: readProcMeminfo, inspectGateway: () => inspectGatewayService() }),
-    ])
-    if (!force) {
-      if (memory.preflight.verdict === 'block') {
-        return { success: false, code: 'memory-insufficient', error: memory.preflight.message, preflight: memory.preflight.details, status: 409 }
-      }
-      if (preflight.verdict === 'block') {
-        return { success: false, code: 'node-unsupported', error: preflight.message, preflight: preflight.details, status: 409 }
-      }
+    // 在任何 await 之前同步佔位（kind 與 job 相同）：預檢要好幾秒，兩個請求同時進來時第二個會在 POST 的
+    // openclaw-upgrading 檢查就被擋下，不會開出兩支並行的 updater。startJob 登記自己的 long-run 後就釋放
+    const placeholder = registerLongRun('Upgrade OpenClaw CLI (preflight)', { kind: 'upgrade-openclaw' })
+    try {
+      return await updateOpenclaw({ triggeredBy, force })
+    } finally {
+      unregisterLongRun(placeholder)
     }
-    const notices = [
-      ...memory.preflight.warnings,
-      ...(memory.preflight.verdict === 'block' ? [`使用者確認後略過記憶體預檢：${memory.preflight.message}`] : []),
-      ...(preflight.verdict === 'warn' ? [preflight.message] : []),
-      ...(preflight.verdict === 'block' ? [`使用者確認後略過 Node 版本預檢：${preflight.message}`] : []),
-    ]
-    const notice = notices.length ? notices.join('\n') : undefined
-    // 只停「正在跑」的 gateway；原本就停著的不動，升級後也不替使用者啟動
-    const gatewayUnit = memory.gateway?.running ? memory.gateway.unit : null
-
-    // `openclaw update --yes` runs the bundled upgrade pipeline: global npm
-    // update + **plugin update sync** (which a plain `npm install -g openclaw`
-    // misses, leaving externally-installed plugins like @openclaw/codex pinned
-    // to their nested openclaw version) + completion refresh + doctor. We rely
-    // on it instead of issuing the steps ourselves.
-    // `--no-restart`：真的換版時 updater 會在自己還佔著約 1.2 GB 時就把 gateway 拉起來驗證，throwaway 實測
-    // MemAvailable 因此掉到約 100 MB。gateway 改由收尾 phase 在 updater 結束、記憶體還回來之後才啟動。
-    // 外層時限只是保底：updater 每一步自己有時限；卡住時 gateway 不能一直停著，逾時收掉 updater、收尾 phase 照樣啟動 gateway
-    const meta = startJob({
-      kind: 'upgrade-openclaw',
-      label: 'Upgrade OpenClaw CLI',
-      triggeredBy,
-      phases: [
-        ...(notice ? [{
-          name: 'Upgrade preflight',
-          inline: async (log: (stream: 'system', text: string) => void) => { log('system', notice); return 0 },
-        }] : []),
-        ...(gatewayUnit ? [stopGatewayPhase(gatewayUnit)] : []),
-        gatewayUnit
-          ? { name: 'openclaw update --yes --no-restart', shell: 'openclaw update --yes --no-restart 2>&1', timeoutMs: OPENCLAW_UPDATE_TIMEOUT_MS }
-          : { name: 'openclaw update --yes', shell: 'openclaw update --yes 2>&1', timeoutMs: OPENCLAW_UPDATE_TIMEOUT_MS },
-        ...(gatewayUnit ? [startGatewayPhase(gatewayUnit)] : []),
-        {
-          name: 'check leftover update files',
-          alwaysRun: true,
-          inline: async (log: (stream: 'system', text: string) => void) => {
-            for (const dir of findLeftoverUpdateStageDirs(jobShellPath())) {
-              log('system', `OpenClaw updater left a staging directory (often ~600 MB): ${dir} — not removed by MCC; \`openclaw update repair\` reconciles abandoned updates`)
-            }
-            return 0
-          },
-        },
-      ],
-    })
-    return { success: true, jobId: meta.id, message: 'Upgrade job started', ...(notice ? { warning: notice } : {}) }
   },
 
   'reboot-system': async ({ triggeredBy, force }) => {

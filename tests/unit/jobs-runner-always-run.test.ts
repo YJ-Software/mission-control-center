@@ -126,6 +126,34 @@ describe('shell phase timeoutMs', () => {
     expect(started).toBe(true)
   })
 
+  it('M4: a child that never closes its pipe after SIGKILL still ends the phase with 124 ~15 s later, and the cleanup phase runs', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const child = fakeChild(454545)
+    m.spawn.mockImplementation(() => child) // 永遠不送 close：模擬脫離行程群組又握著 stdout 的子孫
+    let started = false
+    const meta = startJob({
+      kind: 'upgrade-openclaw', label: 'test', triggeredBy: 'api',
+      phases: [
+        { name: 'update', shell: 'openclaw update --yes --no-restart 2>&1', timeoutMs: 1000 },
+        { name: 'start', alwaysRun: true, inline: async () => { started = true; return 0 } },
+      ],
+    })
+    const status = () => readAllJobsSync().find(j => j.id === meta.id)
+    await vi.advanceTimersByTimeAsync(1000 + 10_000)
+    expect(killSpy).toHaveBeenCalledWith(-454545, 'SIGTERM')
+    expect(killSpy).toHaveBeenCalledWith(-454545, 'SIGKILL')
+    expect(status()?.status).toBe('running')
+    expect(started).toBe(false)
+    await vi.advanceTimersByTimeAsync(15_000)
+    for (let i = 0; i < 20 && status()?.status === 'running'; i++) await Promise.resolve()
+    const job = status()!
+    expect(job.phases[0]).toMatchObject({ status: 'failed', exitCode: 124 })
+    expect(started).toBe(true)
+    // 晚到的 close 不會再改結果
+    child.emit('close', 0)
+    expect(readAllJobsSync().find(j => j.id === meta.id)!.phases[0].exitCode).toBe(124)
+  })
+
   it('phases without a timeout are not detached and never signalled', async () => {
     const child = fakeChild(434343)
     m.spawn.mockImplementation(() => { setTimeout(() => child.emit('close', 0), 5); return child })

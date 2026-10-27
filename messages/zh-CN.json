@@ -2677,5 +2677,8 @@
     "blocked": "主机内存可能不足以升级 OpenClaw：升级时会先停止 gateway，停止后估计约有 {estimate} MB 可用（目前可用 {available} MB、swap 剩 {swap} MB、gateway 占用 {gateway} MB），升级约需 {required} MB。内存耗尽时主机会失去响应，SSH 和这个仪表板都连不上，只能从主机商面板强制重启。建议先停掉用不到的服务、加上 swap，或增加主机内存后再试。",
     "confirmTryAnyway": "仍要升级吗？内存耗尽时主机可能失去响应，需要从主机商面板强制重启。",
     "tryAnyway": "仍要尝试"
+  },
+  "openclawUpgrade": {
+    "downtimeConfirm": "升级 OpenClaw 期间 gateway 会暂停，约 4–15 分钟（换到新版本时较久），这段时间 Telegram 等频道不会回复、对话也无法使用。升级完成后 gateway 会自动重新启动。确定要升级吗？"
   }
 }

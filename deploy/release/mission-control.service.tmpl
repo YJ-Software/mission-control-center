@@ -11,6 +11,13 @@ WorkingDirectory=__PREFIX__/current
 ExecStart=__NODE_BIN__ __PREFIX__/current/server.js
 Restart=on-failure
 RestartSec=3
+# The dashboard runs long child jobs in this cgroup (`openclaw update`, npm,
+# apt). If the kernel OOM-kills one of them, systemd's default OOMPolicy=stop
+# would stop the whole dashboard with it, and the job's cleanup phase (e.g.
+# starting the gateway it stopped for the update) would never run. Let the
+# job see its child die instead; if the dashboard itself is killed,
+# Restart=on-failure still brings it back.
+OOMPolicy=continue
 # Stream stdout to a well-known file so fail2ban (and other log readers)
 # don't need to fight the systemd user-journal plumbing. Lives under the
 # state dir so the running user owns it and can tail without sudo; parent

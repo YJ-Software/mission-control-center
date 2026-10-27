@@ -373,12 +373,12 @@ describe('/api/action update-openclaw preflight', () => {
       detectOpenclawNodeRuntime: vi.fn(),
       detectGatewayServiceNodeRuntime: vi.fn(),
     }))
-    // 記憶體預檢另有測試（openclaw-update-memory-guard.test.ts）；這裡固定為通過、gateway 沒在跑（不加停／啟 phase）
+    // 記憶體預檢另有測試（openclaw-update-memory-guard.test.ts）；這裡固定為通過、找不到 gateway unit（不加停／啟 phase）
     vi.doMock('@/lib/openclaw/update-memory-guard', async (orig) => ({
       ...(await orig<typeof import('@/lib/openclaw/update-memory-guard')>()),
       runOpenclawMemoryPreflight: async () => ({
         preflight: { verdict: 'ok', estimateMb: 4000, warnings: [] },
-        gateway: { unit: 'openclaw-gateway', running: false, anonKb: 0 },
+        gateway: null,
       }),
     }))
   })

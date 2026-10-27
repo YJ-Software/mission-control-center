@@ -2677,5 +2677,8 @@
     "blocked": "主機記憶體可能不足以升級 OpenClaw：升級時會先停止 gateway，停止後估計約有 {estimate} MB 可用（目前可用 {available} MB、swap 剩 {swap} MB、gateway 佔用 {gateway} MB），升級約需 {required} MB。記憶體耗盡時主機會失去回應，SSH 和這個儀表板都連不上，只能從主機商面板強制重開機。建議先停掉用不到的服務、加上 swap，或增加主機記憶體後再試。",
     "confirmTryAnyway": "仍要升級嗎？記憶體耗盡時主機可能失去回應，需要從主機商面板強制重開機。",
     "tryAnyway": "仍要嘗試"
+  },
+  "openclawUpgrade": {
+    "downtimeConfirm": "升級 OpenClaw 期間 gateway 會暫停，約 4–15 分鐘（換到新版本時較久），這段時間 Telegram 等頻道不會回覆、對話也無法使用。升級完成後 gateway 會自動重新啟動。確定要升級嗎？"
   }
 }
