@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { exec } from 'child_process'
-import { startJob } from '@/lib/jobs/runner'
+import { jobShellPath, startJob } from '@/lib/jobs/runner'
 import type { TriggerSource } from '@/lib/jobs/types'
 import { isBackupOrRestoreBusy } from '@/lib/backup/lock'
 import { clearRestartPending, listLongRuns, longRunBusyBody, markRestartPending, RestartPendingError } from '@/lib/long-running'
@@ -32,7 +32,7 @@ function run(cmd: string, timeout = 30000): Promise<{ success: boolean; output?:
   })
 }
 
-type ActionResult = { success: boolean; output?: string; error?: string; message?: string; jobId?: string; status?: number }
+type ActionResult = { success: boolean; output?: string; error?: string; message?: string; jobId?: string; status?: number; code?: string; warning?: string }
 type ActionHandler = (ctx: { triggeredBy: TriggerSource; force: boolean }) => Promise<ActionResult>
 
 // All action keys are validated against this allowlist — no arbitrary command execution
@@ -112,7 +112,22 @@ const actions: Record<string, ActionHandler> = {
     return { success: true, jobId: meta.id, message: 'Restart job started' }
   },
 
-  'update-openclaw': async ({ triggeredBy }) => {
+  'update-openclaw': async ({ triggeredBy, force }) => {
+    // 新版 OpenClaw 對 Node 有下限（10.6 起 >=24.22.1 <25 || >=26.12.1），不符合時 `openclaw update` 會拒絕：
+    // 先比對再開 job，畫面上直接講清楚目前幾版、要幾版。取不到資訊只警告不擋；force（使用者看過訊息仍要試）
+    // 就照跑，OpenClaw 自己還會再檢查一次（它可能找得到或自備相容的 Node）
+    const { runOpenclawNodePreflight, fetchOpenclawLatestTarget, detectOpenclawNodeRuntime } = await import('@/lib/openclaw/node-preflight')
+    const preflight = await runOpenclawNodePreflight({
+      fetchTarget: fetchOpenclawLatestTarget,
+      detectNode: () => detectOpenclawNodeRuntime(jobShellPath()),
+    })
+    if (preflight.verdict === 'block' && !force) {
+      return { success: false, code: 'node-unsupported', error: preflight.message, status: 409 }
+    }
+    const notice = preflight.verdict === 'warn'
+      ? preflight.message
+      : preflight.verdict === 'block' ? `使用者確認後略過 Node 版本預檢：${preflight.message}` : undefined
+
     // `openclaw update --yes` runs the bundled upgrade pipeline: global npm
     // update + **plugin update sync** (which a plain `npm install -g openclaw`
     // misses, leaving externally-installed plugins like @openclaw/codex pinned
@@ -123,10 +138,14 @@ const actions: Record<string, ActionHandler> = {
       label: 'Upgrade OpenClaw CLI',
       triggeredBy,
       phases: [
+        ...(notice ? [{
+          name: 'Node version preflight',
+          inline: async (log: (stream: 'system', text: string) => void) => { log('system', notice); return 0 },
+        }] : []),
         { name: 'openclaw update --yes', shell: 'openclaw update --yes 2>&1' },
       ],
     })
-    return { success: true, jobId: meta.id, message: 'Upgrade job started' }
+    return { success: true, jobId: meta.id, message: 'Upgrade job started', ...(notice ? { warning: notice } : {}) }
   },
 
   'reboot-system': async ({ triggeredBy, force }) => {

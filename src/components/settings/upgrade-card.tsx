@@ -93,6 +93,8 @@ export function UpgradeCard() {
   const [openclawCopied, setOpenclawCopied] = useState(false)
   const [openclawJobId, setOpenclawJobId] = useState<string | null>(null)
   const [openclawUpgrading, setOpenclawUpgrading] = useState(false)
+  // Node 預檢擋下（可確認後強制重送）或放行但帶警告的訊息
+  const [openclawNotice, setOpenclawNotice] = useState<{ kind: 'blocked' | 'error' | 'warning'; text: string } | null>(null)
   const [mccJobId, setMccJobId] = useState<string | null>(null)
 
   const loadOpenclawCheck = useCallback(async () => {
@@ -241,16 +243,21 @@ export function UpgradeCard() {
     }
   }
 
-  const handleUpgradeOpenclaw = async () => {
+  const handleUpgradeOpenclaw = async (force = false) => {
     setOpenclawUpgrading(true)
+    setOpenclawNotice(null)
     try {
       const res = await fetch('/api/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update-openclaw', triggeredBy: 'settings-card' }),
+        body: JSON.stringify({ action: 'update-openclaw', triggeredBy: 'settings-card', ...(force ? { force: true } : {}) }),
       })
-      const data = (await res.json()) as JobStartResponse
+      const data = (await res.json()) as JobStartResponse & { success?: boolean; code?: string; error?: string; warning?: string }
       if (data?.jobId) setOpenclawJobId(data.jobId)
+      if (data?.code === 'node-unsupported') setOpenclawNotice({ kind: 'blocked', text: data.error ?? '' })
+      else if (data?.success === false) setOpenclawNotice({ kind: 'error', text: data.error ?? `upgrade failed (${res.status})` })
+      else if (data?.warning) setOpenclawNotice({ kind: 'warning', text: data.warning })
+      if (!data?.jobId) return
       // Refresh detection so the badge clears once npm finishes.
       setTimeout(() => loadOpenclawCheck(), 30_000)
     } finally {
@@ -475,7 +482,7 @@ export function UpgradeCard() {
               </p>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleUpgradeOpenclaw}
+                  onClick={() => { void handleUpgradeOpenclaw() }}
                   disabled={openclawUpgrading}
                   className="bg-purple-400/15 border border-purple-400/40 text-purple-300 hover:bg-purple-400/25 transition-all rounded-xl px-4 py-2 flex items-center gap-1 text-sm disabled:opacity-40"
                 >
@@ -497,6 +504,25 @@ export function UpgradeCard() {
                 )}
               </div>
             </div>
+            {openclawNotice && (
+              <div className={`flex items-start gap-2 text-[11px] rounded-lg px-3 py-2 border ${openclawNotice.kind === 'warning'
+                ? 'text-amber-300/80 bg-amber-400/5 border-amber-400/15'
+                : 'text-red-300/85 bg-red-400/5 border-red-400/20'}`}>
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <div className="space-y-1.5">
+                  <span className="break-all">{openclawNotice.text}</span>
+                  {openclawNotice.kind === 'blocked' && (
+                    <button
+                      onClick={() => { void handleUpgradeOpenclaw(true) }}
+                      disabled={openclawUpgrading}
+                      className="block text-[11px] underline text-red-200/80 hover:text-red-100 disabled:opacity-40"
+                    >
+                      Try anyway (OpenClaw re-checks Node itself and refuses if it finds no compatible runtime)
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             {openclaw.validation && (
               <ValidationNote
                 status={openclaw.validation.status}

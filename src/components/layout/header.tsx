@@ -73,16 +73,22 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   // `manager: null` is "we could not tell", not "up to date" — show nothing.
   const sysHasUpdate = sys?.manager === 'apt' && sys.updates > 0
 
-  async function handleUpdate() {
+  async function handleUpdate(force = false) {
     setUpdating(true)
     try {
       const res = await fetch('/api/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update-openclaw', triggeredBy: 'header-button' }),
+        body: JSON.stringify({ action: 'update-openclaw', triggeredBy: 'header-button', ...(force ? { force: true } : {}) }),
       })
       const data = await res.json().catch(() => ({}))
       if (data?.jobId) setOcJobId(data.jobId)
+      // Node 版本不符合新版 OpenClaw：講清楚目前幾版、要幾版，使用者確認後才略過預檢重送
+      if (data?.code === 'node-unsupported') {
+        if (confirm(t('updateOpenclawNodeBlocked', { error: data.error ?? '' }))) void handleUpdate(true)
+      } else if (data?.success === false) {
+        alert(t('updateOpenclawFailed', { error: data?.error ?? 'unknown' }))
+      }
       queryClient.invalidateQueries({ queryKey: ['openclaw-version'] })
       queryClient.invalidateQueries({ queryKey: ['services-status'] })
       queryClient.invalidateQueries({ queryKey: ['system-log-jobs'] })
@@ -248,7 +254,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
 
         {oc?.updateAvailable && (
           <button
-            onClick={handleUpdate}
+            onClick={() => { void handleUpdate() }}
             disabled={updating}
             className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-medium
               bg-amber-500/15 text-amber-300 border border-amber-500/30

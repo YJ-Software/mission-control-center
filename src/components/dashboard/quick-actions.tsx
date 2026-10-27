@@ -55,10 +55,14 @@ export function QuickActions() {
       const data = await res.json()
 
       if (data.success) {
-        showToast(data.output || data.message || t('actionSuccess'), 'success')
+        if (data.warning) showToast(data.warning, 'warning')
+        else showToast(data.output || data.message || t('actionSuccess'), 'success')
         if (action.id === 'restart-dashboard') {
           setTimeout(() => location.reload(), 3000)
         }
+      } else if (data.code === 'node-unsupported') {
+        // Node 版本不符合新版 OpenClaw：使用者看過訊息仍要試才帶 force 重送（OpenClaw 自己還會再檢查）
+        if (window.confirm(t('openclawNodeBlocked', { error: data.error ?? '' }))) void handleActionRef.current(action, true)
       } else if (!guard.handle(data, () => { void handleActionRef.current(action, true) })) {
         showToast(t('actionFailed') + ': ' + (data.error || 'Unknown error'), 'warning')
       }

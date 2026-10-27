@@ -44,6 +44,11 @@ function childEnv(): NodeJS.ProcessEnv {
   return { ...process.env, PATH: augmentedPath() }
 }
 
+/** The PATH job shells run with — preflights use it to resolve the same `openclaw`/`node` the phase will */
+export function jobShellPath(): string {
+  return augmentedPath()
+}
+
 export interface PhaseContext {
   /** mutate the job's expectedVersion (used by upgrade flows to record the target after extraction) */
   setExpectedVersion: (v: string) => void
