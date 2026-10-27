@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useWebSocket, type ChatEventPayload, type ToolStreamPayload } from '@/store/websocket'
+import { mergeHistoryWithLocal, historyRunId } from '@/lib/chat-history-merge'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,6 +32,8 @@ export interface ChatMessage {
   toolCalls?: ToolCall[]
   /** User-uploaded attachments (images) — only present on optimistic local sends. */
   attachments?: ChatAttachment[]
+  /** chat.send idempotencyKey / event runId — matches a late history response to local messages */
+  runId?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -84,6 +87,8 @@ export function useChatSession(sessionKey: string | null) {
   // Track active tool calls for the current streaming message
   const activeToolCallsRef = useRef<Map<string, ToolCall>>(new Map())
   const deletedIdsRef = useRef<Set<string>>(new Set())
+  // Bumped per history request so a late response for an older request (or another session) is dropped
+  const historyGenRef = useRef(0)
 
   // Load deleted IDs from localStorage when sessionKey changes
   useEffect(() => {
@@ -107,9 +112,11 @@ export function useChatSession(sessionKey: string | null) {
     setIsStreaming(false)
     activeToolCallsRef.current.clear()
 
+    const gen = ++historyGenRef.current
     sendRpc('chat.history', { sessionKey, limit: 200 })
       .then((result: unknown) => {
-        const data = result as { messages?: Array<{ role: string; content: unknown; timestamp?: number; toolCallId?: string; tool_call_id?: string }> } | null
+        if (gen !== historyGenRef.current) return
+        const data = result as { messages?: Array<{ role: string; content: unknown; timestamp?: number; toolCallId?: string; tool_call_id?: string; idempotencyKey?: unknown; __openclaw?: { runId?: unknown; idempotencyKey?: unknown } | null }> } | null
         if (Array.isArray(data?.messages)) {
           const history: ChatMessage[] = []
           for (let i = 0; i < data.messages.length; i++) {
@@ -153,9 +160,12 @@ export function useChatSession(sessionKey: string | null) {
               timestamp: m.timestamp || Date.now(),
               state: 'complete',
               toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+              runId: historyRunId(m),
             })
           }
-          setMessages(history)
+          // Messages were cleared when the request went out, so anything in `prev` now arrived while it
+          // was in flight (optimistic send right after load, final/error events) — keep it, see the lib
+          setMessages(prev => mergeHistoryWithLocal(history, prev))
         }
       })
       .catch(() => {})
@@ -198,6 +208,7 @@ export function useChatSession(sessionKey: string | null) {
             timestamp: payload.message?.timestamp || Date.now(),
             state: 'complete' as const,
             toolCalls: allTools.length > 0 ? allTools : undefined,
+            runId: payload.runId,
           }]
         })
         streamingTextRef.current = ''
@@ -215,6 +226,7 @@ export function useChatSession(sessionKey: string | null) {
             content: payload.errorMessage || 'Error',
             timestamp: Date.now(),
             state: 'error' as const,
+            runId: payload.runId,
           }]
         })
         streamingTextRef.current = ''
@@ -236,6 +248,7 @@ export function useChatSession(sessionKey: string | null) {
               timestamp: Date.now(),
               state: 'aborted' as const,
               toolCalls: streamedTools.length > 0 ? streamedTools : undefined,
+              runId: payload.runId,
             }]
           })
         }
@@ -312,6 +325,7 @@ export function useChatSession(sessionKey: string | null) {
       timestamp: Date.now(),
       state: 'complete',
       attachments: hasAttachments ? attachments : undefined,
+      runId: idempotencyKey,
     }])
 
     // Show loading indicator immediately
