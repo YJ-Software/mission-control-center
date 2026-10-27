@@ -209,7 +209,8 @@ function isExecutable(p: string): boolean {
   }
 }
 
-function whichIn(name: string, pathEnv: string): string | null {
+/** 依 PATH 找可執行檔（與 job shell 解析指令的方式相同） */
+export function whichIn(name: string, pathEnv: string): string | null {
   for (const dir of pathEnv.split(':').filter(Boolean)) {
     const p = path.join(dir, name)
     if (existsSync(p) && isExecutable(p)) return p

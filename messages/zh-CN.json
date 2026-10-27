@@ -2672,5 +2672,10 @@
     "blockedBothFail": "OpenClaw 很可能会拒绝这次升级：OpenClaw {target} 需要 Node {engine}，openclaw CLI 用的 Node {cliVersion}（{cliPath}）和 gateway 服务用的 Node {serviceVersion}（{servicePath}）都不符合。OpenClaw 仍可能自己找到或安装兼容的 Node，按「仍要尝试」让它自己检查；找不到时它会拒绝升级，不会改动任何东西。也可以先把这两处使用的 Node 升级到符合的版本。",
     "confirmTryAnyway": "仍要尝试升级吗？",
     "tryAnyway": "仍要尝试"
+  },
+  "openclawMemoryPreflight": {
+    "blocked": "主机内存可能不足以升级 OpenClaw：升级时会先停止 gateway，停止后估计约有 {estimate} MB 可用（目前可用 {available} MB、swap 剩 {swap} MB、gateway 占用 {gateway} MB），升级约需 {required} MB。内存耗尽时主机会失去响应，SSH 和这个仪表板都连不上，只能从主机商面板强制重启。建议先停掉用不到的服务、加上 swap，或增加主机内存后再试。",
+    "confirmTryAnyway": "仍要升级吗？内存耗尽时主机可能失去响应，需要从主机商面板强制重启。",
+    "tryAnyway": "仍要尝试"
   }
 }

@@ -6,6 +6,7 @@ import { Download, Loader2, CheckCircle2, AlertCircle, ArrowUpCircle, Package, S
 import { useTranslations } from 'next-intl'
 import { useLongRunGuard } from '@/hooks/use-long-run-guard'
 import { NODE_BLOCK_MESSAGE_KEY, isNodePreflightBlockDetails, nodeBlockMessageValues } from '@/lib/openclaw/node-preflight-message'
+import { MEMORY_BLOCK_MESSAGE_KEY, isMemoryPreflightBlockDetails, memoryBlockMessageValues } from '@/lib/openclaw/memory-preflight-message'
 
 interface UpgradeStatus {
   mode: 'release' | 'dev' | 'unknown'
@@ -87,6 +88,7 @@ export function UpgradeCard() {
   const [message, setMessage] = useState<string>('')
   const guard = useLongRunGuard()
   const tn = useTranslations('openclawNodePreflight')
+  const tm = useTranslations('openclawMemoryPreflight')
   const [showManifestConfig, setShowManifestConfig] = useState(false)
   const [manifestUrlDraft, setManifestUrlDraft] = useState('')
   const [manifestSaved, setManifestSaved] = useState(false)
@@ -97,7 +99,7 @@ export function UpgradeCard() {
   const [openclawJobId, setOpenclawJobId] = useState<string | null>(null)
   const [openclawUpgrading, setOpenclawUpgrading] = useState(false)
   // Node 預檢擋下（可確認後強制重送）或放行但帶警告的訊息
-  const [openclawNotice, setOpenclawNotice] = useState<{ kind: 'blocked' | 'error' | 'warning'; text: string } | null>(null)
+  const [openclawNotice, setOpenclawNotice] = useState<{ kind: 'blocked' | 'error' | 'warning'; text: string; confirm?: string } | null>(null)
   const [mccJobId, setMccJobId] = useState<string | null>(null)
 
   const loadOpenclawCheck = useCallback(async () => {
@@ -257,7 +259,17 @@ export function UpgradeCard() {
       })
       const data = (await res.json()) as JobStartResponse & { success?: boolean; code?: string; error?: string; warning?: string; preflight?: unknown }
       if (data?.jobId) setOpenclawJobId(data.jobId)
-      if (data?.code === 'node-unsupported') {
+      if (data?.code === 'memory-insufficient') {
+        // 「仍要嘗試」前再確認一次：記憶體耗盡時主機可能失去回應
+        setOpenclawNotice({
+          kind: 'blocked',
+          text: isMemoryPreflightBlockDetails(data.preflight)
+            ? tm(MEMORY_BLOCK_MESSAGE_KEY, memoryBlockMessageValues(data.preflight))
+            : (data.error ?? ''),
+          confirm: tm('confirmTryAnyway'),
+        })
+      }
+      else if (data?.code === 'node-unsupported') {
         setOpenclawNotice({
           kind: 'blocked',
           text: isNodePreflightBlockDetails(data.preflight)
@@ -523,7 +535,10 @@ export function UpgradeCard() {
                   <span className="break-all">{openclawNotice.text}</span>
                   {openclawNotice.kind === 'blocked' && (
                     <button
-                      onClick={() => { void handleUpgradeOpenclaw(true) }}
+                      onClick={() => {
+                        if (openclawNotice.confirm && !confirm(openclawNotice.confirm)) return
+                        void handleUpgradeOpenclaw(true)
+                      }}
                       disabled={openclawUpgrading}
                       className="block text-[11px] underline text-red-200/80 hover:text-red-100 disabled:opacity-40"
                     >

@@ -64,6 +64,10 @@ export interface PhaseSpec {
   inline?: (log: (stream: LogStream, text: string) => void, ctx: PhaseContext) => Promise<number>
   /** if true, even a non-zero exit doesn't fail the job (e.g. doctor warnings) */
   allowFailure?: boolean
+  /** 前面的 phase 失敗也照跑（收尾用，例如把升級前停掉的服務啟動回來）；它自己失敗一樣讓 job 失敗 */
+  alwaysRun?: boolean
+  /** shell phase 的時限：逾時先 SIGTERM 整個行程群組，10 秒後還在就 SIGKILL，phase 以 124 結束 */
+  timeoutMs?: number
 }
 
 export interface JobSpec {
@@ -97,12 +101,29 @@ function emitMeta(meta: JobMeta) {
   emitJobEvent({ type: 'meta', jobId: meta.id, meta })
 }
 
-async function runShellPhase(jobId: string, phaseIndex: number, cmd: string, longRunId: number | null = null): Promise<number> {
+async function runShellPhase(
+  jobId: string, phaseIndex: number, cmd: string, longRunId: number | null = null, timeoutMs?: number,
+): Promise<number> {
   return new Promise<number>((resolve) => {
     const child = spawn('bash', ['-c', cmd], {
       env: childEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
+      // 有時限的 phase 自成行程群組，逾時才能連同 bash 底下的子孫一起收掉
+      detached: timeoutMs !== undefined,
     })
+    let timedOut = false
+    const timers: NodeJS.Timeout[] = []
+    const killGroup = (signal: NodeJS.Signals) => {
+      try { if (child.pid) process.kill(-child.pid, signal) } catch { /* 已結束 */ }
+    }
+    if (timeoutMs !== undefined) {
+      timers.push(setTimeout(() => {
+        timedOut = true
+        logTo(jobId, phaseIndex, 'stderr', `timed out after ${Math.round(timeoutMs / 1000)}s — sending SIGTERM`)
+        killGroup('SIGTERM')
+        timers.push(setTimeout(() => killGroup('SIGKILL'), 10_000))
+      }, timeoutMs))
+    }
     if (longRunId !== null) {
       updateLongRun(longRunId, { pid: child.pid ?? null })
       // exit 時就清掉 PID（close 可能延後）：登記項留到 job 結束才註銷，死 PID 清理不會誤刪
@@ -113,12 +134,14 @@ async function runShellPhase(jobId: string, phaseIndex: number, cmd: string, lon
     child.stdout.on('data', (d: string) => logTo(jobId, phaseIndex, 'stdout', d))
     child.stderr.on('data', (d: string) => logTo(jobId, phaseIndex, 'stderr', d))
     child.on('error', (err) => {
+      timers.forEach(clearTimeout)
       logTo(jobId, phaseIndex, 'stderr', `spawn error: ${err.message}`)
       resolve(127)
     })
     child.on('close', (code) => {
+      timers.forEach(clearTimeout)
       if (longRunId !== null) updateLongRun(longRunId, { pid: null })
-      resolve(code ?? 0)
+      resolve(timedOut ? 124 : (code ?? 0))
     })
   })
 }
@@ -158,6 +181,12 @@ export function startJob(spec: JobSpec): JobMeta {
     let overallFailed = false
     for (let i = 0; i < spec.phases.length; i++) {
       const phaseSpec = spec.phases[i]
+      // 已有 phase 失敗：只跑標了 alwaysRun 的收尾 phase，其餘標為 skipped
+      if (overallFailed && !phaseSpec.alwaysRun) {
+        meta.phases[i] = { ...meta.phases[i], status: 'skipped' }
+        emitMeta(meta)
+        continue
+      }
       meta.phases[i] = { ...meta.phases[i], status: 'running', startedAt: nowIso() }
       emitMeta(meta)
       logTo(id, i, 'phase', `── ${phaseSpec.name} ──`)
@@ -185,7 +214,7 @@ export function startJob(spec: JobSpec): JobMeta {
             },
           )
         } else if (phaseSpec.shell) {
-          code = await runShellPhase(id, i, phaseSpec.shell, longRunId)
+          code = await runShellPhase(id, i, phaseSpec.shell, longRunId, phaseSpec.timeoutMs)
         } else {
           logTo(id, i, 'stderr', 'phase missing shell or inline')
           code = 2
@@ -210,14 +239,7 @@ export function startJob(spec: JobSpec): JobMeta {
       }
       emitMeta(meta)
 
-      if (!ok) {
-        overallFailed = true
-        // remaining phases stay pending; mark as skipped for clarity
-        for (let j = i + 1; j < meta.phases.length; j++) {
-          meta.phases[j] = { ...meta.phases[j], status: 'skipped' }
-        }
-        break
-      }
+      if (!ok) overallFailed = true
     }
 
     meta.status = overallFailed ? 'failed' : 'success'

@@ -5,6 +5,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useLocale, useTranslations } from 'next-intl'
 import { NODE_BLOCK_MESSAGE_KEY, isNodePreflightBlockDetails, nodeBlockMessageValues } from '@/lib/openclaw/node-preflight-message'
+import { MEMORY_BLOCK_MESSAGE_KEY, isMemoryPreflightBlockDetails, memoryBlockMessageValues } from '@/lib/openclaw/memory-preflight-message'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import type { OpenClawVersionInfo } from '@/lib/services-status'
@@ -38,6 +39,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   const [rebootJobId, setRebootJobId] = useState<string | null>(null)
   const t = useTranslations('header')
   const tn = useTranslations('openclawNodePreflight')
+  const tm = useTranslations('openclawMemoryPreflight')
   const guard = useLongRunGuard()
   const queryClient = useQueryClient()
 
@@ -85,8 +87,15 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
       })
       const data = await res.json().catch(() => ({}))
       if (data?.jobId) setOcJobId(data.jobId)
-      // Node 版本不符合新版 OpenClaw：講清楚目前幾版、要幾版，使用者確認後才略過預檢重送
-      if (data?.code === 'node-unsupported') {
+      // 預檢擋下（停掉 gateway 後記憶體仍可能不夠／Node 版本不符合新版 OpenClaw）：講清楚原因與風險，
+      // 使用者確認後才略過預檢重送
+      if (data?.code === 'memory-insufficient') {
+        const details: unknown = data.preflight
+        const msg = isMemoryPreflightBlockDetails(details)
+          ? tm(MEMORY_BLOCK_MESSAGE_KEY, memoryBlockMessageValues(details))
+          : (data.error ?? '')
+        if (confirm(`${msg}\n\n${tm('confirmTryAnyway')}`)) void handleUpdate(true)
+      } else if (data?.code === 'node-unsupported') {
         const details: unknown = data.preflight
         const msg = isNodePreflightBlockDetails(details)
           ? tn(NODE_BLOCK_MESSAGE_KEY[details.reason], nodeBlockMessageValues(details))

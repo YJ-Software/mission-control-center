@@ -373,8 +373,19 @@ describe('/api/action update-openclaw preflight', () => {
       detectOpenclawNodeRuntime: vi.fn(),
       detectGatewayServiceNodeRuntime: vi.fn(),
     }))
+    // 記憶體預檢另有測試（openclaw-update-memory-guard.test.ts）；這裡固定為通過、gateway 沒在跑（不加停／啟 phase）
+    vi.doMock('@/lib/openclaw/update-memory-guard', async (orig) => ({
+      ...(await orig<typeof import('@/lib/openclaw/update-memory-guard')>()),
+      runOpenclawMemoryPreflight: async () => ({
+        preflight: { verdict: 'ok', estimateMb: 4000, warnings: [] },
+        gateway: { unit: 'openclaw-gateway', running: false, anonKb: 0 },
+      }),
+    }))
   })
-  afterEach(() => { vi.doUnmock('@/lib/openclaw/node-preflight') })
+  afterEach(() => {
+    vi.doUnmock('@/lib/openclaw/node-preflight')
+    vi.doUnmock('@/lib/openclaw/update-memory-guard')
+  })
 
   const load = async () => (await import('@/app/api/action/route')).POST
 
@@ -399,7 +410,7 @@ describe('/api/action update-openclaw preflight', () => {
     const res = await (await load())(post({ action: 'update-openclaw', force: true }))
     expect(res.status).toBe(200)
     const phases = m.startJob.mock.calls[0][0].phases as Array<{ name: string; shell?: string; inline?: unknown }>
-    expect(phases.map(p => p.name)).toEqual(['Node version preflight', 'openclaw update --yes'])
+    expect(phases.map(p => p.name)).toEqual(['Upgrade preflight', 'openclaw update --yes', 'check leftover update files'])
   })
 
   it('unknown → starts the job, with the warning as the first phase and in the response', async () => {
@@ -420,6 +431,7 @@ describe('/api/action update-openclaw preflight', () => {
     expect(res.status).toBe(200)
     expect((await res.json()).warning).toBeUndefined()
     const phases = m.startJob.mock.calls[0][0].phases as Array<{ name: string; shell?: string }>
-    expect(phases).toEqual([{ name: 'openclaw update --yes', shell: 'openclaw update --yes 2>&1' }])
+    expect(phases.map(p => p.name)).toEqual(['openclaw update --yes', 'check leftover update files'])
+    expect(phases[0]).toMatchObject({ shell: 'openclaw update --yes 2>&1' })
   })
 })

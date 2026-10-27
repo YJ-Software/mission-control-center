@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from 'react'
 import { Zap } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { NODE_BLOCK_MESSAGE_KEY, isNodePreflightBlockDetails, nodeBlockMessageValues } from '@/lib/openclaw/node-preflight-message'
+import { MEMORY_BLOCK_MESSAGE_KEY, isMemoryPreflightBlockDetails, memoryBlockMessageValues } from '@/lib/openclaw/memory-preflight-message'
 import { useLongRunGuard } from '@/hooks/use-long-run-guard'
 
 interface ActionDef {
@@ -29,6 +30,7 @@ const actionDefs: ActionDef[] = [
 export function QuickActions() {
   const t = useTranslations('quickActions')
   const tn = useTranslations('openclawNodePreflight')
+  const tm = useTranslations('openclawMemoryPreflight')
   const guard = useLongRunGuard()
   const [loading, setLoading] = useState<Record<string, boolean>>({})
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'warning' } | null>(null)
@@ -62,6 +64,13 @@ export function QuickActions() {
         if (action.id === 'restart-dashboard') {
           setTimeout(() => location.reload(), 3000)
         }
+      } else if (data.code === 'memory-insufficient') {
+        // 停掉 gateway 後記憶體仍可能不夠：講清楚風險（主機可能失去回應），使用者確認後才帶 force 重送
+        const details: unknown = data.preflight
+        const msg = isMemoryPreflightBlockDetails(details)
+          ? tm(MEMORY_BLOCK_MESSAGE_KEY, memoryBlockMessageValues(details))
+          : (data.error ?? '')
+        if (window.confirm(`${msg}\n\n${tm('confirmTryAnyway')}`)) void handleActionRef.current(action, true)
       } else if (data.code === 'node-unsupported') {
         // Node 版本不符合新版 OpenClaw：使用者看過訊息仍要試才帶 force 重送（OpenClaw 自己還會再檢查）
         const details: unknown = data.preflight
@@ -77,7 +86,7 @@ export function QuickActions() {
     } finally {
       setLoading(prev => ({ ...prev, [action.id]: false }))
     }
-  }, [t, tn, showToast, guard.handle])
+  }, [t, tn, tm, showToast, guard.handle])
   const handleActionRef = useRef(handleAction)
   handleActionRef.current = handleAction
 

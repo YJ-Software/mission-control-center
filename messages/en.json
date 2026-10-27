@@ -2672,5 +2672,10 @@
     "blockedBothFail": "OpenClaw will likely refuse this upgrade: OpenClaw {target} requires Node {engine}, and neither the openclaw CLI's Node {cliVersion} ({cliPath}) nor the gateway service's Node {serviceVersion} ({servicePath}) matches. OpenClaw may still find or install a compatible Node itself; choose \"Try anyway\" to let it check. If it finds none, it refuses without changing anything. You can also upgrade the Node both of them use to a matching version first.",
     "confirmTryAnyway": "Try the upgrade anyway?",
     "tryAnyway": "Try anyway"
+  },
+  "openclawMemoryPreflight": {
+    "blocked": "This server may not have enough memory to upgrade OpenClaw: with the gateway stopped for the upgrade, about {estimate} MB would be available (currently available {available} MB, free swap {swap} MB, gateway {gateway} MB), and the upgrade needs about {required} MB. If memory runs out, the server stops responding — SSH and this dashboard become unreachable until it is force-rebooted from your hosting provider's panel. Stop services you don't need, add swap, or add memory to the server, then try again.",
+    "confirmTryAnyway": "Upgrade anyway? If memory runs out, the server may stop responding and need a forced reboot from your hosting provider's panel.",
+    "tryAnyway": "Try anyway"
   }
 }
