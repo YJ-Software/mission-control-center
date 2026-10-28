@@ -1,29 +1,45 @@
 {
   "latest": {
-    "version": "0.4.5",
-    "mccVersion": "0.4.5",
-    "openclawVersion": "2026.10.5",
+    "version": "0.4.7",
+    "mccVersion": "0.4.7",
+    "openclawVersion": "2026.10.8",
     "validated": {
       "openclaw": [
         "2026.9.9",
         "2026.10.2",
         "2026.10.3",
-        "2026.10.5"
+        "2026.10.5",
+        "2026.10.7",
+        "2026.10.8"
       ]
     },
-    "releaseDate": "2026-10-21T09:27:05.611Z",
-    "notes": "- fix(backup): OpenClaw 備份失敗訊息保留 [openclaw] Reason: 行，不再被尾端截斷切掉真正原因\n- test(e2e): kimi spec 等覆寫 POST 落地並斷言 provider，修正誤判通過\n- test(e2e): 還原後暖身聊天記錄收到的事件，供定位頁面未更新原因\n- 驗證：OpenClaw 2026.10.5 全新部署 23/23 + Telegram；本版 throwaway 0.4.4→0.4.5 升級 smoke 23/23",
+    "releaseDate": "2026-10-28T08:41:20.281Z",
+    "notes": "- fix(backup): OpenClaw 備份逾時由 10 分鐘放寬到 30 分鐘；逾時會明確顯示 timed out，不再只寫 exit 143\n- fix(backup): 縮小備份內容，備份時間約減少三分之一\n- fix(chat): 送出訊息後載入的聊天紀錄不再蓋掉剛送出的訊息（依 runId 合併）\n- fix(openclaw): 設定 CLI 逾時拆成讀 60 秒、寫 90 秒，小機器上 10.7 的 agent 覆寫不再被砍\n- feat(openclaw): 升級 OpenClaw 前先檢查 Node 版本（10.6 起需要 Node ≥24.22.1 <25 或 ≥26.12.1），不符合就擋並說明\n- feat(openclaw): 升級 OpenClaw 前先停 gateway 騰出記憶體，記憶體仍不足就擋；升級期間 gateway 會離線約 4–15 分鐘；MCC 中途重啟也會把 gateway 啟動回來\n- 註：v0.4.6 只有 tag，沒有發布，直接從 0.4.5 升到 0.4.7\n- 驗證：OpenClaw 2026.10.8 全新部署 + 升級到 0.4.7，23/23 + Telegram；降到 2026.10.7 smoke 23/23",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.5/mission-control-v0.4.5-linux-x64.tar.gz",
-        "sha256": "10b71bb9b4fdf873211482db283a2fd4122c43cf2cf94bb7bccdd25299eaaf29",
-        "size": 26563862
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.7/mission-control-v0.4.7-linux-x64.tar.gz",
+        "sha256": "216455c08d1c22e7c64679f49aca3aae182c8c9878dc59e0f3b9a639d961d67d",
+        "size": 26688144
       }
     ]
   },
   "history": [
+    {
+      "version": "0.4.5",
+      "mccVersion": "0.4.5",
+      "openclawVersion": "2026.10.5",
+      "validated": {
+        "openclaw": [
+          "2026.9.9",
+          "2026.10.2",
+          "2026.10.3",
+          "2026.10.5"
+        ]
+      },
+      "releaseDate": "2026-10-21T09:27:05.611Z"
+    },
     {
       "version": "0.4.4",
       "mccVersion": "0.4.4",
@@ -115,12 +131,6 @@
       "mccVersion": "0.3.90",
       "openclawVersion": "2026.9.3",
       "releaseDate": "2026-09-15T11:07:29.493Z"
-    },
-    {
-      "version": "2026.9.3-v0.3.89",
-      "mccVersion": "0.3.89",
-      "openclawVersion": "2026.9.3",
-      "releaseDate": "2026-09-14T09:30:22.557Z"
     }
   ]
 }
