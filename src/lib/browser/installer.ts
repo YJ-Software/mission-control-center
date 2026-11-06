@@ -27,6 +27,7 @@ import {
 } from './config'
 import { getServerEnv } from '@/lib/server-env'
 import { shouldLoadExtensionViaCdp, writeOpencliLoader } from './opencli-extension'
+import { resolveNodePath } from './node-path'
 
 function getChromeUserDataDir(): string {
   return path.join(os.homedir(), '.config', 'chrome-headless-data')
@@ -101,8 +102,13 @@ function buildOpencliPostStart(): string | undefined {
   if (!shouldLoadExtensionViaCdp(chromeBin, isOpencliExtensionInstalled())) return undefined
   const cdpPort = parseInt(getBrowserConfig('cdp_port') || '9222', 10)
   const script = writeOpencliLoader(cdpPort, getOpencliExtensionDir())
-  // process.execPath, not a bare `node`: systemd user units get a minimal PATH.
-  return `${process.execPath} ${script}`
+  // Use an absolute, upgrade-stable path: systemd has a minimal PATH, and
+  // process.execPath can resolve Homebrew's symlink into a versioned Cellar.
+  let nodeBin = process.execPath
+  try {
+    nodeBin = resolveNodePath()
+  } catch { /* No stable candidate runs; the running interpreter still does. */ }
+  return `${nodeBin} ${script}`
 }
 
 export function buildVncStackConfig(): VncStackConfig {

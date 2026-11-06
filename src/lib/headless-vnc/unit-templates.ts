@@ -19,8 +19,8 @@ export interface VncStackConfig {
   /** Command to run after the app starts, as the unit's ExecStartPost. Used to
    * load the OpenCLI extension into Chrome over CDP — that load is dropped on
    * every restart, so it has to be re-issued per start rather than once at
-   * install time. Whatever runs here must exit 0 even when it fails, or a
-   * healthy browser gets reported as a failed unit. */
+   * install time. Failure is ignored by systemd so even an interpreter that
+   * cannot start leaves the browser running. Output still goes to the journal. */
   appPostStart?: string
 }
 
@@ -67,7 +67,7 @@ Environment=QT_IM_MODULE=fcitx
 Environment=XMODIFIERS=@im=fcitx
 Environment=LANG=zh_TW.UTF-8` : ''}
 ${envLines}
-ExecStart=${config.appCommand}${config.appPostStart ? `\nExecStartPost=${config.appPostStart}` : ''}
+ExecStart=${config.appCommand}${config.appPostStart ? `\nExecStartPost=-${config.appPostStart}` : ''}
 Restart=on-failure
 RestartSec=10
 

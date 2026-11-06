@@ -1,4 +1,8 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// These tests only render strings. Refuse any dependency that tries to spawn.
+vi.mock('child_process', () => { throw new Error('unmocked child_process in unit rendering test') })
+vi.mock('node:child_process', () => { throw new Error('unmocked child_process in unit rendering test') })
 import {
   shouldLoadExtensionViaCdp,
   buildOpencliLoaderScript,
@@ -87,7 +91,10 @@ describe('renderAppUnit', () => {
 
   it('emits ExecStartPost when a post-start command is configured', () => {
     const unit = renderAppUnit({ ...base, appPostStart: '/usr/bin/node /home/u/load.mjs' })
-    expect(unit).toContain('ExecStartPost=/usr/bin/node /home/u/load.mjs')
+    expect(unit).toContain('ExecStartPost=-/usr/bin/node /home/u/load.mjs')
+    // Ignore failure without a shell wrapper or output redirection: loader
+    // diagnostics still inherit systemd's journal output.
+    expect(unit).not.toMatch(/\/bin\/sh|\/dev\/null|Standard(?:Output|Error)=null/)
     // ExecStart must still come first.
     expect(unit.indexOf('ExecStart=')).toBeLessThan(unit.indexOf('ExecStartPost='))
   })
