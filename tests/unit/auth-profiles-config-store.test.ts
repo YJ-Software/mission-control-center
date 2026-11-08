@@ -1,7 +1,8 @@
+import { gatewayMock } from './helpers/offline-owner-mocks'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   readAuthProfilesFromConfig,
   chooseProfiles,
@@ -11,6 +12,8 @@ import {
   CLI_TIMEOUT_MS,
   type ProfilesFile,
 } from '@/lib/openclaw/auth-profiles'
+
+beforeEach(() => { gatewayMock.mockRejectedValue(new Error('Gateway WebSocket not connected')) })
 
 // OpenClaw 2026.8.1 moved auth profiles AGAIN: out of the per-agent
 // openclaw-agent.sqlite (2026.6.5's home) and back into openclaw.json under

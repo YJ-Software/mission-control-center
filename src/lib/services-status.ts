@@ -1,6 +1,6 @@
 import { execFileSync } from 'child_process'
 import { getServerEnv } from '@/lib/server-env'
-import { findOpenclawBin } from '@/lib/morning-report/openclaw'
+import { readInstalledOpenclawVersion } from '@/lib/openclaw/installed-version'
 import { parseCliVersion, isUpdateAvailable } from '@/lib/version-compare'
 
 const env = getServerEnv()
@@ -92,20 +92,23 @@ function isBinaryInstalled(bin: string): boolean {
  * Detect service status: try systemd units first, then process patterns.
  * Services with `onlyIfInstalled` are skipped if the binary is not found.
  */
-export function getServicesStatus(): ServiceInfo[] {
-  return SERVICE_DETECTORS
+export async function getServicesStatus(): Promise<ServiceInfo[]> {
+  return Promise.all(SERVICE_DETECTORS
     .filter(det => !det.onlyIfInstalled || isBinaryInstalled(det.onlyIfInstalled))
-    .map(det => {
+    .map(async det => {
       const active = det.systemd.some(isSystemdActive) || det.processes.some(hasProcess)
       let version: string | undefined
-      if (det.versionCmd) {
+      if (det.name === 'openclaw') {
+        // Header/sidebar 與 LLM 認證頁共用 CLI 額度，不能用同步呼叫插隊。
+        version = await readInstalledOpenclawVersion() ?? undefined
+      } else if (det.versionCmd) {
         const raw = runQuiet(det.versionCmd.cmd, det.versionCmd.args)
         if (raw) {
           version = parseCliVersion(raw, det.versionCmd.product) || raw.split('\n')[0]
         }
       }
       return { name: det.name, active, version }
-    })
+    }))
 }
 
 export interface OpenClawVersionInfo {
@@ -119,12 +122,11 @@ export interface OpenClawVersionInfo {
  *
  * The systemd user service runs without nvm's PATH so a bare `openclaw` /
  * `npm` won't resolve when openclaw lives under ~/.nvm/versions/node/<ver>/bin.
- * Resolve openclaw via findOpenclawBin() and hit the npm registry directly
+ * Resolve openclaw via the shared version reader and hit the npm registry directly
  * instead of relying on the `npm` CLI being on PATH.
  */
 export async function getOpenClawVersionInfo(): Promise<OpenClawVersionInfo> {
-  const bin = findOpenclawBin()
-  const installed = parseCliVersion(runQuiet(bin, ['--version']), 'OpenClaw')
+  const installed = await readInstalledOpenclawVersion() ?? ''
 
   let latest = ''
   try {

@@ -1,3 +1,4 @@
+import { gatewayMock } from './helpers/offline-owner-mocks'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -37,7 +38,10 @@ describe('listStoredProfiles', () => {
     writeFileSync(legacy, JSON.stringify({ models: { providers: {} } }))
   })
   afterAll(() => rmSync(dir, { recursive: true, force: true }))
-  beforeEach(() => invalidateStoredProfiles())
+  beforeEach(() => {
+    invalidateStoredProfiles()
+    gatewayMock.mockRejectedValue(new Error('Gateway WebSocket not connected'))
+  })
 
   it('reads ids, providers and types from `models auth list --json`', async () => {
     const calls: string[][] = []
@@ -56,16 +60,16 @@ describe('listStoredProfiles', () => {
     ])
   })
 
-  it('answers null when the CLI fails or prints no JSON', async () => {
-    expect(await listStoredProfiles('a', { configPath: configBacked, run: async () => ({ code: 1, stdout: '' }) })).toBeNull()
-    expect(await listStoredProfiles('b', { configPath: configBacked, run: async () => ({ code: 0, stdout: 'nope' }) })).toBeNull()
+  it('reports unknown when the CLI fails or prints no JSON', async () => {
+    expect(await listStoredProfiles('a', { configPath: configBacked, run: async () => ({ code: 1, stdout: '' }) })).toMatchObject({ status: 'unknown' })
+    expect(await listStoredProfiles('b', { configPath: configBacked, run: async () => ({ code: 0, stdout: 'nope' }) })).toMatchObject({ status: 'unknown' })
   })
 
-  it('does not spawn the CLI on pre-2026.8.1 stores', async () => {
+  it('checks the store even when config no longer has auth.profiles', async () => {
     let called = false
     const r = await listStoredProfiles('main', { configPath: legacy, run: async () => { called = true; return { code: 0, stdout: LIST_JSON } } })
-    expect(r).toBeNull()
-    expect(called).toBe(false)
+    expect(r).toHaveLength(2)
+    expect(called).toBe(true)
   })
 
   it('reuses a listing within the TTL and relists after invalidation', async () => {

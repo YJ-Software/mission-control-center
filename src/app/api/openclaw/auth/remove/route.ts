@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { guardAgentsDuring } from '@/lib/openclaw/config-guard'
 import { readAgentsConfig, writeAgentsConfigPath } from '@/lib/openclaw/models-config'
-import { invalidateStoredProfiles, listAgents, removeProfile } from '@/lib/openclaw/auth-profiles'
+import { invalidateStoredProfiles, listAgents, OfflineStateOwnershipError, removeProfile } from '@/lib/openclaw/auth-profiles'
 
 const SAFE_ID = /^[a-zA-Z0-9_.-]+$/
 const SAFE_PROFILE_ID = /^[a-zA-Z0-9_.:@-]+$/
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `invalid agent: ${a}` }, { status: 400 })
     }
   }
-  // removeProfile shells out to the openclaw CLI. Without this catch a refused
+  // removeProfile uses gateway RPC with a CLI fallback. Without this catch a refused
   // removal or a CLI timeout reached the dashboard as an empty 500 — the delete
   // button just failed, with nothing in the response saying why.
   try {
@@ -50,8 +50,11 @@ export async function POST(req: NextRequest) {
     )
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 },
+      {
+        error: err instanceof Error ? err.message : String(err),
+        ...(err instanceof OfflineStateOwnershipError ? { code: err.code } : {}),
+      },
+      { status: err instanceof OfflineStateOwnershipError ? 503 : 500 },
     )
   } finally {
     // A removal that failed half way is exactly what the stored-profile listing

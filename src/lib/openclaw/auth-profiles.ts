@@ -5,6 +5,8 @@ import { randomBytes } from 'node:crypto'
 import os from 'node:os'
 import { spawn } from 'node:child_process'
 import Database from 'better-sqlite3'
+import { gatewayRequest } from '@/lib/gateway-rpc'
+import { withOpenclawCli } from './cli-limiter'
 import { augmentedPath, extractJson, OPENCLAW_WRITE_TIMEOUT_MS, runOpenclaw } from './models-config'
 
 const AGENTS_ROOT = join(os.homedir(), '.openclaw', 'agents')
@@ -370,7 +372,7 @@ export interface CliOutcome {
 export type OpenclawRunner = (args: string[]) => Promise<CliOutcome>
 
 const cliRunner: OpenclawRunner = (args) =>
-  new Promise((resolve) => {
+  withOpenclawCli(() => new Promise((resolve) => {
     const child = spawn('openclaw', ['--log-level', 'silent', '--no-color', ...args], {
       env: { ...process.env, PATH: augmentedPath() },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -398,11 +400,14 @@ const cliRunner: OpenclawRunner = (args) =>
       // indistinguishable from a clean exit 0.
       resolve({ code: timedOut ? 124 : (code ?? 0), output: output.trim(), timedOut })
     })
-  })
+  }))
 
 /** Turn a failed invocation into a message an operator can act on: what ran,
  * why it stopped, and whatever the command itself said about it. */
 export function describeCliFailure(args: string[], outcome: CliOutcome): string {
+  if (/requires exclusive offline state ownership/i.test(outcome.output)) {
+    return 'OpenClaw requires offline state ownership for this command while the gateway is running. Reconnect MCC to the gateway and retry, or stop the gateway before retrying the CLI operation. No local mutation was attempted.'
+  }
   const why = outcome.timedOut
     ? `timed out after ${CLI_TIMEOUT_MS / 1000}s`
     : `exit ${outcome.code}`
@@ -415,6 +420,10 @@ export interface RemoveProfileOptions {
   configPath?: string
 }
 
+export class OfflineStateOwnershipError extends Error {
+  readonly code = 'OPENCLAW_OFFLINE_STATE_OWNERSHIP'
+}
+
 export async function removeProfile(
   agentId: string,
   profileId: string,
@@ -422,14 +431,27 @@ export async function removeProfile(
 ): Promise<void> {
   const { run = cliRunner, configPath = CONFIG_PATH } = opts
 
-  // On 2026.8.1 the profile lives in openclaw.json behind a keyRef, and the
-  // per-agent sqlite store it replaced is inert. Rewriting that store would
-  // report success while leaving the profile exactly where it was, so removal
-  // has to go through the CLI.
-  if (readAuthProfilesFromConfig(configPath)) {
+  // RPC 與 CLI 共用 OpenClaw 的憑證及 config 清理，明確指定單一 profile，避免登出整個 provider。
+  try {
+    await gatewayRequest('models.authLogout', {
+      provider: readAuthProfilesFromConfig(configPath)?.profiles?.[profileId]?.provider ?? profileId.split(':')[0],
+      agentId,
+      profileIds: [profileId],
+    })
+    return
+  } catch (err) {
+    // 權限／參數／憑證清理錯誤直接回報，不能再用 CLI 繞過或重複變更。
+    if (!isAuthRpcUnavailable(err)) throw err
+  }
+
+  // 空的 auth.profiles 仍是新版 store；最後一筆 config 刪掉後可能還留有憑證。
+  if (hasConfigAuthStore(configPath)) {
     const args = buildLogoutArgs(agentId, profileId)
     const outcome = await run(args)
     if (outcome.code !== 0) {
+      if (/requires exclusive offline state ownership/i.test(outcome.output)) {
+        throw new OfflineStateOwnershipError(describeCliFailure(args, outcome))
+      }
       throw new Error(describeCliFailure(args, outcome))
     }
     return
@@ -453,6 +475,20 @@ export async function removeProfile(
   if (state.lastGood && provider in state.lastGood) delete state.lastGood[provider]
   if (state.usageStats && profileId in state.usageStats) delete state.usageStats[profileId]
   await writeStateStore(agentId, state)
+}
+
+function isAuthRpcUnavailable(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  return /gateway.*(?:not available|unavailable|not connected|disconnected|closed)|RPC timeout|unknown method|method (?:not found|not supported)|unsupported method/i.test(message)
+}
+
+function hasConfigAuthStore(configPath: string): boolean {
+  try {
+    const profiles = JSON.parse(readFileSync(configPath, 'utf8'))?.auth?.profiles
+    return profiles !== null && typeof profiles === 'object' && !Array.isArray(profiles)
+  } catch {
+    return false
+  }
 }
 
 export async function copyProfile(
@@ -491,7 +527,14 @@ type JsonRunner = (args: string[]) => Promise<{ code: number; stdout: string }>
  * keep an openclaw process running almost continuously. */
 const STORED_PROFILES_TTL_MS = 60_000
 
-const storedProfilesCache = new Map<string, { at: number; value: Promise<StoredProfile[] | null> }>()
+export interface UnknownStoredProfiles {
+  status: 'unknown'
+  error: string
+}
+
+export type StoredProfilesResult = StoredProfile[] | UnknownStoredProfiles | null
+
+const storedProfilesCache = new Map<string, { at: number; value: Promise<StoredProfilesResult> }>()
 
 /** Drop cached listings — call after anything that changes the auth store. */
 export function invalidateStoredProfiles(): void {
@@ -524,8 +567,7 @@ export interface ListStoredProfilesOptions {
 
 /**
  * The profiles OpenClaw's own auth store holds for an agent, as `models auth
- * list --json` reports them — or null when there is nothing to reconcile or
- * the CLI cannot answer.
+ * list --json` reports them. 讀取失敗回傳 unknown，避免把未知誤報為沒有憑證。
  *
  * openclaw.json's `auth.profiles` is not the whole truth. `models auth logout`
  * drops the config entry before it touches the store, so a logout that fails
@@ -536,22 +578,40 @@ export interface ListStoredProfilesOptions {
 export async function listStoredProfiles(
   agentId: string,
   opts: ListStoredProfilesOptions = {},
-): Promise<StoredProfile[] | null> {
+): Promise<StoredProfilesResult> {
   const { run = runOpenclaw, configPath = CONFIG_PATH, now = Date.now() } = opts
-  // Before 2026.8.1 the store is exactly what readProfiles already reads.
-  if (!readAuthProfilesFromConfig(configPath)) return null
-  const cached = storedProfilesCache.get(agentId)
+  const cacheKey = `${configPath}:${agentId}`
+  const cached = storedProfilesCache.get(cacheKey)
   if (cached && now - cached.at < STORED_PROFILES_TTL_MS) return cached.value
-  const value = (async () => {
-    const r = await run(['models', 'auth', 'list', '--agent', agentId, '--json'])
-    if (r.code !== 0) return null
+  const value = (async (): Promise<StoredProfilesResult> => {
     try {
-      return parseStoredProfiles(extractJson(r.stdout))
+      const raw = await gatewayRequest('models.authStatus', { agentId }) as {
+        unavailable?: unknown
+        providers?: { provider: string; profiles: { profileId: string; type: string }[] }[]
+      }
+      // Gateway 啟動中會成功回傳 { providers: [], unavailable: ... }，不能當成空 store。
+      if (!raw || raw.unavailable || !Array.isArray(raw.providers)) throw new Error('Auth status unavailable')
+      return raw.providers.flatMap((provider) => {
+        if (typeof provider.provider !== 'string' || !Array.isArray(provider.profiles)) throw new Error('Invalid auth status')
+        return provider.profiles.map((profile) => {
+          if (typeof profile.profileId !== 'string' || !profile.profileId || typeof profile.type !== 'string') throw new Error('Invalid auth profile')
+          return { id: profile.profileId, provider: provider.provider, type: profile.type }
+        })
+      })
     } catch {
-      return null
+      // 讀取可安全退回 CLI；舊版 gateway 可能沒有此 RPC。
     }
+    // 即使 config 已經沒有 auth.profiles，store 仍可能留有刪除失敗的憑證。
+    try {
+      const r = await run(['models', 'auth', 'list', '--agent', agentId, '--json'])
+      const parsed = r.code === 0 ? parseStoredProfiles(extractJson(r.stdout)) : null
+      if (parsed) return parsed
+    } catch {
+      // 錯誤文字不包含 CLI 原始輸出或本機路徑。
+    }
+    return { status: 'unknown', error: 'Stored auth profiles could not be read. The profile list may be incomplete. Reconnect MCC to the gateway and retry.' }
   })()
-  storedProfilesCache.set(agentId, { at: now, value })
+  storedProfilesCache.set(cacheKey, { at: now, value })
   return value
 }
 
@@ -559,9 +619,9 @@ export async function listStoredProfiles(
  * dashboard can say why they are there and still offer to remove them. */
 export function withStoreOnlyProfiles(
   summaries: ProfileSummary[],
-  stored: StoredProfile[] | null,
+  stored: StoredProfilesResult,
 ): ProfileSummary[] {
-  if (!stored) return summaries
+  if (!Array.isArray(stored)) return summaries
   const known = new Set(summaries.map((s) => s.profileId))
   const extra = stored
     .filter((p) => !known.has(p.id))

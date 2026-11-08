@@ -43,6 +43,9 @@ vi.mock('fs', async (orig) => {
   }
   return { ...mod, default: mod }
 })
+vi.mock('@/lib/gateway-rpc', () => ({
+  gatewayRequest: () => Promise.reject(new Error('Gateway WebSocket not connected')),
+}))
 vi.mock('@/lib/db', () => ({ db: {} }))
 vi.mock('@/lib/server-env', () => ({ getServerEnv: () => ({}) }))
 

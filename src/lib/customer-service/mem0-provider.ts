@@ -1,3 +1,4 @@
+import { writeMem0McpConfig } from './mem0-config'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { existsSync, readFileSync } from 'fs'
@@ -110,12 +111,7 @@ export async function setProvider(input: ProviderConfig): Promise<{ output: stri
   }
 
   const value = { ...existing, env }
-  const out = await execFileAsync(
-    'openclaw',
-    ['mcp', 'set', 'openclaw-mem0', JSON.stringify(value)],
-    { timeout: 30000, env: getServerEnv() },
-  )
-  return { output: (out.stdout || '') + (out.stderr || '') }
+  return { output: await writeMem0McpConfig(value) }
 }
 
 export async function testProvider(): Promise<{ ok: boolean; latencyMs: number; error?: string }> {

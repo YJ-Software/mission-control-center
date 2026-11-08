@@ -19,7 +19,11 @@ export async function GET() {
         readState(a.id),
         listStoredProfiles(a.id),
       ])
-      return { id: a.id, profiles: withStoreOnlyProfiles(summarizeProfiles(profiles, state), stored) }
+      return {
+        id: a.id,
+        profiles: withStoreOnlyProfiles(summarizeProfiles(profiles, state), stored),
+        ...(stored && !Array.isArray(stored) ? { storeStatus: stored.status, storeError: stored.error } : {}),
+      }
     }),
   )
   return NextResponse.json({ agents: enriched })

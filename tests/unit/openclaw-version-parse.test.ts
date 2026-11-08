@@ -1,5 +1,5 @@
+import { gatewayMock, processMocks } from './helpers/offline-owner-mocks'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { execFileSync } from 'child_process'
 
 /**
  * Regression: the header's "OpenClaw <ver> 可更新" badge was stuck on for boxes
@@ -16,21 +16,20 @@ import { execFileSync } from 'child_process'
  * stable), so this hit every customer on a suffixed build, not just dev.
  */
 
-vi.mock('child_process', () => ({ execFileSync: vi.fn() }))
 
 // findOpenclawBin() probes the filesystem for a real binary; the path it
-// returns is irrelevant here because execFileSync is stubbed.
+// returns is irrelevant here because execFile is stubbed.
 vi.mock('@/lib/morning-report/openclaw', () => ({
   findOpenclawBin: () => '/usr/local/bin/openclaw',
 }))
 
 import { getOpenClawVersionInfo } from '@/lib/services-status'
 
-const mockExec = vi.mocked(execFileSync)
+const mockExec = processMocks.execFile
 
 /** Stub `openclaw --version` output and the npm registry's `latest`. */
 function arrange(cliOutput: string, npmLatest: string) {
-  mockExec.mockReturnValue(cliOutput as never)
+  mockExec.mockImplementation((_bin, _args, _options, callback) => callback(null, cliOutput, ''))
   vi.stubGlobal('fetch', vi.fn(async () => ({
     ok: true,
     json: async () => ({ version: npmLatest }),
@@ -39,6 +38,7 @@ function arrange(cliOutput: string, npmLatest: string) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  gatewayMock.mockImplementation(async () => { throw new Error('Unexpected gateway RPC') })
   vi.unstubAllGlobals()
 })
 
@@ -99,7 +99,7 @@ describe('getOpenClawVersionInfo', () => {
   })
 
   it('does not claim an update when the registry is unreachable', async () => {
-    mockExec.mockReturnValue('OpenClaw 2026.7.1-2 (0790d9f)' as never)
+    mockExec.mockImplementation((_bin, _args, _options, callback) => callback(null, 'OpenClaw 2026.7.1-2 (0790d9f)', ''))
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline') }))
 
     const info = await getOpenClawVersionInfo()

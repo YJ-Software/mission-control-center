@@ -13,6 +13,7 @@
  * detected and skipped.
  */
 
+import { writeMem0McpConfig } from './mem0-config'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { existsSync, readFileSync } from 'fs'
@@ -295,7 +296,7 @@ async function runInstallSteps(progress: ProgressCallback): Promise<void> {
           OPENAI_API_KEY: apiKey ?? 'set-me-on-llm-provider-tab',
         },
       }
-      await execFileAsync('openclaw', ['mcp', 'set', 'openclaw-mem0', JSON.stringify(value)], { timeout: 30000, env: getServerEnv() })
+      await writeMem0McpConfig(value)
       progress({ stage: 'install', step: 'mcp', message: 'MCP server registered', ready: true })
     } catch (err: any) {
       progress({ stage: 'error', step: 'mcp', message: `mcp register failed: ${err?.stderr ?? err?.message}` })

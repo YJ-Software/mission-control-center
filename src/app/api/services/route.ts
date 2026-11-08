@@ -3,7 +3,7 @@ import { getServicesStatus, getTailscaleStatus, getOpenClawVersionInfo, getOpenc
 
 export async function GET() {
   try {
-    const services = getServicesStatus()
+    const services = await getServicesStatus()
     const tailscale = getTailscaleStatus()
     const [openclawVersion, opencliVersion] = await Promise.all([
       getOpenClawVersionInfo(),

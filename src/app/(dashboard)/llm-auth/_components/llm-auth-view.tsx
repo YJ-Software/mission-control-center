@@ -15,6 +15,8 @@ import type { JobMeta } from '@/lib/jobs/types'
 interface AgentSummary {
   id: string
   profiles: ProfileSummary[]
+  storeStatus?: 'unknown'
+  storeError?: string
 }
 
 interface AgentsResponse {
@@ -109,7 +111,10 @@ export function LlmAuthView() {
             </Button>
           </div>
 
-          {agent.profiles.length === 0 ? (
+          {agent.storeStatus === 'unknown' && (
+            <div role="alert" className="text-xs text-amber-300 mb-3">{t('storeReadError')}</div>
+          )}
+          {agent.profiles.length === 0 && agent.storeStatus !== 'unknown' ? (
             <div className="text-xs text-white/30 italic py-4 text-center">{t('noProfiles')}</div>
           ) : (
             <div className="space-y-2">

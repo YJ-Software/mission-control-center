@@ -2611,6 +2611,7 @@
     "expiresIn": "剩余",
     "noExpiry": "无到期日",
     "storeOnly": "配置文件已移除",
+    "storeReadError": "无法读取 OpenClaw 凭证库，清单可能不完整。请重新连接 MCC 与 Gateway 后重试。",
     "storeOnlyHint": "凭证仍留在 OpenClaw 凭证库中，可能仍在使用 — 请再移除一次",
     "remove": "移除",
     "loginTitle": "新增模型 → {agent}",

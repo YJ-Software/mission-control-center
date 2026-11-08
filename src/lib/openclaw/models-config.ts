@@ -1,3 +1,4 @@
+import { withOpenclawCli } from './cli-limiter'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
@@ -49,7 +50,7 @@ export const OPENCLAW_READ_TIMEOUT_MS = 60_000
 export const OPENCLAW_WRITE_TIMEOUT_MS = 90_000
 
 export function runOpenclaw(args: string[], timeoutMs = OPENCLAW_READ_TIMEOUT_MS): Promise<RunResult> {
-  return new Promise((resolve) => {
+  return withOpenclawCli(() => new Promise((resolve) => {
     // `--log-level silent` + `--no-color` suppress most banners, but openclaw
     // 2026.6.1+ still prints the clack "Doctor warnings" box to stdout for
     // `--status-json` subcommands. We strip it post-hoc via extractJson().
@@ -84,7 +85,7 @@ export function runOpenclaw(args: string[], timeoutMs = OPENCLAW_READ_TIMEOUT_MS
       }
       resolve({ code, stdout, stderr })
     })
-  })
+  }))
 }
 
 /** 會寫 openclaw.json 的子指令一律走這裡，用寫入逾時。 */

@@ -2611,6 +2611,7 @@
     "expiresIn": "expires in",
     "noExpiry": "no expiry",
     "storeOnly": "Removed from config",
+    "storeReadError": "Stored auth profiles could not be read. This list may be incomplete. Reconnect MCC to the gateway and retry.",
     "storeOnlyHint": "Still in OpenClaw's auth store and may still be in use — remove it again",
     "remove": "Remove",
     "loginTitle": "Add Model → {agent}",

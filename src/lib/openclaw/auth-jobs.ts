@@ -1,3 +1,4 @@
+import { withOpenclawCli } from './cli-limiter'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
@@ -72,7 +73,7 @@ function ensureProviderPluginPhase(providerId: string) {
 // the provider is already configured. Used to decide whether to seed
 // the provider template after paste-api-key / device-code.
 function isProviderConfigured(providerId: string): Promise<boolean> {
-  return new Promise((resolve) => {
+  return withOpenclawCli(() => new Promise((resolve) => {
     const child = spawn(
       'openclaw',
       ['--log-level', 'silent', '--no-color', 'config', 'get', `models.providers.${providerId}`],
@@ -90,11 +91,11 @@ function isProviderConfigured(providerId: string): Promise<boolean> {
       else if (stderr.includes('not found')) resolve(false)
       else resolve(false)
     })
-  })
+  }))
 }
 
 function writeProviderConfig(providerId: string, template: unknown): Promise<number> {
-  return new Promise((resolve) => {
+  return withOpenclawCli(() => new Promise((resolve) => {
     const child = spawn(
       'openclaw',
       [
@@ -113,7 +114,7 @@ function writeProviderConfig(providerId: string, template: unknown): Promise<num
     child.stderr.on('data', () => {})
     child.on('error', () => resolve(127))
     child.on('close', (code) => resolve(code ?? 0))
-  })
+  }))
 }
 
 function safeSpawn(
@@ -122,7 +123,7 @@ function safeSpawn(
   onStdoutLine: (line: string) => void,
   stdin?: string,
 ): Promise<number> {
-  return new Promise((resolve) => {
+  return withOpenclawCli(() => new Promise((resolve) => {
     const child = spawn('openclaw', args, {
       env: childEnv(),
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -161,7 +162,7 @@ function safeSpawn(
     } else {
       child.stdin.end()
     }
-  })
+  }))
 }
 
 // Strips ANSI escape codes — openclaw prints clack output with colors.
@@ -179,6 +180,8 @@ function safePtySpawn(
   log: (s: LogStream, t: string) => void,
   onLine: (line: string) => void,
 ): Promise<number> {
+  // 互動式登入要等使用者到瀏覽器授權，可能持續數分鐘；不佔 CLI 額度，
+  // 否則兩個登入就會讓頁首版本檢查與列表全部排隊。
   return new Promise((resolve) => {
     let proc: pty.IPty
     try {

@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { findOpenclawBin } from '@/lib/morning-report/openclaw'
 import { parseCliVersion } from '@/lib/version-compare'
+import { withOpenclawCli } from './cli-limiter'
 
 const execFileP = promisify(execFile)
 
@@ -20,7 +21,7 @@ const execFileP = promisify(execFile)
  */
 export async function readInstalledOpenclawVersion(): Promise<string | null> {
   try {
-    const { stdout } = await execFileP(findOpenclawBin(), ['--version'], { timeout: 5000 })
+    const { stdout } = await withOpenclawCli(() => execFileP(findOpenclawBin(), ['--version'], { timeout: 5000 }))
     return parseCliVersion(stdout, 'OpenClaw') || null
   } catch {
     return null

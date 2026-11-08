@@ -1,3 +1,4 @@
+import { withOpenclawCli } from './cli-limiter'
 import { spawn } from 'node:child_process'
 import { augmentedPath } from './models-config'
 import { withLongRun } from '@/lib/long-running'
@@ -20,7 +21,7 @@ import { withLongRun } from '@/lib/long-running'
 // Run an openclaw subcommand and capture stdout. The probe has to read
 // `plugins list` / `plugins search` output rather than just an exit code.
 function captureOpenclaw(args: string[]): Promise<{ code: number; stdout: string }> {
-  return new Promise((resolve) => {
+  return withOpenclawCli(() => new Promise((resolve) => {
     const child = spawn('openclaw', ['--no-color', ...args], {
       env: { ...process.env, PATH: augmentedPath() },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -31,7 +32,7 @@ function captureOpenclaw(args: string[]): Promise<{ code: number; stdout: string
     child.stderr.on('data', () => {})
     child.on('error', () => resolve({ code: 127, stdout: '' }))
     child.on('close', (code: number | null) => resolve({ code: code ?? 0, stdout }))
-  })
+  }))
 }
 
 /** Indirection so the consent guard can be unit-tested without a live

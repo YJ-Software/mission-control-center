@@ -1,3 +1,4 @@
+import { writeMem0McpConfig } from './mem0-config'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { existsSync, readFileSync } from 'fs'
@@ -150,12 +151,7 @@ export async function bindToMcp(password = DEFAULT_PASSWORD): Promise<string> {
     MEM0_NEO4J_PASSWORD: password,
   }
   const value = { ...entry, env }
-  const out = await execFileAsync(
-    'openclaw',
-    ['mcp', 'set', 'openclaw-mem0', JSON.stringify(value)],
-    { timeout: 30000, env: getServerEnv() },
-  )
-  return (out.stdout || '') + (out.stderr || '')
+  return writeMem0McpConfig(value)
 }
 
 export async function unbindFromMcp(): Promise<string> {
@@ -168,12 +164,7 @@ export async function unbindFromMcp(): Promise<string> {
   delete env.MEM0_NEO4J_USER
   delete env.MEM0_NEO4J_PASSWORD
   const value = { ...entry, env }
-  const out = await execFileAsync(
-    'openclaw',
-    ['mcp', 'set', 'openclaw-mem0', JSON.stringify(value)],
-    { timeout: 30000, env: getServerEnv() },
-  )
-  return (out.stdout || '') + (out.stderr || '')
+  return writeMem0McpConfig(value)
 }
 
 export async function restartGateway(): Promise<string> {
