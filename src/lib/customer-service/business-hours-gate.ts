@@ -16,6 +16,8 @@ import { join, resolve } from 'path'
 import { homedir } from 'os'
 import { getServerEnv } from '@/lib/server-env'
 import { OPENCLAW_WRITE_TIMEOUT_MS } from '@/lib/openclaw/models-config'
+import { withOpenclawCli } from '@/lib/openclaw/cli-limiter'
+import { gatewayReadWithFallback, rpcInstalledPlugins } from '@/lib/openclaw/rpc-fallback'
 
 const execFileAsync = promisify(execFile)
 
@@ -108,13 +110,11 @@ export async function getStatus(): Promise<GateStatus> {
   let installed = false
   let injectorInstalled = false
   try {
-    const out = await runOpenclaw(['plugins', 'list', '--json'], 10000)
-    const parsed = JSON.parse(out.trim())
-    const list: any[] = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray(parsed?.plugins)
-        ? parsed.plugins
-        : []
+    const list = await gatewayReadWithFallback('plugins.list', {}, rpcInstalledPlugins, async () => {
+      const out = await withOpenclawCli(() => runOpenclaw(['plugins', 'list', '--json'], 10000))
+      const parsed = JSON.parse(out.trim())
+      return Array.isArray(parsed) ? parsed : Array.isArray(parsed?.plugins) ? parsed.plugins : []
+    })
     installed = list.some((p: any) => p?.id === PLUGIN_ID || p?.name === PLUGIN_ID)
     injectorInstalled = list.some((p: any) => p?.id === ID_INJECTOR_PLUGIN_ID || p?.name === ID_INJECTOR_PLUGIN_ID)
   } catch {

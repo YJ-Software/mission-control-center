@@ -5,6 +5,7 @@ import { homedir } from 'os'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { getServerEnv } from '@/lib/server-env'
+import { withOpenclawCli } from '@/lib/openclaw/cli-limiter'
 import {
   planHardening,
   buildHardenedConfig,
@@ -21,11 +22,11 @@ const PROVIDER = 'mcc-file'
  * grows with each release, so deriving the plan from the audit beats keeping a
  * hardcoded list in step. */
 async function auditFindings(): Promise<AuditFinding[]> {
-  const { stdout } = await execFileAsync('openclaw', ['secrets', 'audit', '--json'], {
+  const { stdout } = await withOpenclawCli(() => execFileAsync('openclaw', ['secrets', 'audit', '--json'], {
     timeout: 120_000,
     maxBuffer: 16 * 1024 * 1024,
     env: getServerEnv(),
-  })
+  }))
   const parsed = JSON.parse(stdout) as { findings?: AuditFinding[] }
   return parsed.findings ?? []
 }

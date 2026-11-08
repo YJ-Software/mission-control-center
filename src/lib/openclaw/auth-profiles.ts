@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process'
 import Database from 'better-sqlite3'
 import { gatewayRequest } from '@/lib/gateway-rpc'
 import { withOpenclawCli } from './cli-limiter'
+import { isGatewayRpcUnavailable } from './rpc-fallback'
 import { augmentedPath, extractJson, OPENCLAW_WRITE_TIMEOUT_MS, runOpenclaw } from './models-config'
 
 const AGENTS_ROOT = join(os.homedir(), '.openclaw', 'agents')
@@ -441,7 +442,7 @@ export async function removeProfile(
     return
   } catch (err) {
     // 權限／參數／憑證清理錯誤直接回報，不能再用 CLI 繞過或重複變更。
-    if (!isAuthRpcUnavailable(err)) throw err
+    if (!isGatewayRpcUnavailable(err)) throw err
   }
 
   // 空的 auth.profiles 仍是新版 store；最後一筆 config 刪掉後可能還留有憑證。
@@ -475,11 +476,6 @@ export async function removeProfile(
   if (state.lastGood && provider in state.lastGood) delete state.lastGood[provider]
   if (state.usageStats && profileId in state.usageStats) delete state.usageStats[profileId]
   await writeStateStore(agentId, state)
-}
-
-function isAuthRpcUnavailable(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err)
-  return /gateway.*(?:not available|unavailable|not connected|disconnected|closed)|RPC timeout|unknown method|method (?:not found|not supported)|unsupported method/i.test(message)
 }
 
 function hasConfigAuthStore(configPath: string): boolean {
@@ -583,6 +579,7 @@ export async function listStoredProfiles(
   const cacheKey = `${configPath}:${agentId}`
   const cached = storedProfilesCache.get(cacheKey)
   if (cached && now - cached.at < STORED_PROFILES_TTL_MS) return cached.value
+  const unknown: UnknownStoredProfiles = { status: 'unknown', error: 'Stored auth profiles could not be read. The profile list may be incomplete. Reconnect MCC to the gateway and retry.' }
   const value = (async (): Promise<StoredProfilesResult> => {
     try {
       const raw = await gatewayRequest('models.authStatus', { agentId }) as {
@@ -598,8 +595,9 @@ export async function listStoredProfiles(
           return { id: profile.profileId, provider: provider.provider, type: profile.type }
         })
       })
-    } catch {
-      // 讀取可安全退回 CLI；舊版 gateway 可能沒有此 RPC。
+    } catch (err) {
+      // 權限／資料錯誤維持 unknown；只有連線或方法不可用才退回 CLI。
+      if (!isGatewayRpcUnavailable(err)) return unknown
     }
     // 即使 config 已經沒有 auth.profiles，store 仍可能留有刪除失敗的憑證。
     try {
@@ -609,7 +607,7 @@ export async function listStoredProfiles(
     } catch {
       // 錯誤文字不包含 CLI 原始輸出或本機路徑。
     }
-    return { status: 'unknown', error: 'Stored auth profiles could not be read. The profile list may be incomplete. Reconnect MCC to the gateway and retry.' }
+    return unknown
   })()
   storedProfilesCache.set(cacheKey, { at: now, value })
   return value

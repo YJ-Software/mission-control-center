@@ -4,6 +4,7 @@
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { findOpenclawBin } from '@/lib/morning-report/openclaw'
+import { withOpenclawCli } from '@/lib/openclaw/cli-limiter'
 
 const execFileAsync = promisify(execFile)
 
@@ -13,10 +14,13 @@ interface RunOpts {
 
 async function run(args: string[], opts: RunOpts = {}): Promise<{ stdout: string; stderr: string }> {
   const bin = findOpenclawBin()
-  const { stdout, stderr } = await execFileAsync(bin, ['wiki', ...args], {
+  const invoke = () => execFileAsync(bin, ['wiki', ...args], {
     timeout: opts.timeoutMs ?? 60_000,
     maxBuffer: 16 * 1024 * 1024,
   })
+  // 尚無等價 RPC 的查詢仍共用 CLI 額度；寫入流程維持原樣。
+  const { stdout, stderr } = await (['status', 'search', 'lint', 'doctor', 'get'].includes(args[0])
+    ? withOpenclawCli(invoke) : invoke())
   return { stdout, stderr }
 }
 

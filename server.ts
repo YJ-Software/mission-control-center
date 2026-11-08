@@ -27,6 +27,7 @@ import {
 } from './src/lib/gateway/link-status'
 import { classifyGatewayClose, routeBrowserFrameToGateway } from './src/lib/gateway/routing'
 import { describeCliError, openclawCliEnv } from './src/lib/gateway/openclaw-cli'
+import { withOpenclawCli } from './src/lib/openclaw/cli-limiter'
 import { initDb, db, closeDb } from './src/lib/db'
 import { createGracefulShutdown, trackConnections } from './src/lib/shutdown'
 import { morningReportConfig } from './src/lib/schema'
@@ -235,7 +236,7 @@ async function tryAutoApproveDevice(signal: AbortSignal): Promise<boolean> {
   }
 
   const findRequestId = async (): Promise<string | null> => {
-    const { stdout } = await run('devices list', ['--log-level', 'silent', '--no-color', 'devices', 'list', '--json'])
+    const { stdout } = await withOpenclawCli(() => run('devices list', ['--log-level', 'silent', '--no-color', 'devices', 'list', '--json']))
     const data = parseJsonLoose(stdout) as { pending?: Array<{ requestId?: string; deviceId?: string }> }
     const pending = Array.isArray(data?.pending) ? data.pending : []
     const req = pending.find((r) => r.deviceId === DEVICE_IDENTITY.deviceId)

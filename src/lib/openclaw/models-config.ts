@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { waitForAgentOverride } from './config-guard'
+import { gatewayReadWithFallback, rpcConfig } from './rpc-fallback'
 
 let cachedPath: string | null = null
 /** PATH with the usual openclaw install locations folded in, so a spawn works
@@ -157,11 +158,12 @@ export interface AvailableModel {
   key: string
   name: string
   input: string
-  contextWindow: number
-  local: boolean
-  available: boolean
+  contextWindow: number | null
+  contextTokens?: number
+  local: boolean | null
+  available: boolean | null
   tags: string[]
-  missing: boolean
+  missing?: boolean
 }
 
 export async function getStatus(agent: string): Promise<ModelsStatus> {
@@ -184,6 +186,32 @@ export async function getStatus(agent: string): Promise<ModelsStatus> {
 }
 
 export async function listAvailable(agent: string): Promise<AvailableModel[]> {
+  return gatewayReadWithFallback('models.list', { agentId: agent, view: 'default', includeDetails: true }, (response) => {
+    const result = response as { models?: Array<{
+      provider: string; id: string; name: string; input?: string[]; contextWindow?: number
+      contextTokens?: number; local?: boolean; available?: boolean; tags?: string[]; alias?: string
+    }> } | null
+    if (!Array.isArray(result?.models)) throw new Error('models list failed: invalid gateway response')
+    // 四版 CLI 的 toCliModelRow：不要把未知的 auth/local 狀態誤報成 false。
+    return result.models.map((model) => {
+      const provider = model.provider.trim()
+      const id = model.id.trim()
+      const key = !provider ? id : !id ? provider : id.toLowerCase().startsWith(`${provider.toLowerCase()}/`) ? id : `${provider}/${id}`
+      return {
+        key,
+        name: model.name,
+        input: model.input?.join('+') || '-',
+        contextWindow: model.contextWindow ?? null,
+        ...(model.contextTokens !== undefined ? { contextTokens: model.contextTokens } : {}),
+        local: model.local ?? null,
+        available: model.available ?? null,
+        tags: [...new Set([...(model.tags ?? []), ...(model.alias ? [`alias:${model.alias}`] : [])])],
+      }
+    })
+  }, () => listAvailableCli(agent))
+}
+
+async function listAvailableCli(agent: string): Promise<AvailableModel[]> {
   const r = await runOpenclaw(['models', '--agent', agent, 'list', '--json'])
   if (r.code !== 0) throw new Error(`models list failed (${r.code}): ${r.stderr.trim()}`)
   const parsed = extractJson(r.stdout) as { models?: AvailableModel[] }
@@ -363,6 +391,10 @@ export function applyAgentOverride(
  * config at all — including 2026.8.1's "Unknown config path", which the old
  * `not found`-only check mistook for a hard failure and turned into a 500. */
 export async function readAgentsConfig(): Promise<unknown> {
+  return gatewayReadWithFallback('config.get', {}, (response) => rpcConfig(response).agents ?? {}, readAgentsConfigCli)
+}
+
+async function readAgentsConfigCli(): Promise<unknown> {
   const r = await runOpenclaw(['config', 'get', 'agents'])
   if (r.code !== 0) {
     if (/not found|unknown config path/i.test(r.stderr)) return {}
@@ -439,6 +471,16 @@ export async function getGlobalDefaults(): Promise<{
   primary: string | null
   fallbacks: string[]
 }> {
+  return gatewayReadWithFallback('config.get', {}, (response) => {
+    const parsed = rpcConfig(response).agents?.defaults?.model
+    return {
+      primary: parsed?.primary ?? null,
+      fallbacks: Array.isArray(parsed?.fallbacks) ? parsed.fallbacks : [],
+    }
+  }, getGlobalDefaultsCli)
+}
+
+async function getGlobalDefaultsCli(): Promise<{ primary: string | null; fallbacks: string[] }> {
   const r = await runOpenclaw(['config', 'get', 'agents.defaults.model'])
   if (r.code !== 0) {
     if (r.stderr.includes('not found')) return { primary: null, fallbacks: [] }

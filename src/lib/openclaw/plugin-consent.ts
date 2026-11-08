@@ -2,6 +2,7 @@ import { withOpenclawCli } from './cli-limiter'
 import { spawn } from 'node:child_process'
 import { augmentedPath } from './models-config'
 import { withLongRun } from '@/lib/long-running'
+import { gatewayReadWithFallback, rpcInstalledPlugins } from './rpc-fallback'
 
 /** Enabling a plugin in openclaw.json that OpenClaw has not been given
  * capability consent for makes 2026.8.1 refuse to report the gateway ready:
@@ -47,15 +48,25 @@ export interface PluginProbe {
 
 export const realPluginProbe: PluginProbe = {
   listed: async (pluginId) => {
-    const { code, stdout } = await captureOpenclaw(['plugins', 'list'])
-    if (code !== 0) return false
-    // `plugins list` renders a table; the id sits in its own column.
-    return new RegExp(`\\b${pluginId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(stdout)
+    try {
+      return await gatewayReadWithFallback('plugins.list', {},
+        (response) => rpcInstalledPlugins(response).some((p) => p.id === pluginId),
+        () => listedCli(pluginId))
+    } catch {
+      return false
+    }
   },
   available: async (pluginId) => {
-    const { code, stdout } = await captureOpenclaw(['plugins', 'search', pluginId])
-    if (code !== 0) return false
-    return /clawhub:|Install:/i.test(stdout)
+    try {
+      return await gatewayReadWithFallback('plugins.search', { query: pluginId }, (response) => {
+        const result = response as { results?: unknown[] } | null
+        if (!Array.isArray(result?.results)) throw new Error('plugins search failed: invalid gateway response')
+        // CLI 每筆搜尋結果都印出 Install: ... clawhub:...。
+        return result.results.length > 0
+      }, () => availableCli(pluginId))
+    } catch {
+      return false
+    }
   },
   install: async (pluginPackage) => {
     const { code } = await captureOpenclaw([
@@ -66,6 +77,19 @@ export const realPluginProbe: PluginProbe = {
     ])
     return code
   },
+}
+
+async function listedCli(pluginId: string): Promise<boolean> {
+  const { code, stdout } = await captureOpenclaw(['plugins', 'list'])
+  if (code !== 0) return false
+  // `plugins list` renders a table; the id sits in its own column.
+  return new RegExp(`\\b${pluginId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(stdout)
+}
+
+async function availableCli(pluginId: string): Promise<boolean> {
+  const { code, stdout } = await captureOpenclaw(['plugins', 'search', pluginId])
+  if (code !== 0) return false
+  return /clawhub:|Install:/i.test(stdout)
 }
 
 export type ConsentLog = (stream: 'system' | 'stderr', text: string) => void

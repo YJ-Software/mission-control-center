@@ -9,6 +9,7 @@ import type { LogStream, TriggerSource } from '../jobs/types'
 import { copyProfile, readProfiles } from './auth-profiles'
 import { findProvider, type ProviderSpec } from './auth-providers'
 import { ensurePluginConsented, realPluginProbe, type PluginProbe } from './plugin-consent'
+import { gatewayReadWithFallback, rpcConfig } from './rpc-fallback'
 
 let cachedPath: string | null = null
 function augmentedPath(): string {
@@ -69,10 +70,27 @@ function ensureProviderPluginPhase(providerId: string) {
   }
 }
 
-// Spawn `openclaw config get models.providers.<id>` and resolve true if
+// Read `models.providers.<id>` via RPC (CLI fallback) and resolve true if
 // the provider is already configured. Used to decide whether to seed
 // the provider template after paste-api-key / device-code.
-function isProviderConfigured(providerId: string): Promise<boolean> {
+async function isProviderConfigured(providerId: string): Promise<boolean> {
+  try {
+    return await gatewayReadWithFallback('config.get', {}, (response) => {
+      // 與 CLI 的 concrete config path 一樣處理點號；只查存在性，不回傳 provider 憑證。
+      let value: any = rpcConfig(response)
+      for (const segment of `models.providers.${providerId}`.split('.')) {
+        if (!value || typeof value !== 'object' || !Object.hasOwn(value, segment)) return false
+        value = value[segment]
+      }
+      return value !== undefined
+    }, () => isProviderConfiguredCli(providerId))
+  } catch {
+    // 保留原本 config get 失敗視為尚未設定的行為。
+    return false
+  }
+}
+
+function isProviderConfiguredCli(providerId: string): Promise<boolean> {
   return withOpenclawCli(() => new Promise((resolve) => {
     const child = spawn(
       'openclaw',
