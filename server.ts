@@ -474,6 +474,7 @@ function connectGateway(wss: WebSocketServer) {
 
         // Log auth result
         if (msg.type === 'res' && msg.ok && msg.payload?.type === 'hello-ok') {
+          ;(globalThis as any).__gatewayVersion = msg.payload.server?.version
           console.log('[Gateway] Authenticated successfully ✓')
           reconnectBackoff.onLinked()
           pairing.onAuthenticated()
@@ -487,7 +488,10 @@ function connectGateway(wss: WebSocketServer) {
 
     ws.on('close', (code, reason) => {
       const reasonStr = reason?.toString() || ''
-      if (gatewayWs === ws) gatewayWs = null
+      if (gatewayWs === ws) {
+        gatewayWs = null
+        ;(globalThis as any).__gatewayVersion = undefined
+      }
       const lastClose = { code, reason: reasonStr }
       // Reject all pending RPC requests
       for (const [, pending] of pendingRequests) {

@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { waitForAgentOverride } from './config-guard'
-import { gatewayReadWithFallback, rpcConfig } from './rpc-fallback'
+import { gatewayConfigPatchWithFallback, gatewayReadWithFallback, rpcConfig } from './rpc-fallback'
 
 let cachedPath: string | null = null
 /** PATH with the usual openclaw install locations folded in, so a spawn works
@@ -457,8 +457,15 @@ export async function writeAgentOverride(
   deps: WriteOverrideDeps = defaultWriteDeps,
 ): Promise<void> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const { path, value } = applyAgentOverride(await deps.read(), agentId, override)
-    await deps.write(path, value)
+    const agents = await deps.read()
+    const { path, value } = applyAgentOverride(agents, agentId, override)
+    if (deps === defaultWriteDeps && detectAgentsShape(agents) === 'entries') {
+      // RPC 只改這位 agent 的 model；CLI 備援保留原本容器寫法與錯誤訊息。
+      await gatewayConfigPatchWithFallback(['agents', 'entries', agentId, 'model'], override ?? null,
+        () => deps.write(path, value), undefined, (err) => {
+          throw new Error(`config set ${path} failed (1): ${err instanceof Error ? err.message : String(err)}`)
+        })
+    } else await deps.write(path, value)
     if (await waitForAgentOverride(agentId, override, deps)) return
   }
   throw new Error(`agent override did not persist for ${agentId} — OpenClaw may be busy; try again`)

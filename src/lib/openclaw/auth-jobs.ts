@@ -9,7 +9,7 @@ import type { LogStream, TriggerSource } from '../jobs/types'
 import { copyProfile, readProfiles } from './auth-profiles'
 import { findProvider, type ProviderSpec } from './auth-providers'
 import { ensurePluginConsented, realPluginProbe, type PluginProbe } from './plugin-consent'
-import { gatewayReadWithFallback, rpcConfig } from './rpc-fallback'
+import { gatewayConfigPatchWithFallback, gatewayReadWithFallback, rpcConfig } from './rpc-fallback'
 
 let cachedPath: string | null = null
 function augmentedPath(): string {
@@ -113,6 +113,11 @@ function isProviderConfiguredCli(providerId: string): Promise<boolean> {
 }
 
 function writeProviderConfig(providerId: string, template: unknown): Promise<number> {
+  return gatewayConfigPatchWithFallback(`models.providers.${providerId}`, template,
+    () => writeProviderConfigCli(providerId, template), 0, () => 1)
+}
+
+function writeProviderConfigCli(providerId: string, template: unknown): Promise<number> {
   return withOpenclawCli(() => new Promise((resolve) => {
     const child = spawn(
       'openclaw',
