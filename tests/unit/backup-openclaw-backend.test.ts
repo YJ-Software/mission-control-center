@@ -1,15 +1,8 @@
-import { describe, it, expect, vi } from 'vitest'
-
-// 安全閥：本檔所有測試都走注入的 deps.run；任何真的 spawn/exec 都要立刻失敗，
-// 絕不可對本機 openclaw / systemctl 動手。
-vi.mock('node:child_process', () => {
-  const boom = () => { throw new Error('child_process must not be used in backup-openclaw-backend tests') }
-  return { spawn: boom, exec: boom, execFile: boom, execSync: boom, execFileSync: boom, spawnSync: boom, default: {} }
-})
-vi.mock('child_process', () => {
-  const boom = () => { throw new Error('child_process must not be used in backup-openclaw-backend tests') }
-  return { spawn: boom, exec: boom, execFile: boom, execSync: boom, execFileSync: boom, spawnSync: boom, default: {} }
-})
+import * as diskFs from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
+import './helpers/offline-owner-mocks'
 import {
   createOpenClawBackup,
   verifyOpenClawBackup,
@@ -108,8 +101,14 @@ class FakeFs {
   }) as unknown as OpenClawBackendDeps['fs']['cpSync']
   lstatSync = ((p: string) => {
     const n = this.get(p)
-    return n === undefined ? undefined : { isSymbolicLink: () => typeof n === 'object' && '__link' in n }
+    return n === undefined ? undefined : {
+      mode: 0o700,
+      isDirectory: () => isDir(n),
+      isFile: () => typeof n === 'string',
+      isSymbolicLink: () => typeof n === 'object' && '__link' in n,
+    }
   }) as unknown as OpenClawBackendDeps['fs']['lstatSync']
+  chmodSync = () => {}
   mkdirSync = ((p: string) => {
     if (!isDir(this.get(p))) this.put(p, {})
     return undefined
@@ -276,6 +275,99 @@ function expectOnlyExistingPaths(fs: FakeFs, msg: string) {
     expect(fs.existsSync(p), `message names nonexistent path ${p}: ${msg}`).toBe(true)
   }
 }
+
+describe('原生備份還原的檔案權限', () => {
+  let home: string
+  let liveDir: string
+  let deps: OpenClawBackendDeps
+
+  beforeEach(() => {
+    home = diskFs.mkdtempSync(join(tmpdir(), 'mcc-restore-modes-'))
+    liveDir = join(home, '.openclaw')
+    deps = {
+      fs: diskFs,
+      home,
+      now: () => new Date('2026-10-06T08:00:00.123Z'),
+      log: vi.fn(),
+      gateway: {
+        stop: vi.fn(async () => {}),
+        start: vi.fn(async () => {}),
+        waitHealthy: vi.fn(async () => true),
+      },
+      run: async (args) => {
+        const target = args[args.indexOf('--target') + 1]
+        const root = join(target, 'ROOT', 'payload', 'posix', home, '.openclaw')
+        diskFs.mkdirSync(join(root, 'state', 'nested'), { recursive: true })
+        diskFs.chmodSync(root, 0o775)
+        diskFs.chmodSync(join(root, 'state'), 0o775)
+        diskFs.chmodSync(join(root, 'state', 'nested'), 0o777)
+        diskFs.writeFileSync(join(root, 'state', 'nested', 'db'), 'restored')
+        diskFs.chmodSync(join(root, 'state', 'nested', 'db'), 0o664)
+        diskFs.writeFileSync(join(root, 'openclaw.json'), '{}')
+        diskFs.chmodSync(join(root, 'openclaw.json'), 0o600)
+        diskFs.symlinkSync(join(home, 'outside'), join(root, 'link'))
+        diskFs.symlinkSync('missing', join(root, 'dangling'))
+        return { code: 0, stdout: JSON.stringify({ archiveRoot: 'ROOT', warnings: ['first', 1, 'second'] }), stderr: '' }
+      },
+    }
+  })
+
+  afterEach(() => diskFs.rmSync(home, { recursive: true, force: true }))
+
+  function mode(path: string) {
+    return diskFs.lstatSync(path).mode & 0o7777
+  }
+
+  it('首次還原將根目錄設為 0700，收緊子目錄和一般檔案且略過 symlink', async () => {
+    const outside = join(home, 'outside')
+    const outsideFile = join(outside, 'file')
+    diskFs.mkdirSync(outside)
+    diskFs.chmodSync(outside, 0o777)
+    diskFs.writeFileSync(outsideFile, 'outside')
+    diskFs.chmodSync(outsideFile, 0o666)
+
+    await restoreOpenClawBackup('/a.tar.gz', deps)
+
+    expect(mode(liveDir)).toBe(0o700)
+    expect(mode(join(liveDir, 'state'))).toBe(0o755)
+    expect(mode(join(liveDir, 'state', 'nested'))).toBe(0o755)
+    expect(mode(join(liveDir, 'state', 'nested', 'db'))).toBe(0o644)
+    expect(mode(join(liveDir, 'openclaw.json'))).toBe(0o600)
+    expect(diskFs.readlinkSync(join(liveDir, 'link'))).toBe(outside)
+    expect(diskFs.readlinkSync(join(liveDir, 'dangling'))).toBe('missing')
+    expect(mode(outside)).toBe(0o777)
+    expect(mode(outsideFile)).toBe(0o666)
+  })
+
+  it('沿用現行根目錄的權限，並記錄還原 JSON 中的每則字串警告', async () => {
+    diskFs.mkdirSync(liveDir)
+    diskFs.chmodSync(liveDir, 0o2750)
+
+    const { preRestoreDir } = await restoreOpenClawBackup('/a.tar.gz', deps)
+
+    expect(mode(liveDir)).toBe(0o2750)
+    expect(mode(preRestoreDir!)).toBe(0o2750)
+    expect(deps.log).toHaveBeenNthCalledWith(1, 'system', 'first')
+    expect(deps.log).toHaveBeenNthCalledWith(2, 'system', 'second')
+    expect(deps.log).toHaveBeenCalledTimes(3)
+  })
+
+  it('chmod 失敗時清除暫存目錄，保留現行資料且不停止 gateway', async () => {
+    diskFs.mkdirSync(liveDir, { mode: 0o700 })
+    diskFs.writeFileSync(join(liveDir, 'marker'), 'live')
+    deps.fs = { ...diskFs, chmodSync: () => { throw new Error('injected chmod failure') } }
+
+    await expect(restoreOpenClawBackup('/a.tar.gz', deps)).rejects.toThrow(
+      'Cannot normalize restored .openclaw permissions: injected chmod failure',
+    )
+
+    expect(deps.gateway.stop).not.toHaveBeenCalled()
+    expect(deps.gateway.start).not.toHaveBeenCalled()
+    expect(diskFs.readdirSync(home)).toEqual(['.openclaw'])
+    expect(mode(liveDir)).toBe(0o700)
+    expect(diskFs.readFileSync(join(liveDir, 'marker'), 'utf8')).toBe('live')
+  })
+})
 
 describe('restoreOpenClawBackup', () => {
   const PRE = `${HOME}/.openclaw.pre-restore-2026-10-06T08-00-00-123Z`

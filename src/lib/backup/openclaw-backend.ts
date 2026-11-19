@@ -7,7 +7,7 @@ export interface OpenClawBackendDeps {
   run(args: string[], timeoutMs: number): Promise<{ code: number; stdout: string; stderr: string }>
   fs: Pick<
     typeof NodeFs,
-    'existsSync' | 'lstatSync' | 'readdirSync' | 'renameSync' | 'rmSync' | 'cpSync' | 'mkdirSync' | 'mkdtempSync'
+    'existsSync' | 'lstatSync' | 'readdirSync' | 'renameSync' | 'rmSync' | 'cpSync' | 'mkdirSync' | 'mkdtempSync' | 'chmodSync'
   >
   home: string
   gateway: { stop(): Promise<void>; start(): Promise<void>; waitHealthy(timeoutMs: number): Promise<boolean> }
@@ -100,6 +100,23 @@ function stamp(d: Date): string {
   return d.toISOString().replace(/[:.]/g, '-')
 }
 
+function normalizeStagedModes(fs: OpenClawBackendDeps['fs'], root: string, rootMode: number) {
+  // 原生還原可能依 umask 放寬權限。只走訪實體目錄，並只移除目錄與一般檔案的群組／其他人寫入權限。
+  const dirs = [root]
+  while (dirs.length > 0) {
+    const dir = dirs.pop()!
+    for (const name of fs.readdirSync(dir)) {
+      const path = join(dir, name)
+      const st = fs.lstatSync(path)
+      if (st.isDirectory()) dirs.push(path)
+      if ((st.isDirectory() || st.isFile()) && (st.mode & 0o022)) {
+        fs.chmodSync(path, st.mode & 0o7777 & ~0o022)
+      }
+    }
+  }
+  fs.chmodSync(root, rootMode)
+}
+
 export async function restoreOpenClawBackup(
   archivePath: string,
   deps: OpenClawBackendDeps,
@@ -139,6 +156,8 @@ export async function restoreOpenClawBackup(
     const r = await deps.run(['backup', 'restore', archivePath, '--target', staging, '--json'], RESTORE_TIMEOUT_MS)
     if (r.code !== 0) throw cliFailure('openclaw backup restore', r, RESTORE_TIMEOUT_MS)
     const j = parseJson(r.stdout, 'openclaw backup restore', r.stderr)
+    const warnings = Array.isArray(j.warnings) ? j.warnings.filter((w): w is string => typeof w === 'string') : []
+    for (const w of warnings) log('system', w)
     let root = typeof j.archiveRoot === 'string' ? j.archiveRoot : ''
     if (!root) {
       const entries = fs.readdirSync(staging) as string[]
@@ -148,8 +167,14 @@ export async function restoreOpenClawBackup(
     const payload = join(staging, root, 'payload', 'posix', home)
     stagedOpenclaw = join(payload, '.openclaw')
     stagedSkills = join(payload, '.agents', 'skills')
-    if (!fs.existsSync(stagedOpenclaw)) {
-      throw new Error(`restored archive has no .openclaw at ${stagedOpenclaw}`)
+    if (!fs.lstatSync(stagedOpenclaw, { throwIfNoEntry: false })?.isDirectory()) {
+      throw new Error(`restored archive has no real .openclaw directory at ${stagedOpenclaw}`)
+    }
+    // 交換前沿用現行根目錄的權限，避免 OpenClaw 拒絕使用還原後的目錄作為暫存路徑。
+    try {
+      normalizeStagedModes(fs, stagedOpenclaw, st ? st.mode & 0o7777 & ~0o022 : 0o700)
+    } catch (e) {
+      throw new Error(`Cannot normalize restored .openclaw permissions: ${(e as Error).message}`)
     }
     if (fs.existsSync(stagedSkills)) stagedSkillNames = fs.readdirSync(stagedSkills) as string[]
   } catch (e) {
