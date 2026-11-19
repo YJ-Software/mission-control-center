@@ -1,8 +1,8 @@
 {
   "latest": {
-    "version": "0.4.8",
-    "mccVersion": "0.4.8",
-    "openclawVersion": "2026.11.2",
+    "version": "0.4.9",
+    "mccVersion": "0.4.9",
+    "openclawVersion": "2026.11.6",
     "validated": {
       "openclaw": [
         "2026.9.9",
@@ -11,22 +11,40 @@
         "2026.10.5",
         "2026.10.7",
         "2026.10.8",
-        "2026.11.2"
+        "2026.11.2",
+        "2026.11.6"
       ]
     },
-    "releaseDate": "2026-11-09T16:38:00.202Z",
-    "notes": "- fix(openclaw): 支援 OpenClaw 2026.10.10 起的「離線 state owner」限制。刪除 LLM 認證改走 Gateway RPC，在 10.10 以上原本會失敗；讀不到認證清單時會明確提示，不再默默隱藏殘留憑證；mem0 記憶設定改成 gateway 執行中也能寫入\n- perf(openclaw): 設定、模型、外掛查詢與設定寫入優先走 Gateway RPC，不再每次另開 openclaw CLI。4 GB 機器在 LLM 登入流程的記憶體高峰大幅下降\n- perf(openclaw): 同時執行的 openclaw CLI 最多 2 支\n- 已驗證 OpenClaw 2026.11.2（全新部署＋Telegram 完整 E2E）",
+    "releaseDate": "2026-11-19T22:50:55.346Z",
+    "notes": "- fix(backup): 還原後收緊 ~/.openclaw 權限。OpenClaw 原生還原會沿用 umask（OCD 的 unit 為 UMask=0002），把目錄放寬成 0775；OpenClaw 11.3 起 gateway 遇到群組可寫的暫存根目錄會拒絕啟動（exit 78），造成還原必定失敗並 rollback。\n- fix(backup): 記錄 openclaw backup restore 回傳的 warnings。\n- 驗證：OpenClaw 2026.11.6 全新部署＋Telegram 通過，smoke 23/23（含備份還原後聊天）。validated 新增 2026.11.6。\n- 已知：4 GB 無 swap 的主機在 Telegram、Obsidian、ImunifyAV 全開時跑 LLM 認證流程，可用記憶體可能降到數十 MB；建議主機配置 swap。",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.8/mission-control-v0.4.8-linux-x64.tar.gz",
-        "sha256": "fa21dc4ddafbb8ef8a5126e93446cf50017270411c412a5fc1681c6216111c92",
-        "size": 26742245
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.9/mission-control-v0.4.9-linux-x64.tar.gz",
+        "sha256": "75436ca9ad7c7f1a13b8113770460aa06ca240da1893c669721d138a5eb4f427",
+        "size": 26805527
       }
     ]
   },
   "history": [
+    {
+      "version": "0.4.8",
+      "mccVersion": "0.4.8",
+      "openclawVersion": "2026.11.2",
+      "validated": {
+        "openclaw": [
+          "2026.9.9",
+          "2026.10.2",
+          "2026.10.3",
+          "2026.10.5",
+          "2026.10.7",
+          "2026.10.8",
+          "2026.11.2"
+        ]
+      },
+      "releaseDate": "2026-11-09T16:38:00.202Z"
+    },
     {
       "version": "0.4.7",
       "mccVersion": "0.4.7",
@@ -136,12 +154,6 @@
       "mccVersion": "0.3.92",
       "openclawVersion": "2026.9.3",
       "releaseDate": "2026-09-16T09:57:11.590Z"
-    },
-    {
-      "version": "2026.9.3-v0.3.91",
-      "mccVersion": "0.3.91",
-      "openclawVersion": "2026.9.3",
-      "releaseDate": "2026-09-15T11:30:03.587Z"
     }
   ]
 }
