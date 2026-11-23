@@ -1,5 +1,6 @@
 import { gatewayMock, processMocks } from './helpers/offline-owner-mocks'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { rmSync } from 'node:fs'
 import { getServerEnv } from '@/lib/server-env'
 import { OPENCLAW_WRITE_TIMEOUT_MS } from '@/lib/openclaw/models-config'
 import { writeMem0McpConfig } from '@/lib/customer-service/mem0-config'
@@ -7,7 +8,28 @@ import { setProvider } from '@/lib/customer-service/mem0-provider'
 import { bindToMcp, unbindFromMcp } from '@/lib/customer-service/mem0-neo4j'
 import { runInstall } from '@/lib/customer-service/mem0-setup'
 
-const fixture = vi.hoisted(() => ({ config: {} as any }))
+const fixture = vi.hoisted(() => {
+  const { mkdtempSync } = require('node:fs') as typeof import('node:fs')
+  const { tmpdir } = require('node:os') as typeof import('node:os')
+  const { join } = require('node:path') as typeof import('node:path')
+  const home = mkdtempSync(join(tmpdir(), 'mcc-mem0-home-'))
+  // Mem0 resolves some OpenClaw paths during module import.
+  vi.stubEnv('HOME', home)
+  vi.stubEnv('XDG_CACHE_HOME', join(home, '.cache'))
+  vi.stubEnv('OPENCLAW_STATE_DIR', join(home, '.openclaw'))
+  return { config: {} as any, home }
+})
+
+afterAll(() => {
+  vi.unstubAllEnvs()
+  rmSync(fixture.home, { recursive: true, force: true })
+})
+
+// Node's homedir() can bypass the worker-local HOME when Vitest uses threads.
+vi.mock('os', async (orig) => ({
+  ...await orig<typeof import('os')>(),
+  homedir: () => fixture.home,
+}))
 vi.mock('fs', async (orig) => ({
   ...await orig<typeof import('fs')>(),
   existsSync: () => true,

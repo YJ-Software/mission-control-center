@@ -10,14 +10,11 @@
  * server picks the new env up.
  */
 
-import { execFile } from 'child_process'
-import { promisify } from 'util'
+import { restartOpenclawGateway } from '@/lib/openclaw/restart-gateway'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { getServerEnv } from '@/lib/server-env'
-
-const execFileAsync = promisify(execFile)
 
 const OPENCLAW_CONFIG = join(homedir(), '.openclaw', 'openclaw.json')
 const HANDOFF_SERVER_KEY = 'openclaw-handoff'
@@ -129,7 +126,7 @@ export function saveConfig(input: HandoffConfig): HandoffConfig {
 
 export async function restartGateway(): Promise<string> {
   try {
-    const r = await execFileAsync('openclaw', ['gateway', 'restart'], {
+    const r = await restartOpenclawGateway({
       timeout: 60000,
       env: getServerEnv(),
     })

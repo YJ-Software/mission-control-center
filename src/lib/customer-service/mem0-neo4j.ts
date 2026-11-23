@@ -1,3 +1,4 @@
+import { restartOpenclawGateway } from '@/lib/openclaw/restart-gateway'
 import { writeMem0McpConfig } from './mem0-config'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
@@ -169,7 +170,7 @@ export async function unbindFromMcp(): Promise<string> {
 
 export async function restartGateway(): Promise<string> {
   try {
-    const out = await execFileAsync('openclaw', ['gateway', 'restart'], { timeout: 60000, env: getServerEnv() })
+    const out = await restartOpenclawGateway({ timeout: 60000, env: getServerEnv() })
     return (out.stdout || '') + (out.stderr || '')
   } catch (err: any) {
     return err?.stderr ?? err?.message ?? 'gateway restart failed'

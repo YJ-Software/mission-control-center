@@ -13,6 +13,7 @@
  * detected and skipped.
  */
 
+import { restartOpenclawGateway } from '@/lib/openclaw/restart-gateway'
 import { writeMem0McpConfig } from './mem0-config'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
@@ -306,7 +307,7 @@ async function runInstallSteps(progress: ProgressCallback): Promise<void> {
 
   progress({ stage: 'install', step: 'mcp', message: 'restarting gateway to load MCP…' })
   try {
-    await execFileAsync('openclaw', ['gateway', 'restart'], { timeout: 60000, env: getServerEnv() })
+    await restartOpenclawGateway({ timeout: 60000, env: getServerEnv() })
   } catch (err: any) {
     progress({ stage: 'log', message: `gateway restart returned: ${err?.stderr ?? err?.message}` })
   }

@@ -9,6 +9,7 @@
  * copying to ~/.openclaw/plugins. Uninstall removes the plugin and config.
  */
 
+import { restartOpenclawGateway } from '@/lib/openclaw/restart-gateway'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
@@ -288,7 +289,8 @@ export function saveConfig(input: GateConfig): GateConfig {
 
 export async function restartGateway(): Promise<string> {
   try {
-    return await runOpenclaw(['gateway', 'restart'], 60000)
+    const result = await restartOpenclawGateway({ timeout: 60_000, env: getServerEnv() })
+    return (result.stdout || '') + (result.stderr || '')
   } catch (err: any) {
     return err?.stderr ?? err?.message ?? 'gateway restart failed'
   }

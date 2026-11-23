@@ -13,6 +13,7 @@
  * if openclaw.json already has the right shape, leave it alone.
  */
 
+import { restartOpenclawGateway } from '@/lib/openclaw/restart-gateway'
 import { execFile, execFileSync } from 'child_process'
 import { promisify } from 'util'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync } from 'fs'
@@ -211,7 +212,7 @@ async function ensureLancedbPlugin(progress: Progress): Promise<void> {
   }
   // Plugin code is only picked up after a gateway restart.
   try {
-    await execFileAsync('openclaw', ['gateway', 'restart'], { timeout: 60_000 })
+    await restartOpenclawGateway({ timeout: 60_000 })
     progress('install-lancedb-plugin', 'memory-lancedb 已安裝，gateway 已重啟')
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)

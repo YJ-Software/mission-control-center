@@ -1,14 +1,12 @@
+import { restartOpenclawGateway } from '@/lib/openclaw/restart-gateway'
 import { NextResponse } from 'next/server'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
 import { getServerEnv } from '@/lib/server-env'
 import { allowPlugins } from '@/lib/plugins/allowlist'
 import { resolveSecretRef, isSecretRef } from '@/lib/openclaw/secret-ref'
 
-const execFileAsync = promisify(execFile)
 const OPENCLAW_CONFIG = join(homedir(), '.openclaw', 'openclaw.json')
 
 function readConfig(): Record<string, any> {
@@ -106,9 +104,8 @@ export async function POST(req: Request) {
     // Restart gateway
     let restartOutput = ''
     try {
-      const result = await execFileAsync('openclaw', ['gateway', 'restart'], {
+      const result = await restartOpenclawGateway({
         timeout: 15000,
-        encoding: 'utf-8',
         env: getServerEnv(),
       })
       restartOutput = result.stdout || result.stderr || ''

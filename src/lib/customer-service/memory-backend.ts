@@ -10,8 +10,7 @@
  * need to remember to pass userId.
  */
 
-import { execFile } from 'child_process'
-import { promisify } from 'util'
+import { restartOpenclawGateway } from '@/lib/openclaw/restart-gateway'
 import { existsSync, readFileSync, writeFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
@@ -19,8 +18,6 @@ import { getServerEnv } from '@/lib/server-env'
 import { applyPurposeToConfig, PURPOSE_KEY } from '@/lib/wiki/purpose'
 import { db } from '@/lib/db'
 import { settings } from '@/lib/schema'
-
-const execFileAsync = promisify(execFile)
 
 const OPENCLAW_CONFIG = join(homedir(), '.openclaw', 'openclaw.json')
 const AGENTS_DIR = join(homedir(), '.openclaw', 'agents')
@@ -228,7 +225,7 @@ export async function setMode(): Promise<{ output: string; agentId: string | nul
 
   let restartOut = ''
   try {
-    const r = await execFileAsync('openclaw', ['gateway', 'restart'], { timeout: 60000, env: getServerEnv() })
+    const r = await restartOpenclawGateway({ timeout: 60000, env: getServerEnv() })
     restartOut = (r.stdout || '') + (r.stderr || '')
   } catch (err: any) {
     restartOut = err?.stderr ?? err?.message ?? ''

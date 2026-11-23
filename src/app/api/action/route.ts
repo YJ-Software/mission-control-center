@@ -7,6 +7,7 @@ import {
   clearRestartPending, listLongRuns, longRunBusyBody, markRestartPending, registerLongRun, RestartPendingError, unregisterLongRun,
 } from '@/lib/long-running'
 import { checkRestartGate, parseForce, waitForInstallsPhase } from '@/lib/restart-guard'
+import { tightenOpenclawTempRoots } from '@/lib/openclaw/temp-root-perms'
 
 /** 備份/還原進行中，這些動作會把它打斷（還原中途被重啟可能留下搬到一半的資料） */
 const BLOCKED_DURING_BACKUP = new Set(['restart-dashboard', 'restart-openclaw', 'update-mcc', 'update-openclaw', 'reboot-system'])
@@ -109,9 +110,16 @@ async function updateOpenclaw({ triggeredBy, force }: { triggeredBy: TriggerSour
         inline: async (log: (stream: 'system', text: string) => void) => { log('system', notice); return 0 },
       }] : []),
       ...(stopUnit ? [stopGatewayPhase(stopUnit)] : []),
+      {
+        name: 'prepare OpenClaw temp roots',
+        inline: async (log) => {
+          tightenOpenclawTempRoots((text) => log('system', text))
+          return 0
+        },
+      },
       gateway
-        ? { name: 'openclaw update --yes --no-restart', shell: 'openclaw update --yes --no-restart 2>&1', timeoutMs: OPENCLAW_UPDATE_TIMEOUT_MS }
-        : { name: 'openclaw update --yes', shell: 'openclaw update --yes 2>&1', timeoutMs: OPENCLAW_UPDATE_TIMEOUT_MS },
+        ? { name: 'openclaw update --yes --no-restart', shell: 'umask 022; exec openclaw update --yes --no-restart 2>&1', timeoutMs: OPENCLAW_UPDATE_TIMEOUT_MS }
+        : { name: 'openclaw update --yes', shell: 'umask 022; exec openclaw update --yes 2>&1', timeoutMs: OPENCLAW_UPDATE_TIMEOUT_MS },
       ...(startUnit ? [startGatewayPhase(startUnit)] : []),
       {
         name: 'check leftover update files',
@@ -131,19 +139,12 @@ async function updateOpenclaw({ triggeredBy, force }: { triggeredBy: TriggerSour
 // All action keys are validated against this allowlist — no arbitrary command execution
 const actions: Record<string, ActionHandler> = {
   'restart-openclaw': async ({ triggeredBy }) => {
+    const { restartGatewayPhase } = await import('@/lib/openclaw/update-memory-guard')
     const meta = startJob({
       kind: 'restart-openclaw',
       label: 'Restart OpenClaw',
       triggeredBy,
-      phases: [
-        {
-          name: 'systemctl restart openclaw',
-          shell:
-            'systemctl restart openclaw 2>&1 ' +
-            '|| systemctl --user restart openclaw 2>&1 ' +
-            '|| systemctl --user restart openclaw-gateway 2>&1',
-        },
-      ],
+      phases: [restartGatewayPhase()],
     })
     return { success: true, jobId: meta.id, message: 'Restart job started' }
   },

@@ -1,3 +1,4 @@
+import { restartOpenclawGateway } from '@/lib/openclaw/restart-gateway'
 import { NextResponse } from 'next/server'
 import { readFileSync, writeFileSync, existsSync, mkdirSync, chmodSync } from 'fs'
 import { join, dirname } from 'path'
@@ -95,7 +96,7 @@ export async function POST() {
     let restarted = true
     let restartError: string | undefined
     try {
-      await execFileAsync('openclaw', ['gateway', 'restart'], {
+      await restartOpenclawGateway({
         timeout: 120_000,
         env: getServerEnv(),
       })

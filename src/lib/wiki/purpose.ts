@@ -23,11 +23,10 @@
  *                      separate regime we don't default to.
  */
 
+import { restartOpenclawGateway } from '@/lib/openclaw/restart-gateway'
 import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { homedir } from 'os'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
 import { db } from '@/lib/db'
 import { settings } from '@/lib/schema'
 import { eq } from 'drizzle-orm'
@@ -39,8 +38,6 @@ import {
   type ConsentLog,
   type PluginProbe,
 } from '@/lib/openclaw/plugin-consent'
-
-const execFileAsync = promisify(execFile)
 
 const OPENCLAW_JSON = join(homedir(), '.openclaw', 'openclaw.json')
 const WIKI_VAULT_PATH = '~/.openclaw/wiki/main'
@@ -205,7 +202,7 @@ export function getPurpose(): WikiPurpose {
 
 async function restartGateway(): Promise<string> {
   try {
-    const r = await execFileAsync('openclaw', ['gateway', 'restart'], { timeout: 60_000, env: getServerEnv() })
+    const r = await restartOpenclawGateway({ timeout: 60_000, env: getServerEnv() })
     return (r.stdout || '') + (r.stderr || '')
   } catch (err: any) {
     return err?.stderr ?? err?.message ?? 'gateway restart failed'

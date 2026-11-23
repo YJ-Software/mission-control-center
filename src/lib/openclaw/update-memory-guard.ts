@@ -6,6 +6,7 @@ import { gatewayUnitCandidates, whichIn } from './node-preflight'
 import { fillMessageTemplate } from './node-preflight-message'
 import { memoryBlockMessageValues, type MemoryPreflightBlockDetails } from './memory-preflight-message'
 import { jobsDir } from '../jobs/store'
+import { logTempRootFailureHint, tightenOpenclawTempRoots } from './temp-root-perms'
 
 /**
  * 從 MCC 升級 OpenClaw 時的記憶體保護。
@@ -252,14 +253,18 @@ export async function recoverGatewayStoppedForUpgrade(deps: {
     clearGatewayStopMarker(markerPath)
     return 'invalid-marker'
   }
-  log(`an OpenClaw upgrade stopped ${marker.unit}.service at ${marker.stoppedAt ?? '?'} and MCC exited before starting it again; starting it now`)
-  const r = await run('systemctl', ['--user', 'start', `${marker.unit}.service`], 3 * 60_000)
+  const svc = `${marker.unit}.service`
+  log(`an OpenClaw upgrade left a gateway stop marker for ${svc} at ${marker.stoppedAt ?? '?'}; starting it now`)
+  tightenOpenclawTempRoots(log)
+  const since = Date.now()
+  const r = await run('systemctl', ['--user', 'start', svc], 3 * 60_000)
   clearGatewayStopMarker(markerPath)
   if (r.code !== 0) {
-    log(`systemctl --user start ${marker.unit}.service failed (${r.code}): ${r.stderr.trim().slice(-300)}`)
+    log(`systemctl --user start ${svc} failed (${r.code}): ${r.stderr.trim().slice(-300)}`)
+    await logTempRootFailureHint(svc, true, since, log)
     return 'start-failed'
   }
-  log(`${marker.unit}.service started`)
+  log(`${svc} started`)
   return 'started'
 }
 
@@ -319,6 +324,83 @@ export interface StartGatewayOptions {
   now?: () => number
 }
 
+async function showGatewayState(svc: string, userUnit: boolean) {
+  const r = await run('systemctl', [
+    ...(userUnit ? ['--user'] : []), 'show', svc, '-p', 'ActiveState', '-p', 'SubState', '-p', 'NRestarts', '-p', 'NeedDaemonReload',
+  ], 10_000)
+  return parseSystemctlShow(r.stdout)
+}
+
+async function waitForGatewayStart(svc: string, userUnit: boolean, since: number, log: PhaseLog, opts: StartGatewayOptions) {
+  const stableMs = opts.stableMs ?? 10_000
+  const timeoutMs = opts.timeoutMs ?? 30_000
+  const pollMs = opts.pollMs ?? 2_000
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)))
+  const now = opts.now ?? Date.now
+  let state = await showGatewayState(svc, userUnit)
+  const baseRestarts = Number(state.NRestarts) || 0
+  const t0 = now()
+  let activeSince: number | null = null
+  let failure: string
+  for (;;) {
+    const restarts = Number(state.NRestarts) || 0
+    if (restarts > baseRestarts) {
+      failure = `${svc} was restarted by systemd ${restarts - baseRestarts} time(s) right after starting (crash loop?)`
+      break
+    }
+    if (state.ActiveState === 'failed') {
+      failure = `${svc} failed right after starting (${state.SubState ?? '?'})`
+      break
+    }
+    if (state.ActiveState === 'active') {
+      activeSince ??= now()
+      if (now() - activeSince >= stableMs) return 0
+    } else {
+      activeSince = null
+    }
+    if (now() - t0 >= timeoutMs) {
+      failure = `${svc} did not stay active for ${Math.round(stableMs / 1000)}s within ${Math.round(timeoutMs / 1000)}s (state: ${state.ActiveState ?? '?'}/${state.SubState ?? '?'})`
+      break
+    }
+    await sleep(pollMs)
+    state = await showGatewayState(svc, userUnit)
+  }
+  const scope = userUnit ? '--user ' : ''
+  log('stderr', failure)
+  log('stderr', `check: systemctl ${scope}start ${svc}; journalctl ${scope}-u ${svc} -n 50`)
+  await logTempRootFailureHint(svc, userUnit, since, (text) => log('system', text))
+  return 1
+}
+
+export function restartGatewayPhase(opts: StartGatewayOptions = {}) {
+  return {
+    name: 'systemctl restart openclaw',
+    inline: async (log: PhaseLog) => {
+      const systemLog = (text: string) => log('system', text)
+      tightenOpenclawTempRoots(systemLog)
+      const since = Date.now()
+      // 依原本 quick action 的順序嘗試 system unit 與新舊 user unit。
+      const units = [
+        { svc: 'openclaw.service', userUnit: false },
+        { svc: 'openclaw.service', userUnit: true },
+        { svc: 'openclaw-gateway.service', userUnit: true },
+      ]
+      let code = 1
+      for (const { svc, userUnit } of units) {
+        const result = await run('systemctl', [...(userUnit ? ['--user'] : []), 'restart', svc], 7 * 60_000)
+        if (result.stdout.trim()) log('stdout', result.stdout.trim())
+        if (result.stderr.trim()) log('stderr', result.stderr.trim())
+        if (result.code === 0) return waitForGatewayStart(svc, userUnit, since, log, opts)
+        code = result.code
+      }
+      for (const { svc, userUnit } of units) {
+        await logTempRootFailureHint(svc, userUnit, since, systemLog)
+      }
+      return code
+    },
+  }
+}
+
 /**
  * 收尾 phase（alwaysRun）：不論升級成功、失敗或逾時都要讓 gateway 回來。帶 `--no-restart` 時 updater 不論成敗都
  * 不會啟動被外部停掉的 gateway（實測）；但 OpenClaw 自己為了 doctor 停過 gateway 時仍會重啟它，所以先看狀態，
@@ -330,21 +412,15 @@ export interface StartGatewayOptions {
  * - 確認起來才刪標記；失敗時保留，MCC 下次開機會再試一次
  */
 export function startGatewayPhase(unit: string, opts: StartGatewayOptions = {}) {
-  const stableMs = opts.stableMs ?? 10_000
-  const timeoutMs = opts.timeoutMs ?? 30_000
-  const pollMs = opts.pollMs ?? 2_000
-  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)))
-  const now = opts.now ?? Date.now
   const svc = `${unit}.service`
-  const show = async () => {
-    const r = await run('systemctl', ['--user', 'show', svc, '-p', 'ActiveState', '-p', 'SubState', '-p', 'NRestarts', '-p', 'NeedDaemonReload'], 10_000)
-    return parseSystemctlShow(r.stdout)
-  }
+  const show = () => showGatewayState(svc, true)
   const manual = `systemctl --user start ${svc}; journalctl --user -u ${svc} -n 50`
   return {
     name: `start ${unit}`,
     alwaysRun: true,
     inline: async (log: PhaseLog) => {
+      const systemLog = (text: string) => log('system', text)
+      const since = Date.now()
       let state = await show()
       if (state.NeedDaemonReload === 'yes') {
         log('system', `${svc} unit file changed during the update; systemctl --user daemon-reload`)
@@ -355,45 +431,19 @@ export function startGatewayPhase(unit: string, opts: StartGatewayOptions = {}) 
       if (RUNNING_STATES.has(state.ActiveState ?? '')) {
         log('system', `${svc} is already ${state.ActiveState} (restarted by the OpenClaw updater); not starting it again`)
       } else {
+        tightenOpenclawTempRoots(systemLog)
         log('system', `${svc} is ${state.ActiveState || 'not running'}; starting it`)
         const r = await run('systemctl', ['--user', 'start', svc], 3 * 60_000)
         if (r.code !== 0) {
           log('stderr', `start failed (${r.code}): ${r.stderr.trim().slice(-500)}`)
           log('stderr', `the gateway is NOT running — start it by hand: ${manual}`)
+          await logTempRootFailureHint(svc, true, since, systemLog)
           return r.code
         }
       }
       // 確認真的起來了：連續 active stableMs、期間沒有被 systemd 重啟
-      state = await show()
-      const baseRestarts = Number(state.NRestarts) || 0
-      const t0 = now()
-      let activeSince: number | null = null
-      for (;;) {
-        const restarts = Number(state.NRestarts) || 0
-        if (restarts > baseRestarts) {
-          log('stderr', `${svc} was restarted by systemd ${restarts - baseRestarts} time(s) right after starting (crash loop?)`)
-          log('stderr', `the gateway is NOT running stably — check: ${manual}`)
-          return 1
-        }
-        if (state.ActiveState === 'failed') {
-          log('stderr', `${svc} failed right after starting (${state.SubState ?? '?'})`)
-          log('stderr', `the gateway is NOT running — check: ${manual}`)
-          return 1
-        }
-        if (state.ActiveState === 'active') {
-          activeSince ??= now()
-          if (now() - activeSince >= stableMs) break
-        } else {
-          activeSince = null
-        }
-        if (now() - t0 >= timeoutMs) {
-          log('stderr', `${svc} did not stay active for ${Math.round(stableMs / 1000)}s within ${Math.round(timeoutMs / 1000)}s (state: ${state.ActiveState ?? '?'}/${state.SubState ?? '?'})`)
-          log('stderr', `the gateway may not be running — check: ${manual}`)
-          return 1
-        }
-        await sleep(pollMs)
-        state = await show()
-      }
+      const code = await waitForGatewayStart(svc, true, since, log, opts)
+      if (code !== 0) return code
       clearGatewayStopMarker()
       log('system', `${svc} is running; MCC reconnects to the gateway automatically`)
       return 0

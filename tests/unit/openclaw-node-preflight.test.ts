@@ -1,3 +1,4 @@
+import { processMocks } from './helpers/offline-owner-mocks'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -10,31 +11,13 @@ import { NextRequest } from 'next/server'
  */
 
 const m = vi.hoisted(() => {
-  const unexpected: string[] = []
-  const guard = (name: string) => (...args: unknown[]) => {
-    unexpected.push(`${name} ${JSON.stringify(args[0])}`)
-    throw new Error(`unmocked child_process.${name} in test`)
-  }
   return {
-    unexpected,
-    guard,
-    execFile: vi.fn(),
     startJob: vi.fn(),
     busy: vi.fn(),
     preflight: vi.fn(),
   }
 })
 
-vi.mock('child_process', async (orig) => ({
-  ...(await orig<typeof import('child_process')>()),
-  exec: vi.fn(m.guard('exec')), execSync: vi.fn(m.guard('execSync')), spawn: vi.fn(m.guard('spawn')),
-  spawnSync: vi.fn(m.guard('spawnSync')), execFile: m.execFile, execFileSync: vi.fn(m.guard('execFileSync')),
-}))
-vi.mock('node:child_process', async (orig) => ({
-  ...(await orig<typeof import('node:child_process')>()),
-  exec: vi.fn(m.guard('exec')), execSync: vi.fn(m.guard('execSync')), spawn: vi.fn(m.guard('spawn')),
-  spawnSync: vi.fn(m.guard('spawnSync')), execFile: m.execFile, execFileSync: vi.fn(m.guard('execFileSync')),
-}))
 vi.mock('@/lib/backup/lock', () => ({ isBackupOrRestoreBusy: m.busy }))
 vi.mock('@/lib/jobs/runner', () => ({ startJob: m.startJob, jobShellPath: () => '/nonexistent' }))
 
@@ -59,16 +42,13 @@ import en from '../../messages/en.json'
 import zhTW from '../../messages/zh-TW.json'
 import zhCN from '../../messages/zh-CN.json'
 
+const refuseExecFile = processMocks.execFile.getMockImplementation()!
+
 beforeEach(() => {
-  m.unexpected.length = 0
-  m.execFile.mockReset().mockImplementation(m.guard('execFile'))
+  processMocks.execFile.mockReset().mockImplementation(refuseExecFile)
   m.startJob.mockReset().mockReturnValue({ id: 'job-1' })
   m.busy.mockReset().mockReturnValue(false)
   m.preflight.mockReset()
-})
-
-afterEach(() => {
-  expect(m.unexpected).toEqual([])
 })
 
 // OpenClaw 2026.10.7 node-version.mjs 的 isSupportedOpenClawNodeVersion：同大版取該大版下限，
@@ -318,17 +298,17 @@ describe('detectOpenclawNodeRuntime', () => {
     const pathEnv = [path.join(dir, 'bin'), path.dirname(process.execPath)].join(':')
     const r = await detectOpenclawNodeRuntime(pathEnv)
     expect(r?.version).toBe(process.versions.node)
-    expect(m.execFile).not.toHaveBeenCalled()
+    expect(processMocks.execFile).not.toHaveBeenCalled()
   })
 
   it('asks a different node for its version (execFile mocked)', async () => {
     const fakeNode = path.join(dir, 'other', 'node')
     writeExec(fakeNode, '#!/bin/sh\necho v0\n')
     writeExec(path.join(dir, 'bin', 'openclaw'), `#!${fakeNode}\n`)
-    m.execFile.mockImplementation((file: string, args: string[], _opts: unknown, cb: (e: unknown, r: unknown) => void) => {
+    processMocks.execFile.mockImplementation((file: string, args: string[], _opts: unknown, cb: (e: unknown, stdout: string, stderr: string) => void) => {
       expect(file).toBe(fakeNode)
       expect(args).toEqual(['--version'])
-      cb(null, { stdout: 'v26.12.0\n', stderr: '' })
+      cb(null, 'v26.12.0\n', '')
     })
     const r = await detectOpenclawNodeRuntime(path.join(dir, 'bin'))
     expect(r).toEqual({ version: '26.12.0', path: fakeNode })
@@ -344,10 +324,10 @@ describe('detectOpenclawNodeRuntime', () => {
     const unit = path.join(dir, 'systemd', 'user', 'openclaw-gateway.service')
     mkdirSync(path.dirname(unit), { recursive: true })
     writeFileSync(unit, `[Service]\nExecStart=${svcNode} /p/dist/index.js gateway --port 18789\n`)
-    m.execFile.mockImplementation((file: string, args: string[], _opts: unknown, cb: (e: unknown, r: unknown) => void) => {
+    processMocks.execFile.mockImplementation((file: string, args: string[], _opts: unknown, cb: (e: unknown, stdout: string, stderr: string) => void) => {
       expect(file).toBe(svcNode)
       expect(args).toEqual(['--version'])
-      cb(null, { stdout: 'v26.12.1\n', stderr: '' })
+      cb(null, 'v26.12.1\n', '')
     })
     expect(await detectGatewayServiceNodeRuntime([unit, path.join(dir, 'nope.service')])).toEqual({ version: '26.12.1', path: svcNode })
   })
@@ -357,7 +337,7 @@ describe('detectOpenclawNodeRuntime', () => {
     const unit = path.join(dir, 'openclaw-gateway.service')
     writeFileSync(unit, `ExecStart=${path.join(dir, 'gone', 'node')} /p/index.js gateway\n`)
     expect(await detectGatewayServiceNodeRuntime([unit])).toBeNull()
-    expect(m.execFile).not.toHaveBeenCalled()
+    expect(processMocks.execFile).not.toHaveBeenCalled()
   })
 })
 
@@ -410,7 +390,7 @@ describe('/api/action update-openclaw preflight', () => {
     const res = await (await load())(post({ action: 'update-openclaw', force: true }))
     expect(res.status).toBe(200)
     const phases = m.startJob.mock.calls[0][0].phases as Array<{ name: string; shell?: string; inline?: unknown }>
-    expect(phases.map(p => p.name)).toEqual(['Upgrade preflight', 'openclaw update --yes', 'check leftover update files'])
+    expect(phases.map(p => p.name)).toEqual(['Upgrade preflight', 'prepare OpenClaw temp roots', 'openclaw update --yes', 'check leftover update files'])
   })
 
   it('unknown → starts the job, with the warning as the first phase and in the response', async () => {
@@ -425,13 +405,13 @@ describe('/api/action update-openclaw preflight', () => {
     expect(logged).toEqual(['Node 版本預檢略過：…'])
   })
 
-  it('compatible → only the update phase', async () => {
+  it('compatible → prepares the temp roots before the update', async () => {
     m.preflight.mockResolvedValue({ verdict: 'ok' })
     const res = await (await load())(post({ action: 'update-openclaw' }))
     expect(res.status).toBe(200)
     expect((await res.json()).warning).toBeUndefined()
     const phases = m.startJob.mock.calls[0][0].phases as Array<{ name: string; shell?: string }>
-    expect(phases.map(p => p.name)).toEqual(['openclaw update --yes', 'check leftover update files'])
-    expect(phases[0]).toMatchObject({ shell: 'openclaw update --yes 2>&1' })
+    expect(phases.map(p => p.name)).toEqual(['prepare OpenClaw temp roots', 'openclaw update --yes', 'check leftover update files'])
+    expect(phases[1]).toMatchObject({ shell: 'umask 022; exec openclaw update --yes 2>&1' })
   })
 })

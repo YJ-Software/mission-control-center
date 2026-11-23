@@ -1,12 +1,10 @@
+import { restartOpenclawGateway } from '@/lib/openclaw/restart-gateway'
 import { writeMem0McpConfig } from './mem0-config'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { getServerEnv } from '@/lib/server-env'
 
-const execFileAsync = promisify(execFile)
 const OPENCLAW_CONFIG = join(homedir(), '.openclaw', 'openclaw.json')
 
 export type ProviderMode = 'openai' | 'gemini' | 'ollama'
@@ -192,7 +190,7 @@ function maskApiKey(key: string): string {
 
 export async function restartGateway(): Promise<string> {
   try {
-    const out = await execFileAsync('openclaw', ['gateway', 'restart'], { timeout: 60000, env: getServerEnv() })
+    const out = await restartOpenclawGateway({ timeout: 60000, env: getServerEnv() })
     return (out.stdout || '') + (out.stderr || '')
   } catch (err: any) {
     return err?.stderr ?? err?.message ?? 'gateway restart failed'

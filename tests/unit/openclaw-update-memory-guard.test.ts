@@ -1,3 +1,4 @@
+import { processMocks } from './helpers/offline-owner-mocks'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,16 +15,10 @@ const m = vi.hoisted(() => {
   const fsx = require('node:fs') as typeof import('node:fs')
   const osx = require('node:os') as typeof import('node:os')
   const pathx = require('node:path') as typeof import('node:path')
-  process.env.MISSION_CONTROL_DATA_DIR = fsx.mkdtempSync(pathx.join(osx.tmpdir(), 'mcc-memguard-data-'))
-  const unexpected: string[] = []
-  const guard = (name: string) => (...args: unknown[]) => {
-    unexpected.push(`${name} ${JSON.stringify(args[0])} ${JSON.stringify(args[1])}`)
-    throw new Error(`unmocked child_process.${name} in test`)
-  }
+  const home = fsx.mkdtempSync(pathx.join(osx.tmpdir(), 'mcc-memguard-data-'))
+  process.env.MISSION_CONTROL_DATA_DIR = home
   return {
-    unexpected,
-    guard,
-    execFile: vi.fn(),
+    home,
     startJob: vi.fn(),
     busy: vi.fn(),
     nodePreflight: vi.fn(),
@@ -31,16 +26,6 @@ const m = vi.hoisted(() => {
   }
 })
 
-vi.mock('child_process', async (orig) => ({
-  ...(await orig<typeof import('child_process')>()),
-  exec: vi.fn(m.guard('exec')), execSync: vi.fn(m.guard('execSync')), spawn: vi.fn(m.guard('spawn')),
-  spawnSync: vi.fn(m.guard('spawnSync')), execFile: m.execFile, execFileSync: vi.fn(m.guard('execFileSync')),
-}))
-vi.mock('node:child_process', async (orig) => ({
-  ...(await orig<typeof import('node:child_process')>()),
-  exec: vi.fn(m.guard('exec')), execSync: vi.fn(m.guard('execSync')), spawn: vi.fn(m.guard('spawn')),
-  spawnSync: vi.fn(m.guard('spawnSync')), execFile: m.execFile, execFileSync: vi.fn(m.guard('execFileSync')),
-}))
 vi.mock('@/lib/backup/lock', () => ({ isBackupOrRestoreBusy: m.busy }))
 vi.mock('@/lib/jobs/runner', () => ({ startJob: m.startJob, jobShellPath: () => '/nonexistent' }))
 
@@ -77,13 +62,15 @@ import en from '../../messages/en.json'
 import zhTW from '../../messages/zh-TW.json'
 import zhCN from '../../messages/zh-CN.json'
 
+const refuseExecFile = processMocks.execFile.getMockImplementation()!
+
 type ExecCb = (err: (Error & { code?: number }) | null, stdout: string, stderr: string) => void
 
 /** execFile 依 argv 回應；沒列到的呼叫走 guard（記一筆並丟錯） */
 function respond(table: Array<{ match: (file: string, args: string[]) => boolean; code?: number; stdout?: string; stderr?: string }>) {
-  m.execFile.mockImplementation((file: string, args: string[], _opts: unknown, cb: ExecCb) => {
+  processMocks.execFile.mockImplementation((file: string, args: string[], _opts: unknown, cb: ExecCb) => {
     const hit = table.find(t => t.match(file, args))
-    if (!hit) return m.guard('execFile')(file, args)
+    if (!hit) return refuseExecFile(file, args)
     const code = hit.code ?? 0
     const err = code === 0 ? null : Object.assign(new Error(`exit ${code}`), { code })
     queueMicrotask(() => cb(err, hit.stdout ?? '', hit.stderr ?? ''))
@@ -94,16 +81,18 @@ const systemctl = (...want: string[]) => (file: string, args: string[]) =>
   file === 'systemctl' && want.every((w, i) => args[i] === w)
 
 beforeEach(() => {
-  m.unexpected.length = 0
-  m.execFile.mockReset().mockImplementation(m.guard('execFile'))
+  processMocks.execFile.mockReset().mockImplementation(refuseExecFile)
   m.startJob.mockReset().mockReturnValue({ id: 'job-1' })
   m.busy.mockReset().mockReturnValue(false)
   m.nodePreflight.mockReset().mockResolvedValue({ verdict: 'ok' })
   m.memoryPreflight.mockReset()
+  vi.stubEnv('HOME', m.home)
+  vi.stubEnv('XDG_CACHE_HOME', path.join(m.home, '.cache'))
+  vi.stubEnv('OPENCLAW_STATE_DIR', path.join(m.home, '.openclaw'))
 })
 
 afterEach(() => {
-  expect(m.unexpected).toEqual([])
+  vi.unstubAllEnvs()
 })
 
 // 2026-10-28 throwaway 實測（OpenClaw 2026.10.7、4 GB 無 swap）：gateway 在跑時
@@ -282,11 +271,12 @@ describe('gateway service detection (systemctl mocked)', () => {
  */
 function fakeSystemd(init: { ActiveState: string; SubState?: string; NRestarts?: number; NeedDaemonReload?: string }, opts: {
   startCode?: number
+  journal?: string
   onStart?: (st: Record<string, string | number>) => void
 } = {}) {
   const st: Record<string, string | number> = { SubState: 'dead', NRestarts: 0, NeedDaemonReload: 'no', ...init }
   const calls: string[] = []
-  m.execFile.mockImplementation((file: string, args: string[], _o: unknown, cb: ExecCb) => {
+  processMocks.execFile.mockImplementation((file: string, args: string[], _o: unknown, cb: ExecCb) => {
     const verb = args[1]
     calls.push(verb)
     const reply = (code: number, stdout = '', stderr = '') => {
@@ -294,7 +284,10 @@ function fakeSystemd(init: { ActiveState: string; SubState?: string; NRestarts?:
       queueMicrotask(() => cb(err, stdout, stderr))
       return {}
     }
-    if (file !== 'systemctl' || args[0] !== '--user') return m.guard('execFile')(file, args)
+    if (file === 'journalctl' && args[0] === '--user' && args[1] === '-u' && args[2] === 'openclaw-gateway.service') {
+      return reply(0, opts.journal)
+    }
+    if (file !== 'systemctl' || args[0] !== '--user') return refuseExecFile(file, args)
     if (verb === 'show') return reply(0, Object.entries(st).map(([k, v]) => `${k}=${v}`).join('\n') + '\n')
     if (verb === 'daemon-reload') { st.NeedDaemonReload = 'no'; return reply(0) }
     if (verb === 'start') {
@@ -304,7 +297,7 @@ function fakeSystemd(init: { ActiveState: string; SubState?: string; NRestarts?:
       return reply(0)
     }
     if (verb === 'stop') { st.ActiveState = 'inactive'; return reply(0) }
-    return m.guard('execFile')(file, args)
+    return refuseExecFile(file, args)
   })
   return { st, calls }
 }
@@ -324,8 +317,8 @@ describe('gateway stop / start phases (systemctl mocked)', () => {
 
   it('stop phase writes the recovery marker BEFORE stopping; a failed stop fails the phase', async () => {
     let markerAtStop: unknown = 'unset'
-    m.execFile.mockImplementation((file: string, args: string[], _o: unknown, cb: ExecCb) => {
-      if (file !== 'systemctl' || args[1] !== 'stop') return m.guard('execFile')(file, args)
+    processMocks.execFile.mockImplementation((file: string, args: string[], _o: unknown, cb: ExecCb) => {
+      if (file !== 'systemctl' || args[1] !== 'stop') return refuseExecFile(file, args)
       markerAtStop = readGatewayStopMarker()
       queueMicrotask(() => cb(null, '', ''))
       return {}
@@ -408,7 +401,7 @@ describe('MCC startup: gateway left stopped by an interrupted upgrade (H1)', () 
 
   it('no marker → nothing is executed', async () => {
     expect(await recoverGatewayStoppedForUpgrade(quiet)).toBe('none')
-    expect(m.execFile).not.toHaveBeenCalled()
+    expect(processMocks.execFile).not.toHaveBeenCalled()
   })
 
   it('marker present → starts the unit and removes the marker', async () => {
@@ -416,9 +409,10 @@ describe('MCC startup: gateway left stopped by an interrupted upgrade (H1)', () 
     respond([{ match: systemctl('--user', 'start', 'openclaw-gateway.service') }])
     const lines: string[] = []
     expect(await recoverGatewayStoppedForUpgrade({ log: (t) => lines.push(t) })).toBe('started')
-    expect(m.execFile).toHaveBeenCalledTimes(1)
+    expect(processMocks.execFile).toHaveBeenCalledTimes(1)
     expect(existsSync(gatewayStopMarkerPath())).toBe(false)
-    expect(lines.join('\n')).toContain('starting it now')
+    expect(lines.join('\n')).toContain('left a gateway stop marker')
+    expect(lines.join('\n')).not.toContain('MCC exited')
   })
 
   it('the legacy unit name from the marker is used as is', async () => {
@@ -429,7 +423,10 @@ describe('MCC startup: gateway left stopped by an interrupted upgrade (H1)', () 
 
   it('start fails → reports it and still removes the marker (no retry loop on every boot)', async () => {
     writeGatewayStopMarker('openclaw-gateway')
-    respond([{ match: systemctl('--user', 'start', 'openclaw-gateway.service'), code: 1, stderr: 'boom' }])
+    respond([
+      { match: systemctl('--user', 'start', 'openclaw-gateway.service'), code: 1, stderr: 'boom' },
+      { match: (file, args) => file === 'journalctl' && args.includes('openclaw-gateway.service') },
+    ])
     expect(await recoverGatewayStoppedForUpgrade(quiet)).toBe('start-failed')
     expect(existsSync(gatewayStopMarkerPath())).toBe(false)
   })
@@ -437,7 +434,7 @@ describe('MCC startup: gateway left stopped by an interrupted upgrade (H1)', () 
   it('an upgrade job still live in this process → leaves everything alone', async () => {
     writeGatewayStopMarker('openclaw-gateway')
     expect(await recoverGatewayStoppedForUpgrade({ ...quiet, upgradeRunning: () => true })).toBe('skipped-live-upgrade')
-    expect(m.execFile).not.toHaveBeenCalled()
+    expect(processMocks.execFile).not.toHaveBeenCalled()
     expect(existsSync(gatewayStopMarkerPath())).toBe(true)
   })
 
@@ -445,7 +442,7 @@ describe('MCC startup: gateway left stopped by an interrupted upgrade (H1)', () 
     const { writeFileSync } = await import('node:fs')
     writeFileSync(gatewayStopMarkerPath(), JSON.stringify({ unit: 'x; rm -rf /' }))
     expect(await recoverGatewayStoppedForUpgrade(quiet)).toBe('invalid-marker')
-    expect(m.execFile).not.toHaveBeenCalled()
+    expect(processMocks.execFile).not.toHaveBeenCalled()
     expect(existsSync(gatewayStopMarkerPath())).toBe(false)
   })
 
@@ -539,16 +536,45 @@ describe('/api/action update-openclaw with the memory guard', () => {
     const phases = phasesOf()
     expect(phases.map(p => p.name)).toEqual([
       'stop openclaw-gateway (free memory for the update)',
+      'prepare OpenClaw temp roots',
       'openclaw update --yes --no-restart',
       'start openclaw-gateway',
       'check leftover update files',
     ])
     // updater 換版時會在自己還佔著記憶體時就重啟 gateway：由 MCC 在它結束後才啟動
-    expect(phases[1]).toMatchObject({ shell: 'openclaw update --yes --no-restart 2>&1' })
-    expect(phases[1].timeoutMs).toBeGreaterThanOrEqual(30 * 60_000)
+    expect(phases[2]).toMatchObject({ shell: 'umask 022; exec openclaw update --yes --no-restart 2>&1' })
+    expect(phases[2].timeoutMs).toBeGreaterThanOrEqual(30 * 60_000)
     expect(phases[0].alwaysRun).toBeFalsy()
-    expect(phases[2].alwaysRun).toBe(true)
+    expect(phases[2].alwaysRun).toBeFalsy()
     expect(phases[3].alwaysRun).toBe(true)
+    expect(phases[4].alwaysRun).toBe(true)
+    const cache = mkdtempSync(path.join(tmpdir(), 'mcc-upgrade-cache-'))
+    try {
+      const { chmodSync, statSync } = await import('node:fs')
+      chmodSync(cache, 0o775)
+      vi.stubEnv('XDG_CACHE_HOME', cache)
+      const log = vi.fn()
+      expect(await phases[1].inline!(log)).toBe(0)
+      expect(statSync(cache).mode & 0o777).toBe(0o755)
+      expect(log).toHaveBeenCalledWith('system', `tightened ${cache} 775→755`)
+    } finally {
+      rmSync(cache, { recursive: true, force: true })
+    }
+  })
+
+  it('quick restart reports a temp-root failure even when systemctl accepted the restart', async () => {
+    respond([
+      { match: systemctl('restart', 'openclaw.service'), code: 5 },
+      { match: systemctl('--user', 'restart', 'openclaw.service'), code: 5 },
+      { match: systemctl('--user', 'restart', 'openclaw-gateway.service') },
+      { match: systemctl('--user', 'show', 'openclaw-gateway.service'), stdout: 'ActiveState=failed\nSubState=failed\nNRestarts=0\n' },
+      { match: (file, args) => file === 'journalctl' && args.includes('openclaw-gateway.service'), stdout: 'No safe OpenClaw temp root is available' },
+    ])
+    const res = await (await load())(post({ action: 'restart-openclaw' }))
+    expect(res.status).toBe(200)
+    const log = vi.fn()
+    expect(await phasesOf()[0].inline!(log)).toBe(1)
+    expect(log).toHaveBeenCalledWith('system', expect.stringContaining('chmod go-w'))
   })
 
   it('force skips both blocks and records each override in the job log', async () => {
@@ -571,7 +597,7 @@ describe('/api/action update-openclaw with the memory guard', () => {
       gateway: { unit: 'openclaw-gateway', running: false, activeState: 'failed', enabled: true, anonKb: 0 },
     })
     await (await load())(post({ action: 'update-openclaw' }))
-    expect(phasesOf().map(p => p.name)).toEqual(['openclaw update --yes --no-restart', 'start openclaw-gateway', 'check leftover update files'])
+    expect(phasesOf().map(p => p.name)).toEqual(['prepare OpenClaw temp roots', 'openclaw update --yes --no-restart', 'start openclaw-gateway', 'check leftover update files'])
   })
 
   it('M2: a stopped + disabled gateway is left alone, but the updater still must not start it (--no-restart)', async () => {
@@ -580,13 +606,13 @@ describe('/api/action update-openclaw with the memory guard', () => {
       gateway: { unit: 'openclaw-gateway', running: false, activeState: 'inactive', enabled: false, anonKb: 0 },
     })
     await (await load())(post({ action: 'update-openclaw' }))
-    expect(phasesOf().map(p => p.name)).toEqual(['openclaw update --yes --no-restart', 'check leftover update files'])
+    expect(phasesOf().map(p => p.name)).toEqual(['prepare OpenClaw temp roots', 'openclaw update --yes --no-restart', 'check leftover update files'])
   })
 
   it('no gateway unit at all → the old path (updater handles the restart)', async () => {
     m.memoryPreflight.mockResolvedValue({ preflight: { verdict: 'ok', estimateMb: 4000, warnings: [] }, gateway: null })
     await (await load())(post({ action: 'update-openclaw' }))
-    expect(phasesOf().map(p => p.name)).toEqual(['openclaw update --yes', 'check leftover update files'])
+    expect(phasesOf().map(p => p.name)).toEqual(['prepare OpenClaw temp roots', 'openclaw update --yes', 'check leftover update files'])
   })
 
   it('M1: two concurrent requests → only one job; the second is refused while the first is still in its preflight', async () => {
@@ -643,6 +669,6 @@ describe('/api/action update-openclaw with the memory guard', () => {
     })
     const res = await (await load())(post({ action: 'update-openclaw' }))
     expect(await res.json()).toMatchObject({ success: true, warning: '記憶體預檢略過：讀不到 /proc/meminfo' })
-    expect(phasesOf().map(p => p.name)).toEqual(['Upgrade preflight', 'openclaw update --yes', 'check leftover update files'])
+    expect(phasesOf().map(p => p.name)).toEqual(['Upgrade preflight', 'prepare OpenClaw temp roots', 'openclaw update --yes', 'check leftover update files'])
   })
 })

@@ -20,6 +20,7 @@ import { forcedRestartNote, listLongRuns, LongRunBusyError, waitForNoLongRuns, t
 import { checkRestartGate, WAIT_FOR_INSTALLS_PHASE } from '@/lib/restart-guard'
 import { runRestore } from './scripts'
 import { requestLegacyBackupCronRecheck, type LegacyCronRecheckResult } from './scheduler'
+import { logTempRootFailureHint, tightenOpenclawTempRoots } from '@/lib/openclaw/temp-root-perms'
 
 export { BackupBusyError }
 export { LongRunBusyError }
@@ -54,7 +55,7 @@ export interface RestoreDeps {
   runningSemver: () => string
   /** release 重啟前持有鎖的最長時間（行程若仍活著就釋放） */
   restartLockHoldMs: number
-  legacyRestore: (file: string) => Promise<string>
+  legacyRestore: (file: string, log: Log) => Promise<string>
   legacyDryRun: (file: string) => Promise<string>
   legacyScriptsOk: () => boolean
   /** 動過 ~/.openclaw 之後呼叫：舊版「💾 Backup:」cron 可能被換回來，清掉「已清理」旗標並重新檢查；不得丟錯 */
@@ -134,14 +135,30 @@ const defaultDeps = (): RestoreDeps => ({
   tar: defaultTar,
   openclawVerify: (archive, log) => verifyOpenClawBackup(archive, { run: defaultOpenClawBackendRun, log }),
   openclawRestore: (archive, log) => {
+    const systemLog = (text: string) => log('system', text)
+    let since = 0
+    const hint = () => logTempRootFailureHint('openclaw-gateway.service', true, since, systemLog)
     const deps: OpenClawBackendDeps = {
       run: defaultOpenClawBackendRun,
       fs,
       home: os.homedir(),
       gateway: {
         stop: stopGatewayAndConfirm,
-        start: () => systemctlUser('start'),
-        waitHealthy: waitGatewayHealthy,
+        start: async () => {
+          tightenOpenclawTempRoots(systemLog)
+          since = Date.now()
+          try {
+            await systemctlUser('start')
+          } catch (err) {
+            await hint()
+            throw err
+          }
+        },
+        waitHealthy: async (timeout) => {
+          const healthy = await waitGatewayHealthy(timeout)
+          if (!healthy) await hint()
+          return healthy
+        },
       },
       now: () => new Date(),
       log,
@@ -158,7 +175,17 @@ const defaultDeps = (): RestoreDeps => ({
   mccVersion: () => getVersionInfo().version,
   runningSemver: () => getVersionInfo().mccVersion,
   restartLockHoldMs: 120_000,
-  legacyRestore: (file) => runRestore(file, false),
+  legacyRestore: async (file, log) => {
+    const systemLog = (text: string) => log('system', text)
+    tightenOpenclawTempRoots(systemLog)
+    const since = Date.now()
+    try {
+      return await runRestore(file, false)
+    } catch (err) {
+      await logTempRootFailureHint('openclaw-gateway.service', true, since, systemLog)
+      throw err
+    }
+  },
   legacyDryRun: (file) => runRestore(file, true),
   legacyScriptsOk: () => checkScriptsAvailable().ok,
   recheckLegacyCron: () => requestLegacyBackupCronRecheck(),
@@ -412,7 +439,7 @@ export function startRestore(
       phases.push(phase('legacy restore', async (log) => {
         // 不論成敗都重查：restore.sh 中途失敗時 ~/.openclaw 可能已被部分換掉
         try {
-          log('system', await deps.legacyRestore(file))
+          log('system', await deps.legacyRestore(file, log))
         } finally {
           recheckLegacyCron(log)
         }
