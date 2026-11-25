@@ -50,11 +50,20 @@ export default defineConfig({
     },
     {
       name: 'mcc',
-      testIgnore: [/tests\/e2e\/twnoc\//, /tests\/e2e\/mcc-login\.setup\.ts/],
+      testIgnore: [/tests\/e2e\/twnoc\//, /tests\/e2e\/mcc-login\.setup\.ts/, /tests\/e2e\/hermes\//],
       dependencies: ['mcc-login'],
       use: {
         browserName: 'chromium',
         storageState: 'tests/e2e/storage/mcc-state.json',
+      },
+    },
+    {
+      name: 'hermes',
+      testMatch: /tests\/e2e\/hermes\/.*\.spec\.ts/,
+      use: {
+        browserName: 'chromium',
+        trace: 'off',
+        video: 'off',
       },
     },
   ],
