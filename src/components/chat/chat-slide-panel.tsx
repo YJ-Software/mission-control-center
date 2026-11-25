@@ -37,8 +37,8 @@ export function ChatSlidePanel() {
     }
   }, [selectedAgentId])
 
-  const sessionKey = selectedAgentId ? `agent:${selectedAgentId}:main` : null
   const selectedAgent = agents?.find(a => a.id === selectedAgentId)
+  const sessionKey = selectedAgent?.defaultSessionKey ?? (selectedAgentId ? `agent:${selectedAgentId}:main` : null)
 
   // Hide on /chat page (it has its own full chat UI)
   if (pathname?.startsWith('/chat')) return null

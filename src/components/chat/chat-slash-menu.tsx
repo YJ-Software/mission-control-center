@@ -104,7 +104,7 @@ export function ChatSlashMenu({ query, commands, onSelect, onClose }: ChatSlashM
 }
 
 /** Build the default slash command list */
-export function getDefaultSlashCommands(t: (key: string) => string): SlashCommand[] {
+export function getDefaultSlashCommands(t: (key: string) => string, modelOptions = true): SlashCommand[] {
   return [
     { name: 'help', description: t('help'), category: 'session' },
     { name: 'new', description: t('new'), category: 'session' },
@@ -112,10 +112,12 @@ export function getDefaultSlashCommands(t: (key: string) => string): SlashComman
     { name: 'reset', description: t('reset'), category: 'session' },
     { name: 'stop', description: t('stop'), category: 'session' },
     { name: 'export-session', description: t('exportSession'), category: 'session' },
-    { name: 'model', description: t('model'), category: 'model' },
-    { name: 'think', description: t('think'), category: 'model' },
-    { name: 'fast', description: t('fast'), category: 'model' },
-    { name: 'verbose', description: t('verbose'), category: 'model' },
+    ...(modelOptions ? [
+      { name: 'model', description: t('model'), category: 'model' as const },
+      { name: 'think', description: t('think'), category: 'model' as const },
+      { name: 'fast', description: t('fast'), category: 'model' as const },
+      { name: 'verbose', description: t('verbose'), category: 'model' as const },
+    ] : []),
     { name: 'focus', description: t('focus'), category: 'tools' },
     { name: 'usage', description: t('usage'), category: 'tools' },
     { name: 'agents', description: t('agents'), category: 'tools' },

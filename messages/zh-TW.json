@@ -141,6 +141,7 @@
     "agentsTotalSubtitle": "{count} AGENTS TOTAL",
     "loadingMail": "LOADING MAIL...",
     "systemHealth": "System Health",
+    "restartService": "重新啟動",
     "servicesStatus": "Services Status",
     "tailscaleStatus": "Tailscale Status",
     "opencliUpgradeTooltip": "升級 OpenCLI 到最新版（會在系統日誌記錄並重啟 daemon）",

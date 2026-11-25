@@ -8,6 +8,7 @@ import { NODE_BLOCK_MESSAGE_KEY, isNodePreflightBlockDetails, nodeBlockMessageVa
 import { MEMORY_BLOCK_MESSAGE_KEY, isMemoryPreflightBlockDetails, memoryBlockMessageValues } from '@/lib/openclaw/memory-preflight-message'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
+import { useBackendCapabilities } from './backend-capabilities'
 import type { OpenClawVersionInfo } from '@/lib/services-status'
 import { NotificationCenter } from './notification-center'
 import { CHAT_PATH } from '@/lib/landing'
@@ -43,15 +44,17 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   const tu = useTranslations('openclawUpgrade')
   const guard = useLongRunGuard()
   const queryClient = useQueryClient()
+  const { service } = useBackendCapabilities()
 
   const { data: versionInfo } = useQuery<{ openclawVersion: OpenClawVersionInfo | null }>({
     queryKey: ['openclaw-version'],
+    enabled: service.upgrade,
     queryFn: () => fetch('/api/services').then(r => r.json()),
     refetchInterval: 300000, // check every 5 min
     select: (data) => ({ openclawVersion: data.openclawVersion ?? null }),
   })
 
-  const oc = versionInfo?.openclawVersion
+  const oc = service.upgrade ? versionInfo?.openclawVersion : null
 
   const { data: mccCheck } = useQuery<{ current: string; latest: string; hasUpdate: boolean }>({
     queryKey: ['mcc-upgrade-check'],
@@ -285,7 +288,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
             {updating ? t('updating') : t('updateAvailable', { version: oc.latest })}
           </button>
         )}
-        {ocJobId && (
+        {service.upgrade && ocJobId && (
           <Link
             href={`/system-log?job=${ocJobId}`}
             className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-mono

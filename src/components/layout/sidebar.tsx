@@ -10,27 +10,35 @@ import {
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { GatewayStatusLabel } from './gateway-status-label'
+import { useBackendCapabilities } from './backend-capabilities'
+import { supportsPage } from '@/lib/agent-runtime/capabilities'
 import { navItems } from '@/lib/nav-items'
 
 export function Sidebar() {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const t = useTranslations('nav')
+  const capabilities = useBackendCapabilities()
 
   const { data: versionData } = useQuery<{ openclawVersion: { installed: string } | null }>({
     queryKey: ['openclaw-version'],
+    enabled: capabilities.service.upgrade,
     queryFn: () => fetch('/api/services').then(r => r.json()),
     refetchInterval: 300000,
     select: (data) => ({ openclawVersion: data.openclawVersion ?? null }),
   })
-  const ocVersion = versionData?.openclawVersion?.installed
 
-  const { data: appVersion } = useQuery<{ mccVersion: string; commit: string | null }>({
+  const { data: appVersion } = useQuery({
     queryKey: ['app-version'],
     queryFn: () => fetch('/api/health').then(r => r.json()),
     staleTime: Infinity,
-    select: (data) => ({ mccVersion: data.mccVersion, commit: data.commit ?? null }),
+    select: (data) => ({
+      mccVersion: data.mccVersion as string,
+      commit: data.commit as string | null,
+      backendVersion: data.backend?.version as string | undefined,
+    }),
   })
+  const backendVersion = versionData?.openclawVersion?.installed || appVersion?.backendVersion
   const mccDisplay = appVersion?.mccVersion ? `v${appVersion.mccVersion}` : undefined
 
   return (
@@ -60,9 +68,9 @@ export function Sidebar() {
             <div className="font-mono text-[10px] text-white/30 tracking-widest leading-tight truncate" suppressHydrationWarning>
               {mccDisplay ? `MCC ${mccDisplay}` : 'MCC'}
             </div>
-            {ocVersion && (
+            {backendVersion && (
               <div className="font-mono text-[9px] text-white/20 tracking-widest leading-tight truncate" suppressHydrationWarning>
-                OPENCLAW v{ocVersion}
+                {capabilities.service.name.toUpperCase()} v{backendVersion}
               </div>
             )}
           </div>
@@ -79,7 +87,7 @@ export function Sidebar() {
           </div>
         )}
 
-        {navItems.map((item) => {
+        {navItems.filter((item) => supportsPage(capabilities, item.href)).map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
           return (
             <Link

@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server'
 import { getServicesStatus, getTailscaleStatus, getOpenClawVersionInfo, getOpencliVersionInfo } from '@/lib/services-status'
 
+import { getBackendCapabilities } from '@/lib/agent-runtime/selection'
+
 export async function GET() {
   try {
     const services = await getServicesStatus()
     const tailscale = getTailscaleStatus()
     const [openclawVersion, opencliVersion] = await Promise.all([
-      getOpenClawVersionInfo(),
+      getBackendCapabilities().service.upgrade ? getOpenClawVersionInfo() : null,
       getOpencliVersionInfo(),
     ])
     return NextResponse.json({ services, tailscale, openclawVersion, opencliVersion })

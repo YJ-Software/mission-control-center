@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useTranslations } from 'next-intl'
 import { Send, Square, Paperclip, Mic, MicOff, Plus, Download, AlertCircle, X } from 'lucide-react'
+import { useBackendCapabilities } from '@/components/layout/backend-capabilities'
 import { useSpeechToText } from '@/hooks/use-speech'
 import { useInputHistory } from '@/hooks/use-input-history'
 import type { SlashCommand } from './chat-types'
@@ -41,7 +42,8 @@ export function ChatInput({
   const { push, navigateUp, navigateDown, reset: resetHistory } = useInputHistory()
   const { isRecording, transcript, interimTranscript, startRecording, stopRecording, isSupported: sttSupported } = useSpeechToText()
 
-  const slashCommands = getDefaultSlashCommands((key: string) => tSlash(key))
+  const { modelPicker } = useBackendCapabilities()
+  const slashCommands = getDefaultSlashCommands(tSlash, modelPicker)
 
   // Auto-resize textarea
   useEffect(() => {

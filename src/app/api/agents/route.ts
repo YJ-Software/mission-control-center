@@ -4,6 +4,9 @@ import path from 'path'
 import os from 'os'
 import { gatewayRequest } from '@/lib/gateway-rpc'
 
+import { HERMES_AGENT } from '@/lib/agent-runtime/hermes'
+import { agentRuntimeKind } from '@/lib/agent-runtime/selection'
+
 const roleMap: Record<string, { role: string; group: string; description: string }> = {
   main: { role: '主代理', group: 'operators', description: '主要 AI 助理，處理日常任務和協調工作' },
   'morning-briefing': { role: '晨報代理', group: 'operators', description: '每日自動產生晨報，彙整 AI/科技/市場資訊' },
@@ -76,6 +79,7 @@ function getAgentsViaFilesystem() {
 }
 
 export async function GET() {
+  if (agentRuntimeKind() === 'hermes') return NextResponse.json({ agents: [HERMES_AGENT], source: 'runtime' })
   try {
     const agents = await getAgentsViaRpc()
     return NextResponse.json({ agents, source: 'rpc' })

@@ -7,10 +7,13 @@ import {
   Database, Zap, Globe, Key,
   CheckCircle2, Download, Save
 } from 'lucide-react'
+import Link from 'next/link'
+import { useBackendCapabilities } from '@/components/layout/backend-capabilities'
 import { UpgradeCard } from './upgrade-card'
 
 export function SettingsView() {
   const t = useTranslations('settings')
+  const { openclawSetup } = useBackendCapabilities()
   const { connected } = useWebSocket()
   const [gatewayUrl, setGatewayUrl] = useState('')
   const [token, setToken] = useState('')
@@ -18,6 +21,7 @@ export function SettingsView() {
   const [backingUp, setBackingUp] = useState(false)
 
   useEffect(() => {
+    if (!openclawSetup) return
     fetch('/api/settings/env')
       .then(r => r.json())
       .then(data => {
@@ -25,7 +29,7 @@ export function SettingsView() {
         setToken(data.OPENCLAW_TOKEN || '')
       })
       .catch(() => {})
-  }, [])
+  }, [openclawSetup])
 
   const handleBackup = async () => {
     setBackingUp(true)
@@ -49,7 +53,7 @@ export function SettingsView() {
       <UpgradeCard />
 
       {/* Gateway Settings */}
-      <div className="cyber-card p-5 space-y-4">
+      {openclawSetup && <div className="cyber-card p-5 space-y-4">
         <h3 className="text-sm font-semibold text-white/80 flex items-center gap-2">
           <Zap className="w-4 h-4 text-cyan-400" />
           {t('connectionSettings')}
@@ -94,7 +98,7 @@ export function SettingsView() {
         {gatewaySaved && (
           <p className="font-mono text-[10px] text-yellow-400/70 tracking-wide">{t('restartRequired')}</p>
         )}
-      </div>
+      </div>}
 
       {/* Backup */}
       <div className="cyber-card p-5 space-y-3">
@@ -102,18 +106,20 @@ export function SettingsView() {
           <Database className="w-4 h-4 text-yellow-400" />
           {t('backupSettings')}
         </h3>
-        <p className="font-mono text-xs text-white/35 tracking-wide">
+        {openclawSetup && <p className="font-mono text-xs text-white/35 tracking-wide">
           {t('backupDescription')}
-        </p>
+        </p>}
         <div className="flex gap-2">
-          <button
+          {openclawSetup ? <button
             onClick={handleBackup}
             disabled={backingUp}
             className="bg-cyan-400/10 border border-cyan-400/30 text-cyan-400 hover:bg-cyan-400/20 transition-all rounded-xl px-4 py-2 flex items-center gap-1 text-sm disabled:opacity-40"
           >
             <Download className="w-3.5 h-3.5" />
             {backingUp ? t('backingUp') : t('backupNow')}
-          </button>
+          </button> : (
+            <Link href="/backup" className="text-sm text-cyan-400">{t('backupNow')}</Link>
+          )}
         </div>
       </div>
 

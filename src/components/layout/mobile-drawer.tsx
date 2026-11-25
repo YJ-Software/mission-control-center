@@ -9,6 +9,8 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Bot } from 'lucide-react'
+import { useBackendCapabilities } from './backend-capabilities'
+import { supportsPage } from '@/lib/agent-runtime/capabilities'
 import { navItems } from '@/lib/nav-items'
 import { MobileNavItem } from './mobile-nav-item'
 
@@ -18,6 +20,7 @@ interface MobileDrawerProps {
 }
 
 export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
+  const capabilities = useBackendCapabilities()
   const t = useTranslations('nav')
 
   return (
@@ -53,7 +56,7 @@ export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-          {navItems.map((item) => (
+          {navItems.filter((item) => supportsPage(capabilities, item.href)).map((item) => (
             <MobileNavItem
               key={item.href}
               href={item.href}

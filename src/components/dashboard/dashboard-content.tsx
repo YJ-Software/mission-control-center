@@ -4,6 +4,7 @@ import { useWebSocket } from '@/store/websocket'
 import { useQuery } from '@tanstack/react-query'
 import { Bot } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { useBackendCapabilities } from '@/components/layout/backend-capabilities'
 import { SystemHealth } from './system-health'
 import { CronJobsPanel } from './cron-jobs-panel'
 import { ServicesPanel } from './services-panel'
@@ -22,10 +23,12 @@ function StatusDot({ status }: { status: string }) {
 export function DashboardContent() {
   const t = useTranslations('dashboard')
   const tc = useTranslations('common')
+  const capabilities = useBackendCapabilities()
   const { agentStatuses } = useWebSocket()
 
   const { data: agentsData } = useQuery({
     queryKey: ['agents'],
+    enabled: capabilities.agents,
     queryFn: () => fetch('/api/agents').then(r => r.json()),
     refetchInterval: 30000,
   })
@@ -46,7 +49,7 @@ export function DashboardContent() {
       {/* Services + Tailscale */}
       <ServicesPanel />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div className={capabilities.agents || capabilities.cron ? "grid grid-cols-1 lg:grid-cols-3 gap-5" : undefined}>
         {/* Recent Activity + Daily Spend */}
         <div className="lg:col-span-2 space-y-5">
           <RecentActivity />
@@ -54,9 +57,9 @@ export function DashboardContent() {
         </div>
 
         {/* Right column */}
-        <div className="space-y-4">
+        {(capabilities.agents || capabilities.cron) && <div className="space-y-4">
           {/* Agent status */}
-          <div className="cyber-card animate-slide-in delay-300">
+          {capabilities.agents && <div className="cyber-card animate-slide-in delay-300">
             <div className="p-4 border-b border-white/[0.06] flex items-center gap-2">
               <Bot className="w-4 h-4 text-cyan-400" />
               <span className="text-sm font-semibold text-white/80">{t('agents')}</span>
@@ -90,11 +93,11 @@ export function DashboardContent() {
                 )
               })}
             </div>
-          </div>
+          </div>}
 
           {/* Cron Jobs */}
-          <CronJobsPanel />
-        </div>
+          {capabilities.cron && <CronJobsPanel />}
+        </div>}
       </div>
 
       {/* Quick Actions */}

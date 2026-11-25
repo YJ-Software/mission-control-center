@@ -4,7 +4,7 @@ import { BackupBusyError } from './lock'
 
 /** 會重啟 MCC、gateway 或整台主機的 job：它們執行中不可開始備份或還原 */
 const DISRUPTIVE_KINDS: JobKind[] = [
-  'upgrade-mcc', 'upgrade-mcc-tarball', 'upgrade-openclaw', 'restart-mcc', 'restart-openclaw', 'reboot-host',
+  'upgrade-mcc', 'upgrade-mcc-tarball', 'upgrade-openclaw', 'restart-mcc', 'restart-openclaw', 'restart-hermes', 'reboot-host',
 ]
 
 /**

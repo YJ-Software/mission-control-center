@@ -5,6 +5,7 @@ export type JobKind =
   | 'upgrade-mcc-tarball'
   | 'upgrade-nlm'
   | 'restart-openclaw'
+  | 'restart-hermes'
   | 'restart-mcc'
   | 'restart-tailscale'
   | 'sys-update'

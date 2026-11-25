@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslations } from 'next-intl'
 import { RefreshCw, Brain, Wrench, Maximize2, Minimize2, Timer, ChevronDown } from 'lucide-react'
+import { useBackendCapabilities } from '@/components/layout/backend-capabilities'
 import { useModelsList, type ModelInfo } from '@/hooks/use-models-list'
 import { useWebSocket } from '@/store/websocket'
 
@@ -29,7 +30,8 @@ export function ChatToolbar({
   onRefresh,
 }: ChatToolbarProps) {
   const t = useTranslations('chat.toolbar')
-  const { models } = useModelsList()
+  const { modelPicker } = useBackendCapabilities()
+  const { models } = useModelsList(modelPicker)
   const { sendRpc } = useWebSocket()
   const [selectedModel, setSelectedModel] = useState('')
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false)
@@ -83,7 +85,7 @@ export function ChatToolbar({
   return (
     <div className="flex items-center gap-2 flex-1">
       {/* Model selector — custom dropdown */}
-      <div className="relative" ref={modelDropdownRef}>
+      {modelPicker && <div className="relative" ref={modelDropdownRef}>
         <button
           onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
           className="flex items-center gap-1.5 text-xs text-white/60 hover:text-white/80 border border-white/[0.08] rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-cyan-500/30 max-w-[260px] transition-colors"
@@ -136,7 +138,7 @@ export function ChatToolbar({
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
       <div className="flex-1" />
 

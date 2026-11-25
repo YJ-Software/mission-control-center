@@ -1,3 +1,4 @@
+import { getBackendCapabilities } from '@/lib/agent-runtime/selection'
 import { NextResponse } from 'next/server'
 import { isUpdateAvailable } from '@/lib/version-compare'
 import { readInstalledOpenclawVersion } from '@/lib/openclaw/installed-version'
@@ -34,6 +35,9 @@ async function readLatestVersion(): Promise<{ version: string; publishedAt: stri
 }
 
 export async function GET() {
+  if (!getBackendCapabilities().service.upgrade) {
+    return NextResponse.json({ error: '此後端不支援' }, { status: 400 })
+  }
   try {
     const current = await readInstalledOpenclawVersion()
     if (!current) {

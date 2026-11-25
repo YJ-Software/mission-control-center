@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { fetchManifest, getConfiguredManifestUrl, pickArtifact } from '@/lib/upgrade/manager'
 import { getVersionInfo, parseMccVersion } from '@/lib/version'
 import { isUpdateAvailable } from '@/lib/version-compare'
-import { agentRuntimeKind } from '@/lib/agent-runtime'
+import { agentRuntimeKind } from '@/lib/agent-runtime/selection'
+import { getHermesVersion } from '@/lib/agent-runtime/hermes-host'
 import { readInstalledOpenclawVersion } from '@/lib/openclaw/installed-version'
 import { validatedOf, validationStatus, type Backend, type ValidationStatus } from '@/lib/release-validation'
 
@@ -36,12 +37,10 @@ export async function GET(request: Request) {
     // this when hasUpdate is true, and computing it means spawning
     // `openclaw --version`, which the header would otherwise do on every
     // 5-minute poll even with nothing new to install.
-    // Hermes has no local version reader until the native-install recon (P4),
-    // so it reports 'unknown' rather than guessing.
-    const backend: Backend = agentRuntimeKind() === 'hermes' ? 'hermes' : 'openclaw'
+    const backend: Backend = agentRuntimeKind()
     let validation: { backend: Backend; localVersion: string | null; validated: string[] | null; status: ValidationStatus } | null = null
     if (hasUpdate) {
-      const localVersion = backend === 'openclaw' ? await readInstalledOpenclawVersion() : null
+      const localVersion = backend === 'openclaw' ? await readInstalledOpenclawVersion() : await getHermesVersion()
       const validatedAll = validatedOf(manifest.latest)
       validation = {
         backend,

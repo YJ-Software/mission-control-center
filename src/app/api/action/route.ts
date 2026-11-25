@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { exec } from 'child_process'
+import { getBackendCapabilities } from '@/lib/agent-runtime/selection'
+import { hermesService, waitForHermesHealth } from '@/lib/agent-runtime/hermes-host'
 import { jobShellPath, startJob } from '@/lib/jobs/runner'
 import type { TriggerSource } from '@/lib/jobs/types'
 import { isBackupOrRestoreBusy } from '@/lib/backup/lock'
@@ -10,7 +12,7 @@ import { checkRestartGate, parseForce, waitForInstallsPhase } from '@/lib/restar
 import { tightenOpenclawTempRoots } from '@/lib/openclaw/temp-root-perms'
 
 /** 備份/還原進行中，這些動作會把它打斷（還原中途被重啟可能留下搬到一半的資料） */
-const BLOCKED_DURING_BACKUP = new Set(['restart-dashboard', 'restart-openclaw', 'update-mcc', 'update-openclaw', 'reboot-system'])
+const BLOCKED_DURING_BACKUP = new Set(['restart-dashboard', 'restart-openclaw', 'restart-hermes', 'update-mcc', 'update-openclaw', 'reboot-system'])
 
 /**
  * 會重啟 MCC 自己（或整台主機）的動作：MCC unit 是 KillMode=control-group，重啟會連同 apt/dpkg 等
@@ -138,6 +140,29 @@ async function updateOpenclaw({ triggeredBy, force }: { triggeredBy: TriggerSour
 
 // All action keys are validated against this allowlist — no arbitrary command execution
 const actions: Record<string, ActionHandler> = {
+  'restart-hermes': async ({ triggeredBy }) => {
+    const meta = startJob({
+      kind: 'restart-hermes',
+      label: 'Restart Hermes gateway',
+      triggeredBy,
+      phases: [
+        {
+          name: 'restart Hermes user service',
+          inline: async () => { await hermesService('restart'); return 0 },
+        },
+        {
+          name: 'wait for Hermes HTTP readiness',
+          inline: async (log) => {
+            await waitForHermesHealth()
+            log('system', 'Hermes HTTP is ready')
+            return 0
+          },
+        },
+      ],
+    })
+    return { success: true, jobId: meta.id, message: 'Restart job started' }
+  },
+
   'restart-openclaw': async ({ triggeredBy }) => {
     const { restartGatewayPhase } = await import('@/lib/openclaw/update-memory-guard')
     const meta = startJob({
@@ -388,6 +413,13 @@ export async function POST(req: NextRequest) {
 
     if (!actions[action]) {
       return NextResponse.json({ success: false, error: 'Unknown action' }, { status: 400 })
+    }
+
+    const { service } = getBackendCapabilities()
+    const wrongRestart = (action === 'restart-hermes' || action === 'restart-openclaw') && action !== service.restartAction
+    const unsupportedUpgrade = (action === 'update-openclaw' || action === 'check-update') && !service.upgrade
+    if (wrongRestart || unsupportedUpgrade) {
+      return NextResponse.json({ success: false, error: '此後端不支援' }, { status: 400 })
     }
 
     if (BLOCKED_DURING_BACKUP.has(action) && isBackupOrRestoreBusy()) {

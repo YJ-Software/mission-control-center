@@ -3,6 +3,9 @@ import { getServerEnv } from '@/lib/server-env'
 import { readInstalledOpenclawVersion } from '@/lib/openclaw/installed-version'
 import { parseCliVersion, isUpdateAvailable } from '@/lib/version-compare'
 
+import { getHermesVersion, hermesServiceActive } from '@/lib/agent-runtime/hermes-host'
+import { getBackendCapabilities } from '@/lib/agent-runtime/selection'
+
 const env = getServerEnv()
 
 function runQuiet(cmd: string, args: string[]): string {
@@ -17,6 +20,7 @@ export interface ServiceInfo {
   name: string
   active: boolean | null
   version?: string
+  restartAction?: 'restart-hermes'
 }
 
 function isSystemdActive(unit: string): boolean {
@@ -93,7 +97,9 @@ function isBinaryInstalled(bin: string): boolean {
  * Services with `onlyIfInstalled` are skipped if the binary is not found.
  */
 export async function getServicesStatus(): Promise<ServiceInfo[]> {
-  return Promise.all(SERVICE_DETECTORS
+  const { service } = getBackendCapabilities()
+  const services = Promise.all(SERVICE_DETECTORS
+    .filter(det => det.name !== 'openclaw' || service.upgrade)
     .filter(det => !det.onlyIfInstalled || isBinaryInstalled(det.onlyIfInstalled))
     .map(async det => {
       const active = det.systemd.some(isSystemdActive) || det.processes.some(hasProcess)
@@ -109,6 +115,10 @@ export async function getServicesStatus(): Promise<ServiceInfo[]> {
       }
       return { name: det.name, active, version }
     }))
+  if (service.restartAction !== 'restart-hermes') return services
+
+  const [active, version, others] = await Promise.all([hermesServiceActive(), getHermesVersion(), services])
+  return [{ name: service.userUnit, active, version: version ?? undefined, restartAction: service.restartAction }, ...others]
 }
 
 export interface OpenClawVersionInfo {

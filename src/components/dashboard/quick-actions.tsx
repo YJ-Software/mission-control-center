@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { Zap } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { useBackendCapabilities } from '@/components/layout/backend-capabilities'
 import { NODE_BLOCK_MESSAGE_KEY, isNodePreflightBlockDetails, nodeBlockMessageValues } from '@/lib/openclaw/node-preflight-message'
 import { MEMORY_BLOCK_MESSAGE_KEY, isMemoryPreflightBlockDetails, memoryBlockMessageValues } from '@/lib/openclaw/memory-preflight-message'
 import { useLongRunGuard } from '@/hooks/use-long-run-guard'
@@ -29,6 +30,7 @@ const actionDefs: ActionDef[] = [
 
 export function QuickActions() {
   const t = useTranslations('quickActions')
+  const { service } = useBackendCapabilities()
   const tn = useTranslations('openclawNodePreflight')
   const tm = useTranslations('openclawMemoryPreflight')
   const tu = useTranslations('openclawUpgrade')
@@ -101,7 +103,7 @@ export function QuickActions() {
       </div>
       <div className="p-4">
         <div className="grid grid-cols-2 gap-2.5">
-          {actionDefs.map(action => {
+          {actionDefs.filter(action => service.upgrade || !['restart-openclaw', 'update-openclaw', 'check-update'].includes(action.id)).map(action => {
             const isLoading = loading[action.id]
             return (
               <button

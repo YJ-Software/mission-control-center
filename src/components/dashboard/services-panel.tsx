@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
-import { Server, Globe, ArrowUpCircle, Loader2 } from 'lucide-react'
+import { Server, Globe, ArrowUpCircle, Loader2, RefreshCw } from 'lucide-react'
 import type { ServiceInfo, TailscaleInfo, OpencliVersionInfo } from '@/lib/services-status'
 
 function ServiceDot({ active }: { active: boolean | null }) {
@@ -34,6 +34,23 @@ export function ServicesPanel() {
   const services = data?.services ?? []
   const ts = data?.tailscale
   const opencli = data?.opencliVersion
+
+  const restartBackend = useMutation({
+    mutationFn: async (action: NonNullable<ServiceInfo['restartAction']>) => {
+      const res = await fetch('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, triggeredBy: 'quick-action' }),
+      })
+      const body = await res.json()
+      if (!res.ok || !body.jobId) throw new Error(body.error ?? '無法啟動重啟工作')
+      return String(body.jobId)
+    },
+    onSuccess: (jobId) => {
+      void queryClient.invalidateQueries({ queryKey: ['services-status'] })
+      router.push(`/system-log?job=${jobId}`)
+    },
+  })
 
   // Upgrade opencli via the shared job runner, then follow it in /system-log.
   const upgradeOpencli = useMutation({
@@ -92,9 +109,20 @@ export function ServicesPanel() {
                   )}
                 </div>
                 <StatusText active={svc.active} />
+                {svc.restartAction && svc.active !== null && (
+                  <button
+                    onClick={() => restartBackend.mutate(svc.restartAction!)}
+                    disabled={restartBackend.isPending}
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-cyan-300 hover:bg-cyan-500/15 disabled:opacity-40"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    {t('restartService')}
+                  </button>
+                )}
               </div>
             ))
           )}
+          {restartBackend.error && <p role="alert" className="text-xs text-red-300">{restartBackend.error.message}</p>}
         </div>
       </div>
 

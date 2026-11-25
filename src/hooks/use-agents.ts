@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 interface Agent {
   id: string
   name: string
+  defaultSessionKey?: string
   role?: string
   description?: string
   [key: string]: unknown

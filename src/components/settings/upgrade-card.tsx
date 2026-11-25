@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Download, Loader2, CheckCircle2, AlertCircle, ArrowUpCircle, Package, Settings, Save, Terminal, Copy, Check, ScrollText } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useLongRunGuard } from '@/hooks/use-long-run-guard'
+import { useBackendCapabilities } from '@/components/layout/backend-capabilities'
 import { NODE_BLOCK_MESSAGE_KEY, isNodePreflightBlockDetails, nodeBlockMessageValues } from '@/lib/openclaw/node-preflight-message'
 import { MEMORY_BLOCK_MESSAGE_KEY, isMemoryPreflightBlockDetails, memoryBlockMessageValues } from '@/lib/openclaw/memory-preflight-message'
 
@@ -87,6 +88,7 @@ export function UpgradeCard() {
   const [phase, setPhase] = useState<Phase>('idle')
   const [message, setMessage] = useState<string>('')
   const guard = useLongRunGuard()
+  const { service } = useBackendCapabilities()
   const tn = useTranslations('openclawNodePreflight')
   const tm = useTranslations('openclawMemoryPreflight')
   const tu = useTranslations('openclawUpgrade')
@@ -124,8 +126,8 @@ export function UpgradeCard() {
   }, [])
 
   useEffect(() => {
-    loadOpenclawCheck()
-  }, [loadOpenclawCheck])
+    if (service.upgrade) void loadOpenclawCheck()
+  }, [loadOpenclawCheck, service.upgrade])
 
   const copyOpenclawCommand = () => {
     if (!openclaw) return
@@ -461,7 +463,7 @@ export function UpgradeCard() {
       )}
 
       {/* OpenClaw upgrade check (detection only — no one-click) */}
-      <div className="pt-3 border-t border-white/[0.05] space-y-2">
+      {service.upgrade && <div className="pt-3 border-t border-white/[0.05] space-y-2">
         <div className="flex items-center gap-2">
           <Terminal className="w-3.5 h-3.5 text-purple-400/70" />
           <span className="text-sm text-white/80 font-medium">OpenClaw CLI</span>
@@ -581,7 +583,7 @@ export function UpgradeCard() {
             OpenClaw is up to date (v{openclaw.current}).
           </p>
         )}
-      </div>
+      </div>}
 
       {/* Phase indicator */}
       {phase !== 'idle' && (

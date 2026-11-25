@@ -162,6 +162,8 @@ export function ChatContent() {
   const activeAgentName = useMemo(() => {
     if (activeSession?.agentName) return activeSession.agentName
     if (!activeSessionKey) return undefined
+    const defaultAgent = agents?.find((agent) => agent.defaultSessionKey === activeSessionKey)
+    if (defaultAgent) return defaultAgent.name
     const match = activeSessionKey.match(/^agent:([^:]+):/)
     if (match && agents) {
       const agent = agents.find(a => a.id === match[1])
@@ -191,7 +193,7 @@ export function ChatContent() {
     if (activeSessionKey) return
     if (!agents?.length) return
     const mainAgent = agents.find(a => a.id === 'main') || agents[0]
-    setActiveSessionKey(`agent:${mainAgent.id}:main`)
+    setActiveSessionKey(mainAgent.defaultSessionKey ?? `agent:${mainAgent.id}:main`)
   }, [activeSessionKey, agents])
 
   // Persist session selection
