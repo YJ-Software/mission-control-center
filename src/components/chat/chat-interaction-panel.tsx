@@ -84,7 +84,7 @@ export function ChatInteractionPanel({ sessionKey }: { sessionKey: string | null
     <div className="mx-auto w-full max-w-[960px] xl:max-w-[1100px] 2xl:max-w-[1280px] px-2 pt-2">
       <div
         data-testid="chat-interaction-panel"
-        className="rounded-lg border border-cyan-400/30 bg-[#0d1520] shadow-lg"
+        className="relative z-[51] rounded-lg border border-cyan-400/30 bg-[#0d1520] shadow-lg"
       >
         {interactions.length > 1 && (
           <div className="px-4 pt-2 text-[11px] text-white/40">

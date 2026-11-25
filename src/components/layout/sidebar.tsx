@@ -13,6 +13,7 @@ import { GatewayStatusLabel } from './gateway-status-label'
 import { useBackendCapabilities } from './backend-capabilities'
 import { supportsPage } from '@/lib/agent-runtime/capabilities'
 import { navItems } from '@/lib/nav-items'
+import { useAppVersion } from '@/hooks/use-app-version'
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -28,16 +29,7 @@ export function Sidebar() {
     select: (data) => ({ openclawVersion: data.openclawVersion ?? null }),
   })
 
-  const { data: appVersion } = useQuery({
-    queryKey: ['app-version'],
-    queryFn: () => fetch('/api/health').then(r => r.json()),
-    staleTime: Infinity,
-    select: (data) => ({
-      mccVersion: data.mccVersion as string,
-      commit: data.commit as string | null,
-      backendVersion: data.backend?.version as string | undefined,
-    }),
-  })
+  const { data: appVersion } = useAppVersion()
   const backendVersion = versionData?.openclawVersion?.installed || appVersion?.backendVersion
   const mccDisplay = appVersion?.mccVersion ? `v${appVersion.mccVersion}` : undefined
 

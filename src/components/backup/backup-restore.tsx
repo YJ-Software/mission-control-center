@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { restoreAction, systemLogJobUrl } from '@/lib/backup/ui-helpers'
 import type { BackupKind } from '@/lib/backup/archive-format'
 import { useLongRunGuard } from '@/hooks/use-long-run-guard'
+import { useBackendCapabilities } from '@/components/layout/backend-capabilities'
 
 interface BackupFile {
   filename: string
@@ -36,6 +37,7 @@ type ModalState =
 
 export function BackupRestore() {
   const t = useTranslations('backup')
+  const { backupTarget } = useBackendCapabilities()
   const guard = useLongRunGuard()
   const locale = useLocale()
   const queryClient = useQueryClient()
@@ -334,7 +336,7 @@ export function BackupRestore() {
                 {/* Warning banner */}
                 <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-xs mb-4">
                   <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{t('restore.restoreWarning')}</span>
+                  <span>{t(backupTarget === 'hermes' ? 'restore.restoreWarningHermes' : 'restore.restoreWarning')}</span>
                 </div>
 
                 {modal.kind && (

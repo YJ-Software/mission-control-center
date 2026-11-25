@@ -118,7 +118,7 @@
     "costEstimated": "依公開 API 牌價估算",
     "costApproximateDaily": "每日分布為近似值（後端僅提供整段工作階段總量）",
     "title": "任務管制中心",
-    "subtitle": "OpenClaw Mission Control",
+    "subtitle": "{backend} Mission Control",
     "activeTasks": "進行中任務",
     "contentPipeline": "內容管線",
     "upcomingEvents": "即將到來的活動",
@@ -1754,7 +1754,7 @@
   },
   "backup": {
     "title": "備份管理",
-    "subtitle": "管理 OpenClaw 備份、排程與還原點",
+    "subtitle": "管理 {backend} 備份、排程與還原點",
     "tabs": {
       "dashboard": "總覽",
       "destinations": "備份目的",
@@ -1897,6 +1897,7 @@
       "dryRun": "預覽還原",
       "confirmRestore": "確認還原",
       "restoreWarning": "此操作將覆蓋目前的 OpenClaw 資料。系統會自動建立還原前備份。",
+      "restoreWarningHermes": "此操作將覆蓋目前的 Hermes 資料與 MCC 資料庫。",
       "deleteConfirm": "確定要刪除此備份檔案嗎？",
       "noBackups": "找不到備份檔案",
       "kindLabel": "備份類型",

@@ -118,7 +118,7 @@
     "costEstimated": "Estimated from public API list prices",
     "costApproximateDaily": "Daily split is approximate (backend reports session totals only)",
     "title": "Mission Control",
-    "subtitle": "OpenClaw Mission Control",
+    "subtitle": "{backend} Mission Control",
     "activeTasks": "Active Tasks",
     "contentPipeline": "Content Pipeline",
     "upcomingEvents": "Upcoming Events",
@@ -1754,7 +1754,7 @@
   },
   "backup": {
     "title": "Backup Manager",
-    "subtitle": "Manage OpenClaw backups, schedules, and restore points",
+    "subtitle": "Manage {backend} backups, schedules, and restore points",
     "tabs": {
       "dashboard": "Dashboard",
       "destinations": "Destinations",
@@ -1897,6 +1897,7 @@
       "dryRun": "Preview Restore",
       "confirmRestore": "Confirm Restore",
       "restoreWarning": "This will overwrite current OpenClaw data. A pre-restore backup will be created automatically.",
+      "restoreWarningHermes": "This will overwrite current Hermes data and the MCC database.",
       "deleteConfirm": "Are you sure you want to delete this backup?",
       "noBackups": "No backup files found",
       "kindLabel": "Backup type",

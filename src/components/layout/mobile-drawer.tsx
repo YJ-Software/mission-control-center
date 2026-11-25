@@ -13,6 +13,7 @@ import { useBackendCapabilities } from './backend-capabilities'
 import { supportsPage } from '@/lib/agent-runtime/capabilities'
 import { navItems } from '@/lib/nav-items'
 import { MobileNavItem } from './mobile-nav-item'
+import { useAppVersion } from '@/hooks/use-app-version'
 
 interface MobileDrawerProps {
   open: boolean
@@ -21,6 +22,10 @@ interface MobileDrawerProps {
 
 export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
   const capabilities = useBackendCapabilities()
+  const { data: appVersion } = useAppVersion()
+  const backendLabel = capabilities.backupTarget === 'hermes'
+    ? `HERMES${appVersion?.backendVersion ? ` v${appVersion.backendVersion}` : ''}`
+    : 'OPENCLAW v2.0'
   const t = useTranslations('nav')
 
   return (
@@ -48,7 +53,7 @@ export function MobileDrawer({ open, onOpenChange }: MobileDrawerProps) {
                 Mission Ctrl
               </SheetTitle>
               <div className="font-mono text-[10px] text-white/30 tracking-widest">
-                OPENCLAW v2.0
+                {backendLabel}
               </div>
             </div>
           </div>
