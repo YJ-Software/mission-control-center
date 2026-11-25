@@ -9,6 +9,7 @@
  * when the gateway connection is unavailable.
  */
 
+import { getBackendCapabilities, unsupportedGatewayRpc } from '@/lib/agent-runtime/selection'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
@@ -217,6 +218,7 @@ export async function cronList(opts: {
      */
     allowFileFallback?: boolean
 } = {}): Promise<CronJobInfo[]> {
+    if (!getBackendCapabilities().cron) return unsupportedGatewayRpc()
     let jobs: any[]
     try {
         const result = await gatewayRpc('cron.list', {

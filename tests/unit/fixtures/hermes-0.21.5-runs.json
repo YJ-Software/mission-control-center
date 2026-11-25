@@ -1,0 +1,68 @@
+{
+  "submitted": {
+    "run_id": "fixture-run",
+    "status": "started",
+    "replayed": false
+  },
+  "replay": {
+    "status": 202,
+    "replayed": true
+  },
+  "streamReopenStatus": 404,
+  "waiting": {
+    "status": "waiting_for_approval"
+  },
+  "approvalRequest": {
+    "event": "approval.request",
+    "request_id": "fixture-approval",
+    "run_id": "fixture-run",
+    "timestamp": 1795636729.7349193,
+    "allow_permanent": true,
+    "allow_session": true,
+    "choices": [
+      "once",
+      "session",
+      "always",
+      "deny"
+    ],
+    "command": "echo fixture",
+    "description": "Fixture approval",
+    "pattern_key": "fixture-rule",
+    "pattern_keys": [
+      "fixture-rule"
+    ]
+  },
+  "approvalResponse": {
+    "choice": "deny",
+    "object": "hermes.run.approval_response",
+    "resolved": 1
+  },
+  "approvalInactive": {
+    "status": 409,
+    "body": {
+      "error": {
+        "code": "approval_not_active"
+      }
+    }
+  },
+  "toolStart": {
+    "event": "tool.started",
+    "run_id": "fixture-run",
+    "tool": "terminal",
+    "preview": "echo fixture",
+    "timestamp": 1795636729.7349193
+  },
+  "toolComplete": {
+    "event": "tool.completed",
+    "run_id": "fixture-run",
+    "tool": "terminal",
+    "error": false,
+    "timestamp": 1795636730.7349193
+  },
+  "terminal": {
+    "event": "run.completed",
+    "run_id": "fixture-run",
+    "output": "Fixture output",
+    "timestamp": 1795636731.7349193
+  }
+}

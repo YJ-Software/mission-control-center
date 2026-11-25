@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { HermesRuntime } from '@/lib/agent-runtime/hermes'
 import { priceModelUsage } from '@/lib/usage-pricing'
+import native from './fixtures/hermes-0.21.5-reads.json'
 
 /**
  * Pins the Hermes adapter's contract. The behaviours below are the ones that
@@ -239,5 +240,86 @@ describe('HermesRuntime timestamp normalization', () => {
 
     expect(job.lastRunAt).toBeUndefined()
     expect(job.nextRunAt).toBeUndefined()
+  })
+})
+
+describe('native Hermes 0.21.5 read pagination and timestamps', () => {
+  it('counts a second page of usage, deduplicating pinned sessions by ID', async () => {
+    const [first] = native.sessions.data
+    const initial = Array.from({ length: 200 }, (_, i) => ({ ...first, id: `fixture-${i}` }))
+    const last = { ...first, id: 'fixture-last' }
+    const fetchMock = mockFetch({
+      '/api/sessions?limit=200&offset=0': { ...native.sessions, data: initial, has_more: true },
+      '/api/sessions?limit=200&offset=200': { ...native.sessions, data: [initial[0], last], offset: 200 },
+    })
+    const report = await runtime().getUsage(RANGE)
+    expect(report.sessions).toHaveLength(201)
+    expect(new Set(report.sessions!.map(({ key }) => key)).size).toBe(201)
+    expect(report.sessions!.at(-1)?.key).toBe(last.id)
+    expect(report.aggregates?.byModel?.[0].totals.input).toBe(first.input_tokens * 201)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('asks Hermes for a small latest page and preserves tool result IDs', async () => {
+    const request = mockFetch({
+      '/api/sessions/fixture-session/messages?order=latest&limit=2&offset=0': native.historyLatest,
+    })
+    const history = await runtime().getHistory('fixture-session', { limit: 2 })
+    expect(history.map(({ role }) => role)).toEqual(['tool', 'assistant'])
+    expect(history[0]).toMatchObject({ toolCallId: 'fixture-call', timestamp: 1_795_636_729_735 })
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
+  it('prepends older latest pages in chronological order for limits above 500', async () => {
+    const latest = Array.from({ length: 500 }, (_, i) => ({
+      ...native.historyLatest.data[1], content: `message-${i + 2}`,
+    }))
+    const older = native.historyLatest.data.map((row, i) => ({ ...row, content: `message-${i}` }))
+    const request = mockFetch({
+      '/api/sessions/fixture-session/messages?order=latest&limit=500&offset=0': {
+        ...native.historyLatest,
+        data: latest,
+        pagination: { ...native.historyDefaultPagination, returned: latest.length },
+      },
+      '/api/sessions/fixture-session/messages?order=latest&limit=2&offset=500': {
+        ...native.historyLatest,
+        data: older,
+        pagination: { ...native.historyLatest.pagination, offset: 500 },
+      },
+    })
+    const history = await runtime().getHistory('fixture-session', { limit: 502 })
+    expect(history.map(({ content }) => content)).toEqual(Array.from({ length: 502 }, (_, i) => `message-${i}`))
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+
+  it('passes include_disabled, parses ISO cron timestamps, and honors the limit', async () => {
+    const [active, paused] = native.jobs.jobs
+    const request = mockFetch({
+      '/api/jobs?include_disabled=true': { jobs: [paused, active] },
+      '/api/jobs': native.jobs,
+    })
+    const [job] = await runtime().listCronJobs()
+    expect(job).toMatchObject({
+      id: active.id,
+      schedule: active.schedule_display,
+      lastRunAt: Date.parse(active.last_run_at!),
+      nextRunAt: Date.parse(active.next_run_at),
+    })
+    await expect(runtime().listCronJobs()).resolves.toHaveLength(1)
+    const includeDisabled = await runtime().listCronJobs({ includeDisabled: true, limit: 1 })
+    expect(includeDisabled).toEqual([expect.objectContaining({ id: paused.id, enabled: false, lastRunAt: undefined })])
+    expect(request.mock.calls.at(-1)?.[0]).toBe(BASE + '/api/jobs?include_disabled=true')
+  })
+
+  it('keeps an agent identity shared by sessions and chat when the model alias changes', async () => {
+    const request = mockFetch({
+      '/v1/models': { data: [{ id: 'configured-route-alias' }] },
+      '/api/sessions': native.sessions,
+    })
+    const [agent] = await runtime().listAgents()
+    const [row] = await runtime().listSessions()
+    expect(agent.id).toBe('hermes-agent')
+    expect(row.agentId).toBe(agent.id)
+    expect(request.mock.calls.map(([url]) => url)).not.toContain(BASE + '/v1/models')
   })
 })

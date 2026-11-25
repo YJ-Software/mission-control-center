@@ -28,6 +28,8 @@ export interface RuntimeAgent {
   id: string
   name?: string
   status?: string
+  /** Default chat session when the runtime supplies an opaque key. */
+  defaultSessionKey?: string
 }
 
 /**

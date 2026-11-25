@@ -1,0 +1,88 @@
+{
+  "health": {
+    "platform": "hermes-agent",
+    "status": "ok",
+    "version": "0.21.5"
+  },
+  "detailedHealth": {
+    "platform": "hermes-agent",
+    "status": "ok",
+    "version": "0.21.5"
+  },
+  "sessions": {
+    "object": "list",
+    "data": [
+      {
+        "source": "api_server",
+        "started_at": 1795636729.7967036,
+        "last_active": 1795636743.0,
+        "message_count": 6,
+        "input_tokens": 41521,
+        "output_tokens": 120,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+        "estimated_cost_usd": 0.0,
+        "actual_cost_usd": null,
+        "reasoning_tokens": 0,
+        "id": "fixture-session",
+        "model": "fixture-model",
+        "title": "Fixture session"
+      }
+    ],
+    "limit": 200,
+    "offset": 0,
+    "has_more": false
+  },
+  "historyLatest": {
+    "object": "list",
+    "session_id": "fixture-session",
+    "data": [
+      {
+        "role": "tool",
+        "content": "{\"exit_code\":0}",
+        "timestamp": 1795636729.7349193,
+        "tool_call_id": "fixture-call",
+        "tool_name": "terminal"
+      },
+      {
+        "role": "assistant",
+        "content": "Fixture message",
+        "timestamp": 1795636730.7349193
+      }
+    ],
+    "pagination": {
+      "limit": 2,
+      "offset": 0,
+      "order": "latest",
+      "returned": 2
+    }
+  },
+  "historyDefaultPagination": {
+    "limit": 500,
+    "offset": 0,
+    "order": "latest",
+    "returned": 6
+  },
+  "jobs": {
+    "jobs": [
+      {
+        "enabled": true,
+        "schedule_display": "0 0 1 1 *",
+        "last_status": "ok",
+        "last_run_at": "2026-11-26T04:05:20.499581+08:00",
+        "next_run_at": "2027-01-01T00:00:00+08:00",
+        "id": "fixture-active-job",
+        "name": "Fixture job"
+      },
+      {
+        "enabled": false,
+        "schedule_display": "0 0 1 1 *",
+        "last_status": null,
+        "last_run_at": null,
+        "next_run_at": "2026-11-26T04:02:34.993107+08:00",
+        "id": "fixture-paused-job",
+        "name": "Fixture paused job"
+      }
+    ]
+  }
+}

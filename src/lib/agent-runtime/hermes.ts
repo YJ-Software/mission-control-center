@@ -1,17 +1,4 @@
-/**
- * Hermes Agent backend for {@link AgentRuntime}.
- *
- * Measured against `nousresearch/hermes-agent:v2026.9.14` on 2026-09-16, not
- * read off its docs — which disagree with the implementation in several places
- * (`API_SERVER_ENABLED` is a no-op, `skills_api: true` but `/v1/skills` 500s,
- * the stream emits `message.delta` where the docs say `assistant.delta`).
- *
- * Gaps this backend cannot fill, handled explicitly below:
- * - No agents concept        -> one synthetic agent from /health + /v1/models.
- * - No usage aggregate API   -> bucketed here from per-session token counts.
- * - No per-job run history   -> getCronRuns returns null (≠ empty).
- * - No cost figures          -> missingCostEntries forces list-price estimation.
- */
+/** Normalize the native Hermes API to the dashboard read contract. */
 
 import type {
   AgentRuntime,
@@ -53,10 +40,10 @@ interface HermesJob {
   enabled?: boolean
   schedule?: { kind?: string; expr?: string; display?: string }
   schedule_display?: string
-  last_status?: string
-  last_run_at?: number
-  next_run_at?: number
-  last_error?: string
+  last_status?: string | null
+  last_run_at?: string | number | null
+  next_run_at?: string | number | null
+  last_error?: string | null
 }
 
 export interface HermesRuntimeOptions {
@@ -75,6 +62,8 @@ export interface HermesRuntimeOptions {
 
 const DEFAULT_TIMEOUT_MS = 15_000
 const DEFAULT_SESSION_LIMIT = 200
+const MAX_HISTORY_PAGE = 500
+export const HERMES_AGENT = { id: 'hermes-agent', name: 'Hermes', defaultSessionKey: 'mcc-main' } as const
 
 /**
  * Hermes timestamps are epoch SECONDS; every MCC consumer (`dateKey`,
@@ -84,6 +73,11 @@ const DEFAULT_SESSION_LIMIT = 200
  */
 function toMs(secs: number | null | undefined): number | undefined {
   return secs == null ? undefined : Math.round(secs * 1000)
+}
+
+function jobTime(value: string | number | null | undefined): number | undefined {
+  const ms = typeof value === 'string' ? Date.parse(value) : toMs(value)
+  return ms !== undefined && Number.isFinite(ms) ? ms : undefined
 }
 
 function dayKey(ms: number, timeZone: string): string {
@@ -180,29 +174,35 @@ export class HermesRuntime implements AgentRuntime {
     return (await res.json()) as T
   }
 
-  /** Hermes has no agents; present the server itself as one so the UI has a row. */
+  /** Hermes has no agents; the synthetic dashboard identity is independent of model routing. */
   async listAgents(): Promise<RuntimeAgent[]> {
-    const health = await this.get<{ status?: string; platform?: string }>('/health')
-    let id = 'hermes-agent'
-    try {
-      const models = await this.get<{ data?: Array<{ id?: string }> }>('/v1/models')
-      id = models.data?.[0]?.id || id
-    } catch {
-      // The model list is decoration here; health already proved the backend is up.
-    }
-    return [{ id, name: health.platform || 'hermes', status: health.status }]
+    return [HERMES_AGENT]
   }
 
   private async fetchSessions(limit: number): Promise<HermesSession[]> {
-    const res = await this.get<{ data?: HermesSession[] }>(`/api/sessions?limit=${limit}`)
-    return res.data ?? []
+    const rows = new Map<string, HermesSession>()
+    const pageSize = Math.min(limit, DEFAULT_SESSION_LIMIT)
+    let offset = 0
+    while (rows.size < limit) {
+      const page = await this.get<{ data?: HermesSession[]; has_more?: boolean; offset?: number; limit?: number }>(
+        `/api/sessions?limit=${pageSize}&offset=${offset}`,
+      )
+      const data = page.data ?? []
+      for (const session of data) {
+        if (!rows.has(session.id)) rows.set(session.id, session)
+      }
+      const nextOffset = (page.offset ?? offset) + (page.limit ?? pageSize)
+      if (!page.has_more || !data.length || nextOffset <= offset) break
+      offset = nextOffset
+    }
+    return [...rows.values()].slice(0, limit)
   }
 
   async listSessions(opts?: { limit?: number }): Promise<RuntimeSessionRow[]> {
     const rows = await this.fetchSessions(opts?.limit ?? DEFAULT_SESSION_LIMIT)
     return rows.map((s) => ({
       key: s.id,
-      agentId: 'hermes-agent',
+      agentId: HERMES_AGENT.id,
       // `title` is null until Hermes derives one; leave it unset so the caller's
       // own fallback chain runs instead of showing an empty label.
       label: s.title || undefined,
@@ -217,12 +217,22 @@ export class HermesRuntime implements AgentRuntime {
   }
 
   async getHistory(sessionKey: string, opts?: { limit?: number }): Promise<RuntimeMessage[]> {
-    const res = await this.get<{ data?: HermesMessage[] }>(
-      `/api/sessions/${encodeURIComponent(sessionKey)}/messages`,
-    )
-    const msgs = (res.data ?? []).map((m) => normalizeMessage(m))
-    const limit = opts?.limit
-    return limit && msgs.length > limit ? msgs.slice(-limit) : msgs
+    let remaining = opts?.limit ?? MAX_HISTORY_PAGE
+    let offset = 0
+    const pages: HermesMessage[][] = []
+    while (remaining > 0) {
+      const limit = Math.min(remaining, MAX_HISTORY_PAGE)
+      const page = await this.get<{ data?: HermesMessage[] }>(
+        `/api/sessions/${encodeURIComponent(sessionKey)}/messages?order=latest&limit=${limit}&offset=${offset}`,
+      )
+      const data = (page.data ?? []).slice(-limit)
+      pages.push(data)
+      if (data.length < limit) break
+      offset += data.length
+      remaining -= data.length
+    }
+    // Native pages count offsets from the newest row and return each page in chronological order.
+    return pages.reverse().flat().map(normalizeMessage)
   }
 
   /**
@@ -281,18 +291,22 @@ export class HermesRuntime implements AgentRuntime {
   }
 
   /** Throws on failure — see the contract note on AgentRuntime.listCronJobs. */
-  async listCronJobs(): Promise<RuntimeCronJob[]> {
-    const res = await this.get<{ jobs?: HermesJob[] }>('/api/jobs')
-    return (res.jobs ?? []).map((j) => ({
-      id: j.id,
-      name: j.name || j.id,
-      enabled: j.enabled !== false,
-      schedule: j.schedule?.display || j.schedule?.expr || j.schedule_display,
-      lastStatus: j.last_status,
-      lastRunAt: toMs(j.last_run_at),
-      nextRunAt: toMs(j.next_run_at),
-      lastError: j.last_error,
-    }))
+  async listCronJobs(opts?: { includeDisabled?: boolean; limit?: number }): Promise<RuntimeCronJob[]> {
+    const query = opts?.includeDisabled ? '?include_disabled=true' : ''
+    const res = await this.get<{ jobs?: HermesJob[] }>(`/api/jobs${query}`)
+    return (res.jobs ?? [])
+      .filter((job) => opts?.includeDisabled || job.enabled !== false)
+      .slice(0, opts?.limit)
+      .map((j) => ({
+        id: j.id,
+        name: j.name || j.id,
+        enabled: j.enabled !== false,
+        schedule: j.schedule?.display || j.schedule?.expr || j.schedule_display,
+        lastStatus: j.last_status ?? undefined,
+        lastRunAt: jobTime(j.last_run_at),
+        nextRunAt: jobTime(j.next_run_at),
+        lastError: j.last_error ?? undefined,
+      }))
   }
 
   /** Hermes keeps only the last outcome on the job; there is no run history. */

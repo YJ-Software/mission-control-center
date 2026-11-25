@@ -243,6 +243,7 @@ async function cleanLegacyOnce(): Promise<boolean> {
 
 /** 供測試注入；正式呼叫不帶參數 */
 export interface SchedulerStartOpts {
+  skipLegacyCron?: boolean
   jobs?: () => SchedulerJob[]
   isRunning?: () => boolean
   /** 同步啟動備份；未提供時於載入 run-backup 後才開始 tick */
@@ -302,6 +303,8 @@ export function startBackupScheduler(opts: SchedulerStartOpts = {}): void {
     }
   }, TICK_MS)
   timer.unref()
+
+  if (opts.skipLegacyCron) return
 
   // 舊 cron 清理：deferred 時依退避間隔重試（1、2、5、10、30 分鐘，之後每小時），直到 removed / none
   const clean = opts.cleanLegacy ?? cleanLegacyOnce
