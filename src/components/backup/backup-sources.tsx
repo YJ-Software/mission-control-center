@@ -1,5 +1,6 @@
 'use client'
 
+import { useBackendCapabilities } from '@/components/layout/backend-capabilities'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
@@ -16,6 +17,7 @@ interface BackupSource {
 }
 
 export function BackupSources() {
+  const { backupTarget } = useBackendCapabilities()
   const t = useTranslations('backup')
   const tc = useTranslations('common')
   const queryClient = useQueryClient()
@@ -208,13 +210,13 @@ export function BackupSources() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-medium text-white">{t('sources.openClaw')}</span>
+              <span className="text-sm font-medium text-white">{t(`sources.${backupTarget}`)}</span>
               <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
                 <Lock className="w-2.5 h-2.5" />
                 Built-in
               </span>
             </div>
-            <p className="mt-1 text-[12px] text-white/50">{t('sources.openClawDesc')}</p>
+            <p className="mt-1 text-[12px] text-white/50">{t(`sources.${backupTarget}Desc`)}</p>
           </div>
           {/* Always-on indicator */}
           <div className="shrink-0 w-9 h-5 rounded-full bg-cyan-500/30 border border-cyan-500/40 flex items-center justify-end px-0.5" title="Always enabled">

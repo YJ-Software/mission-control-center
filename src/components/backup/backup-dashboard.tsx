@@ -1,5 +1,6 @@
 'use client'
 
+import { useBackendCapabilities } from '@/components/layout/backend-capabilities'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslations, useLocale } from 'next-intl'
@@ -26,6 +27,7 @@ interface DashboardData {
 }
 
 export function BackupDashboard({ onNavigate }: { onNavigate?: (tab: string) => void }) {
+  const { backupTarget } = useBackendCapabilities()
   const t = useTranslations('backup')
   const locale = useLocale()
   const [showWizard, setShowWizard] = useState(false)
@@ -56,7 +58,7 @@ export function BackupDashboard({ onNavigate }: { onNavigate?: (tab: string) => 
         <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>
-            {t('dashboard.backupUnsupported')}
+            {t(`dashboard.backupUnsupported_${backupTarget}`)}
             {data.backupMissingReason && (
               <span className="block text-xs text-yellow-400/70 font-mono mt-1 whitespace-pre-wrap break-all">{data.backupMissingReason}</span>
             )}

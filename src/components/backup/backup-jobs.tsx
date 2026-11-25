@@ -1,5 +1,6 @@
 'use client'
 
+import { useBackendCapabilities } from '@/components/layout/backend-capabilities'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations, useLocale } from 'next-intl'
@@ -326,6 +327,7 @@ interface JobFormProps {
 }
 
 function JobForm({ initial, destinations, schedules, sources, onSave, onCancel, saving }: JobFormProps) {
+  const { service } = useBackendCapabilities()
   const t = useTranslations('backup.jobs')
   const tc = useTranslations('backup.common')
 
@@ -464,7 +466,7 @@ function JobForm({ initial, destinations, schedules, sources, onSave, onCancel, 
               onChange={() => setForm((f) => ({ ...f, includeOpenClaw: !f.includeOpenClaw }))}
               className="accent-cyan-400"
             />
-            <span>OpenClaw</span>
+            <span>{service.name}</span>
           </label>
           {sources.map((src) => (
             <label key={src.id} className="flex items-center gap-2 text-sm text-white/60 cursor-pointer">

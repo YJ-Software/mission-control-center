@@ -1,5 +1,6 @@
 'use client'
 
+import { useBackendCapabilities } from '@/components/layout/backend-capabilities'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
@@ -177,6 +178,7 @@ function StepSource({ selected, onChange, openClaw, onOpenClawChange, t }: {
   onOpenClawChange: (v: boolean) => void
   t: ReturnType<typeof useTranslations>
 }) {
+  const { backupTarget } = useBackendCapabilities()
   const { data: sources = [] } = useQuery<Source[]>({
     queryKey: ['backup-sources'],
     queryFn: () => fetch('/api/backup/sources').then(r => r.json()),
@@ -198,8 +200,8 @@ function StepSource({ selected, onChange, openClaw, onOpenClawChange, t }: {
       >
         <Shield className="w-4 h-4 text-cyan-400" />
         <div className="flex-1">
-          <div className="text-sm text-white/80">{t('sources.openClaw')}</div>
-          <div className="text-[11px] text-white/40">{t('sources.openClawDesc')}</div>
+          <div className="text-sm text-white/80">{t(`sources.${backupTarget}`)}</div>
+          <div className="text-[11px] text-white/40">{t(`sources.${backupTarget}Desc`)}</div>
         </div>
         <div className={`w-8 h-5 rounded-full flex items-center px-0.5 transition-colors ${
           openClaw ? 'bg-cyan-500/30 justify-end' : 'bg-white/10 justify-start'

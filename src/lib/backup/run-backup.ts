@@ -6,6 +6,8 @@ import { eq, desc } from 'drizzle-orm'
 import { db, DB_PATH } from '@/lib/db'
 import { startJob, type PhaseSpec } from '@/lib/jobs/runner'
 import type { JobMeta, TriggerSource } from '@/lib/jobs/types'
+import { getBackendCapabilities } from '@/lib/agent-runtime/selection'
+import { createHermesBackup } from './hermes-backend'
 import { getVersionInfo } from '@/lib/version'
 import { backupJobs, backupDestinations, backupSources, backupLogs } from './schema'
 import { buildArchiveName, type BackupManifest } from './archive-format'
@@ -106,6 +108,7 @@ export function startBackupRun(
   opts: { jobId?: string; destinationId?: string; sourceIds?: string[]; triggeredBy: TriggerSource },
   depsOverride?: Partial<BackupRunDeps>,
 ): { logId: number; jobMetaId: string } {
+  const { backupTarget: backend } = getBackendCapabilities()
   const deps: BackupRunDeps = { ...defaultDeps(), ...depsOverride }
 
   // --- 解析 job / destination、計算名稱（可能丟錯，此時尚未上鎖、未建 log） ---
@@ -114,7 +117,7 @@ export function startBackupRun(
   let destName = 'Local'
   let sourceIds: string[] = opts.sourceIds ?? []
   let retainCount = 0
-  let includeOpenClaw = true
+  let includeBackend = true
   let destinationId = opts.destinationId
 
   if (opts.jobId) {
@@ -123,7 +126,7 @@ export function startBackupRun(
     destinationId = job.destinationId
     sourceIds = JSON.parse(job.sourceIds || '[]')
     retainCount = job.retainCount
-    includeOpenClaw = job.includeOpenClaw !== 0
+    includeBackend = job.includeOpenClaw !== 0
   }
   if (destinationId) {
     const dest = db.select().from(backupDestinations).where(eq(backupDestinations.id, destinationId)).get()
@@ -143,7 +146,7 @@ export function startBackupRun(
   const stagingDir = path.join(outputDir, `${TEMP_PREFIX}staging-${stamp}`)
   const finalPath = path.join(
     outputDir,
-    buildArchiveName({ backend: 'openclaw', host: deps.hostname(), at: now }),
+    buildArchiveName({ backend, host: deps.hostname(), at: now }),
   )
 
   // --- 單一執行：同步檢查並上鎖（還原共用這把鎖） ---
@@ -253,10 +256,12 @@ export function startBackupRun(
 
     const phases: PhaseSpec[] = []
 
-    if (includeOpenClaw) {
-      phases.push(phase('openclaw backup create', async (log) => {
+    if (includeBackend) {
+      const create = backend === 'hermes' ? createHermesBackup : deps.openclawCreate
+      const label = backend === 'hermes' ? 'Hermes' : 'OpenClaw'
+      phases.push(phase(backend === 'hermes' ? 'hermes backup' : 'openclaw backup create', async (log) => {
         ensureStaging()
-        const r = await deps.openclawCreate(stagingDir, log)
+        const r = await create(stagingDir, log)
         const real = (p: string) => fs.realpathSync(p)
         let inside = false
         try {
@@ -265,7 +270,7 @@ export function startBackupRun(
         } catch { /* 視為不在 staging 內 */ }
         if (!inside) {
           rmQuiet(r.archivePath)
-          throw new Error(`OpenClaw 備份檔不在預期的暫存目錄內：${r.archivePath}`)
+          throw new Error(`${label} 備份檔不在預期的暫存目錄內：${r.archivePath}`)
         }
         st.backendPart = path.basename(r.archivePath)
         st.backendVersion = r.version
@@ -285,7 +290,7 @@ export function startBackupRun(
     phases.push(phase('package archive', async (log) => {
       const manifest: BackupManifest = {
         format: 1,
-        backend: 'openclaw',
+        backend,
         backendVersion: st.backendVersion,
         mccVersion: deps.mccVersion(),
         createdAt: now.toISOString(),

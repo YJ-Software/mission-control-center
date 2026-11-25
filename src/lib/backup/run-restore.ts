@@ -4,6 +4,8 @@ import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { startJob, type PhaseSpec } from '@/lib/jobs/runner'
 import type { JobMeta, TriggerSource } from '@/lib/jobs/types'
+import { getBackendCapabilities } from '@/lib/agent-runtime/selection'
+import { restoreHermesBackup } from './hermes-backend'
 import { getVersionInfo } from '@/lib/version'
 import { getInstallInfo, scheduleServiceRestart } from '@/lib/upgrade/manager'
 import { GATEWAY_HTTP } from '@/lib/openclaw'
@@ -240,8 +242,9 @@ function checkManifest(raw: unknown): BackupManifest {
   try { manifest = parseManifest(raw) } catch (e) {
     throw new RestoreRejectedError(`manifest 無效：${errText(e)}`)
   }
-  if (manifest.backend !== 'openclaw') {
-    throw new RestoreRejectedError(`不支援還原 ${manifest.backend} 後端的備份（目前只支援 openclaw）`)
+  const { backupTarget: backend } = getBackendCapabilities()
+  if (manifest.backend !== backend) {
+    throw new RestoreRejectedError(`不支援還原 ${manifest.backend} 後端的備份（目前只支援 ${backend}）`)
   }
   return manifest
 }
@@ -325,6 +328,7 @@ export async function describeBackup(
   const deps: RestoreDeps = { ...defaultDeps(), ...depsOverride }
   const kind = classifyBackupFile(path.basename(filePath))
   if (kind === 'legacy-openclaw') {
+    if (getBackendCapabilities().backupTarget === 'hermes') throw new RestoreRejectedError('此後端不支援舊格式的 OpenClaw 備份')
     const legacyRestorable = deps.legacyScriptsOk()
     if (!legacyRestorable) {
       return { kind, legacyRestorable, summary: '這是舊格式的 OpenClaw 備份，需要舊版備份腳本才能還原，但目前找不到這些腳本。' }
@@ -345,12 +349,14 @@ export function startRestore(
   opts: { force?: boolean } = {},
 ): JobMeta {
   const force = opts.force === true
+  const { backupTarget: backend } = getBackendCapabilities()
   const deps: RestoreDeps = { ...defaultDeps(), ...depsOverride }
   const file = path.resolve(filePath)
   const kind = classifyBackupFile(path.basename(file))
   if (kind !== 'mcc' && kind !== 'legacy-openclaw') {
     throw new RestoreRejectedError(`不支援還原此類型的檔案：${path.basename(file)}`)
   }
+  if (kind === 'legacy-openclaw' && backend === 'hermes') throw new RestoreRejectedError('此後端不支援舊格式的 OpenClaw 備份')
   if (kind === 'legacy-openclaw' && !deps.legacyScriptsOk()) {
     throw new RestoreRejectedError('這是舊格式的 OpenClaw 備份，需要舊版備份腳本才能還原，但目前找不到這些腳本。')
   }
@@ -377,6 +383,7 @@ export function startRestore(
     holdLock: false,                 // release：重啟前持有鎖，onSettled 不可釋放
     manifest: null as BackupManifest | null,
     openclawRestored: false,
+    hermesRestored: false,
     preRestoreDir: null as string | null,
     timer: null as ReturnType<typeof setTimeout> | null,
   }
@@ -465,32 +472,50 @@ export function startRestore(
         deps.prepareDb(inside(st.content, st.manifest.parts.mccDb), deps.dbPath, file)
       }))
 
-      phases.push(phase('restore OpenClaw', async (log) => {
-        const m = st.manifest!
-        if (!m.parts.backend) {
-          log('system', '此備份不含 OpenClaw 資料，略過 OpenClaw 驗證與還原')
-          return
-        }
-        const archive = inside(st.content!, m.parts.backend)
-        await deps.gatewayPreflight()
-        await deps.openclawVerify(archive, log)
-        let r: Awaited<ReturnType<RestoreDeps['openclawRestore']>>
-        try {
-          r = await deps.openclawRestore(archive, log)
-        } finally {
-          // 換回來的 ~/.openclaw 可能帶著舊 cron；dev 模式不會自動重啟，所以現在就重查（失敗時也可能已部分換掉）
-          recheckLegacyCron(log)
-        }
-        st.openclawRestored = true
-        st.preRestoreDir = r.preRestoreDir
-        log('system', r.preRestoreDir ? `舊的 ~/.openclaw 保留於 ${r.preRestoreDir}` : '原本沒有 ~/.openclaw，無舊資料可保留')
-        if (r.parkedSkillsDir) log('system', `被取代的 skill 停放於 ${r.parkedSkillsDir}`)
-      }))
+      if (backend === 'hermes') {
+        phases.push(phase('restore Hermes', async (log) => {
+          const archive = st.manifest!.parts.backend
+          if (!archive) {
+            log('system', '此備份只含 MCC 資料')
+            return
+          }
+          await restoreHermesBackup(
+            inside(st.content!, archive),
+            () => deps.commitDb(deps.dbPath),
+            () => deps.discardPendingDb(deps.dbPath),
+            log,
+          )
+          st.hermesRestored = true
+        }))
+      } else {
+        phases.push(phase('restore OpenClaw', async (log) => {
+          const m = st.manifest!
+          if (!m.parts.backend) {
+            log('system', '此備份不含 OpenClaw 資料，略過 OpenClaw 驗證與還原')
+            return
+          }
+          const archive = inside(st.content!, m.parts.backend)
+          await deps.gatewayPreflight()
+          await deps.openclawVerify(archive, log)
+          let r: Awaited<ReturnType<RestoreDeps['openclawRestore']>>
+          try {
+            r = await deps.openclawRestore(archive, log)
+          } finally {
+            // 換回來的 ~/.openclaw 可能帶著舊 cron；dev 模式不會自動重啟，所以現在就重查（失敗時也可能已部分換掉）
+            recheckLegacyCron(log)
+          }
+          st.openclawRestored = true
+          st.preRestoreDir = r.preRestoreDir
+          log('system', r.preRestoreDir ? `舊的 ~/.openclaw 保留於 ${r.preRestoreDir}` : '原本沒有 ~/.openclaw，無舊資料可保留')
+          if (r.parkedSkillsDir) log('system', `被取代的 skill 停放於 ${r.parkedSkillsDir}`)
+        }))
+      }
 
       phases.push(phase('stage MCC database', async (log) => {
         try {
-          deps.commitDb(deps.dbPath)
+          if (!st.hermesRestored) deps.commitDb(deps.dbPath)
         } catch (e) {
+          if (backend === 'hermes') throw e
           throw new Error(
             `${errText(e)}。${st.openclawRestored ? 'OpenClaw 已還原' : 'OpenClaw 未更動'}，但 MCC 資料庫未還原。` +
             (st.preRestoreDir ? `原 OpenClaw 資料保留於 ${st.preRestoreDir}，可手動換回；` : '') +
@@ -530,7 +555,8 @@ export function startRestore(
           } catch (e) {
             st.holdLock = false
             try { deps.discardPendingDb(deps.dbPath) } catch { /* ignore */ }
-            log('stderr', st.openclawRestored
+            if (st.hermesRestored) log('stderr', 'Hermes 已還原，MCC 資料庫未還原（排程重啟失敗）')
+            else log('stderr', st.openclawRestored
               ? 'OpenClaw 已還原；MCC 資料庫未還原（排程重啟失敗）'
               : 'MCC 資料庫未還原（排程重啟失敗）')
             throw e

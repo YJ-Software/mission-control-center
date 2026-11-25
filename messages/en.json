@@ -1773,7 +1773,8 @@
       "completed": "Completed",
       "failed": "Failed",
       "canceled": "Canceled",
-      "backupUnsupported": "This OpenClaw version does not support native backup",
+      "backupUnsupported_hermes": "Hermes native backup is unavailable",
+      "backupUnsupported_openclaw": "This OpenClaw version does not support native backup",
       "dbRestore": {
         "applied": "MCC database was restored from a backup",
         "rejected": "The database in the backup failed its check and was not applied",
@@ -1822,8 +1823,10 @@
     },
     "sources": {
       "title": "Backup Sources",
-      "openClaw": "OpenClaw Data",
-      "openClawDesc": "Core OpenClaw configuration, sessions, skills, and credentials",
+      "openclaw": "OpenClaw Data",
+      "hermes": "Hermes Data",
+      "hermesDesc": "Hermes settings, SQLite transcripts, scheduled jobs, skills, and credentials",
+      "openclawDesc": "Core OpenClaw configuration, sessions, skills, and credentials",
       "addFolder": "Add Folder",
       "folderName": "Folder Name",
       "folderPath": "Folder Path",

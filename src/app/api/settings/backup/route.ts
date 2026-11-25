@@ -1,3 +1,4 @@
+import { getBackendCapabilities } from '@/lib/agent-runtime/selection'
 import { NextResponse } from 'next/server'
 import { exec } from 'child_process'
 import { promisify } from 'util'
@@ -8,6 +9,9 @@ import fs from 'fs'
 const execAsync = promisify(exec)
 
 export async function POST() {
+  if (!getBackendCapabilities().openclawSetup) {
+    return NextResponse.json({ error: '請從備份頁使用 Hermes 原生備份' }, { status: 400 })
+  }
   try {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19)
     const backupDir = path.join(os.homedir(), 'mission-control-backups')

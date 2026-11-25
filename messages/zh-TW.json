@@ -1773,7 +1773,8 @@
       "completed": "已完成",
       "failed": "失敗",
       "canceled": "已取消",
-      "backupUnsupported": "此 OpenClaw 版本不支援原生備份",
+      "backupUnsupported_hermes": "Hermes 原生備份無法使用",
+      "backupUnsupported_openclaw": "此 OpenClaw 版本不支援原生備份",
       "dbRestore": {
         "applied": "MCC 資料庫已從備份還原",
         "rejected": "備份中的資料庫未通過檢查、未套用",
@@ -1822,8 +1823,10 @@
     },
     "sources": {
       "title": "備份來源",
-      "openClaw": "OpenClaw 資料",
-      "openClawDesc": "OpenClaw 核心設定、對話記錄、技能與憑證",
+      "openclaw": "OpenClaw 資料",
+      "hermes": "Hermes 資料",
+      "hermesDesc": "Hermes 核心設定、SQLite 對話記錄、排程、技能與憑證",
+      "openclawDesc": "OpenClaw 核心設定、對話記錄、技能與憑證",
       "addFolder": "新增資料夾",
       "folderName": "資料夾名稱",
       "folderPath": "資料夾路徑",
