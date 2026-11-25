@@ -34,11 +34,11 @@ export async function restoreHermesBackup(
   log: Log,
 ): Promise<void> {
   assertHermesZip(archive)
-  await hermesService('stop')
 
   let staged = false
   let failure: unknown
   try {
+    await hermesService('stop')
     await runHermesCli(['import', archive, '--force'], NATIVE_BACKUP_TIMEOUT_MS)
     stageMcc()
     staged = true
@@ -46,19 +46,23 @@ export async function restoreHermesBackup(
     failure = err
   }
 
+  // A failed or timed-out stop can still have stopped the unit.
+  const recoveryErrors: string[] = []
   try {
-    // Restart even when native import or MCC staging failed.
     await hermesService('start')
+  } catch (err) {
+    recoveryErrors.push((err as Error).message)
+  }
+  try {
     await waitForHermesHealth({ detailed: true })
   } catch (err) {
-    failure = failure
-      ? new Error(`${(failure as Error).message}。Hermes 啟動檢查也失敗：${(err as Error).message}`)
-      : err
+    recoveryErrors.push((err as Error).message)
   }
 
-  if (failure) {
+  const errors = [...(failure ? [(failure as Error).message] : []), ...recoveryErrors]
+  if (errors.length) {
     if (staged) undoMcc()
-    throw new Error(`${(failure as Error).message}。Hermes 資料可能已變更，MCC 資料庫尚未還原。`)
+    throw new Error(`${errors.join('。')}。Hermes 資料可能已變更，MCC 資料庫尚未還原。`)
   }
   log('system', 'Hermes 還原完成，公開與驗證後的健康檢查均已通過')
 }

@@ -161,8 +161,15 @@ function loadOrCreateDeviceIdentity(): DeviceIdentity {
   return { privateKey, publicKeyB64Url, deviceId }
 }
 
-const DEVICE_IDENTITY = loadOrCreateDeviceIdentity()
-console.log(`[Gateway] Device identity ready (id=${DEVICE_IDENTITY.deviceId.slice(0, 12)}...)`)
+let deviceIdentity: DeviceIdentity | undefined
+
+function gatewayDeviceIdentity(): DeviceIdentity {
+  if (!deviceIdentity) {
+    deviceIdentity = loadOrCreateDeviceIdentity()
+    console.log(`[Gateway] Device identity ready (id=${deviceIdentity.deviceId.slice(0, 12)}...)`)
+  }
+  return deviceIdentity
+}
 
 /** Find our pending pairing request via `openclaw devices list --json`
  *  and approve it. Resolves true if approved, false if no pending request
@@ -207,7 +214,8 @@ async function tryAutoApproveDevice(signal: AbortSignal): Promise<boolean> {
     const { stdout } = await withOpenclawCli(() => run('devices list', ['--log-level', 'silent', '--no-color', 'devices', 'list', '--json']))
     const data = parseJsonLoose(stdout) as { pending?: Array<{ requestId?: string; deviceId?: string }> }
     const pending = Array.isArray(data?.pending) ? data.pending : []
-    const req = pending.find((r) => r.deviceId === DEVICE_IDENTITY.deviceId)
+    const deviceId = gatewayDeviceIdentity().deviceId
+    const req = pending.find((r) => r.deviceId === deviceId)
     return req?.requestId ?? null
   }
 
@@ -333,6 +341,7 @@ const pairing = new PairingRetry({
 function connectGateway(wss: WebSocketServer) {
   gatewayWss = wss
   try {
+    const identity = gatewayDeviceIdentity()
     // Re-read token every reconnect so token rotation (OpenClaw upgrades
     // regenerate it) is picked up without a dashboard restart.
     const token = resolveGatewayToken()
@@ -374,7 +383,7 @@ function connectGateway(wss: WebSocketServer) {
           // Build v2 device-auth payload matching Gateway's buildDeviceAuthPayload().
           const payload = [
             'v2',
-            DEVICE_IDENTITY.deviceId,
+            identity.deviceId,
             clientId,
             clientMode,
             role,
@@ -384,7 +393,7 @@ function connectGateway(wss: WebSocketServer) {
             nonce,
           ].join('|')
           const signatureB64Url = base64UrlEncode(
-            cryptoSign(null, Buffer.from(payload, 'utf8'), DEVICE_IDENTITY.privateKey),
+            cryptoSign(null, Buffer.from(payload, 'utf8'), identity.privateKey),
           )
 
           ws.send(JSON.stringify({
@@ -414,8 +423,8 @@ function connectGateway(wss: WebSocketServer) {
               caps: ['approvals'],
               auth: { token: token },
               device: {
-                id: DEVICE_IDENTITY.deviceId,
-                publicKey: DEVICE_IDENTITY.publicKeyB64Url,
+                id: identity.deviceId,
+                publicKey: identity.publicKeyB64Url,
                 signature: signatureB64Url,
                 nonce,
                 signedAt: signedAtMs,
@@ -685,7 +694,7 @@ app.prepare().then(async () => {
   // OpenCLI extension, so every opencli browser command dies after the first
   // Chrome restart — silently, taking morning-report sources with it. Repair on
   // boot so an upgrade is enough to fix an old install.
-  import('./src/lib/browser/opencli-autoload-repair').then(({ ensureOpencliAutoload }) => {
+  if (capabilities.morningReport) void import('./src/lib/browser/opencli-autoload-repair').then(({ ensureOpencliAutoload }) => {
     ensureOpencliAutoload()
   }).catch(err => {
     console.error('[opencli-autoload] init failed:', err)

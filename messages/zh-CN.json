@@ -1787,7 +1787,7 @@
       "wizardStepDest": "设置备份目的",
       "wizardStepDestDesc": "选择现有目的或创建新的备份目的",
       "wizardStepSource": "选择备份来源",
-      "wizardStepSourceDesc": "OpenClaw 数据默认包含，可加选额外目录",
+      "wizardStepSourceDesc": "{backend} 数据默认包含，可加选额外目录",
       "wizardStepSchedule": "设置计划",
       "wizardStepScheduleDesc": "选择现有计划或创建新计划",
       "wizardStepJob": "创建备份任务",

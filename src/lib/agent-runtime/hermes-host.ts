@@ -131,12 +131,23 @@ export async function provisionHermesApi(warn: (message: string) => void = conso
     ?? config?.platforms?.api_server?.enabled
     ?? config?.gateway?.platforms?.api_server?.enabled
   const keyChanged = ensureHermesDotenvKey()
+  const { apiKey } = resolveHermesConfig()
+  const envKey = process.env.HERMES_API_KEY?.trim()
+  if (envKey && envKey !== apiKey) {
+    warn('[Hermes] HERMES_API_KEY differs from API_SERVER_KEY in the Hermes .env. Using the Hermes .env key.')
+  }
   if (enabled === false || (typeof enabled === 'string' && /^(off|no)$/i.test(enabled))) {
     warn('[Hermes] api_server is explicitly disabled in config.yaml. Enable it to use the dashboard.')
     return
   }
-  if (!keyChanged) return
+  if (!keyChanged) {
+    try {
+      const response = await healthRequest('/health/detailed', 2_000, apiKey)
+      await response.body?.cancel()
+      if (response.status === 200) return
+    } catch { /* an earlier boot may have written the key without bringing the API up */ }
+  }
 
   await hermesService('restart')
-  await waitForHermesHealth()
+  await waitForHermesHealth({ detailed: true })
 }

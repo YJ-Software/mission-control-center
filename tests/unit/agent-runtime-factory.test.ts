@@ -1,8 +1,11 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { getAgentRuntime, resetAgentRuntime } from '@/lib/agent-runtime'
 import { stubHermesHome } from './helpers/hermes-test-home'
 
 let state: ReturnType<typeof stubHermesHome>
+const configureKey = () => writeFileSync(join(state.hermes, '.env'), 'API_SERVER_KEY=fixture-key-0123456789\n')
 
 beforeEach(() => {
   state = stubHermesHome()
@@ -24,19 +27,20 @@ describe('getAgentRuntime', () => {
   it('selects Hermes when fully configured', () => {
     vi.stubEnv('MCC_AGENT_RUNTIME', 'hermes')
     vi.stubEnv('HERMES_API_URL', 'http://fixture.invalid:8642')
-    vi.stubEnv('HERMES_API_KEY', 'fixture-key')
+    configureKey()
     expect(getAgentRuntime().id).toBe('hermes')
   })
 
-  it('refuses Hermes without an environment key or a native dotenv key', () => {
+  it('requires a key in the native dotenv even when the legacy override is set', () => {
     vi.stubEnv('MCC_AGENT_RUNTIME', 'hermes')
     vi.stubEnv('HERMES_API_URL', 'http://fixture.invalid:8642')
-    expect(() => getAgentRuntime()).toThrow(/HERMES_API_KEY/)
+    vi.stubEnv('HERMES_API_KEY', 'fixture-key-0123456789')
+    expect(() => getAgentRuntime()).toThrow(/API_SERVER_KEY/)
   })
 
   it('accepts the default URL when only the key is configured', () => {
     vi.stubEnv('MCC_AGENT_RUNTIME', 'hermes')
-    vi.stubEnv('HERMES_API_KEY', 'fixture-key')
+    configureKey()
     expect(getAgentRuntime().id).toBe('hermes')
   })
 
@@ -54,7 +58,7 @@ describe('getAgentRuntime', () => {
     expect(getAgentRuntime().id).toBe('openclaw')
     vi.stubEnv('MCC_AGENT_RUNTIME', 'hermes')
     vi.stubEnv('HERMES_API_URL', 'http://fixture.invalid:8642')
-    vi.stubEnv('HERMES_API_KEY', 'fixture-key')
+    configureKey()
     expect(getAgentRuntime().id).toBe('hermes')
   })
 })

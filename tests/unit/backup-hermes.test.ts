@@ -229,10 +229,51 @@ describe('Hermes native backup and restore through MCC', () => {
     expect(undo).not.toHaveBeenCalled()
   })
 
+  it.each([{ code: 1 }, { code: null, signal: 'SIGTERM', killed: true }])(
+    'attempts start and authenticated readiness after a stop error %j',
+    async (failure) => {
+      const { restoreHermesBackup } = await import('@/lib/backup/hermes-backend')
+      const archive = path.join(state.home, 'hermes.zip')
+      fs.writeFileSync(archive, zip)
+      mockHealth(liveKey)
+      processMocks.execFile
+        .mockImplementationOnce((cmd, args, opts, done) => {
+          expect([cmd, ...args]).toEqual(['systemctl', '--user', 'stop', 'hermes-gateway.service'])
+          expect(opts.timeout).toBe(120_000)
+          order.push('failed-stop')
+          done(Object.assign(new Error('fixture stop failure'), failure), '', '')
+        })
+        .mockImplementationOnce(mockSystemctl('start'))
+      const stage = vi.fn()
+      const undo = vi.fn()
+      await expect(restoreHermesBackup(archive, stage, undo, vi.fn())).rejects.toThrow(
+        `Hermes gateway stop failed (${failure.code ?? failure.signal})`,
+      )
+      expect(order).toEqual(['failed-stop', 'start', 'health', 'detailed'])
+      expect(stage).not.toHaveBeenCalled()
+      expect(undo).not.toHaveBeenCalled()
+    },
+  )
+
+  it('preserves both the stop and recovery errors', async () => {
+    const { restoreHermesBackup } = await import('@/lib/backup/hermes-backend')
+    const archive = path.join(state.home, 'hermes.zip')
+    fs.writeFileSync(archive, zip)
+    mockHealth(liveKey)
+    processMocks.execFile
+      .mockImplementationOnce((_cmd, _args, _opts, done) => done(Object.assign(new Error('stop failed'), { code: 1 }), '', ''))
+      .mockImplementationOnce((_cmd, _args, _opts, done) => done(Object.assign(new Error('start failed'), { code: 2 }), '', ''))
+    await expect(restoreHermesBackup(archive, vi.fn(), vi.fn(), vi.fn())).rejects.toThrow(
+      'Hermes gateway stop failed (1)。Hermes gateway start failed (2)',
+    )
+    expect(order).toEqual(['health', 'detailed'])
+  })
+
   it('undoes pending MCC staging if the restored Hermes service fails to start', async () => {
     const { restoreHermesBackup } = await import('@/lib/backup/hermes-backend')
     const archive = path.join(state.home, 'hermes.zip')
     fs.writeFileSync(archive, zip)
+    mockHealth(liveKey)
     processMocks.execFile
       .mockImplementationOnce(mockSystemctl('stop'))
       .mockImplementationOnce((_cmd, _args, _opts, done) => done(null, '', ''))

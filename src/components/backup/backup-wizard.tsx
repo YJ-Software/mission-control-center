@@ -171,14 +171,14 @@ function StepDest({ value, onChange, t }: {
 // Step 2 — Sources
 // ---------------------------------------------------------------------------
 
-function StepSource({ selected, onChange, openClaw, onOpenClawChange, t }: {
+export function BackupSourceStep({ selected, onChange, openClaw, onOpenClawChange, t }: {
   selected: string[]
   onChange: (ids: string[]) => void
   openClaw: boolean
   onOpenClawChange: (v: boolean) => void
   t: ReturnType<typeof useTranslations>
 }) {
-  const { backupTarget } = useBackendCapabilities()
+  const { backupTarget, service } = useBackendCapabilities()
   const { data: sources = [] } = useQuery<Source[]>({
     queryKey: ['backup-sources'],
     queryFn: () => fetch('/api/backup/sources').then(r => r.json()),
@@ -188,10 +188,10 @@ function StepSource({ selected, onChange, openClaw, onOpenClawChange, t }: {
     <div className="space-y-4">
       <div>
         <div className="text-sm font-medium text-white/80 mb-1">{t('dashboard.wizardStepSource')}</div>
-        <div className="text-xs text-white/40">{t('dashboard.wizardStepSourceDesc')}</div>
+        <div className="text-xs text-white/40">{t('dashboard.wizardStepSourceDesc', { backend: service.name })}</div>
       </div>
 
-      {/* OpenClaw — toggleable */}
+      {/* Native backend data */}
       <button
         onClick={() => onOpenClawChange(!openClaw)}
         className={`w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-colors ${
@@ -522,7 +522,7 @@ export function BackupWizard({ onClose }: { onClose: () => void }) {
       {/* Content */}
       <div className="min-h-[280px]">
         {step === 'dest' && <StepDest value={dest} onChange={setDest} t={t} />}
-        {step === 'source' && <StepSource selected={sourceIds} onChange={setSourceIds} openClaw={includeOpenClaw} onOpenClawChange={setIncludeOpenClaw} t={t} />}
+        {step === 'source' && <BackupSourceStep selected={sourceIds} onChange={setSourceIds} openClaw={includeOpenClaw} onOpenClawChange={setIncludeOpenClaw} t={t} />}
         {step === 'schedule' && <StepSchedule value={sched} onChange={setSched} t={t} />}
         {step === 'job' && <StepJob value={job} onChange={setJob} t={t} />}
       </div>

@@ -1787,7 +1787,7 @@
       "wizardStepDest": "設定備份目的",
       "wizardStepDestDesc": "選擇現有目的或建立新的備份目的",
       "wizardStepSource": "選擇備份來源",
-      "wizardStepSourceDesc": "OpenClaw 資料預設包含，可加選額外目錄",
+      "wizardStepSourceDesc": "{backend} 資料預設包含，可加選額外目錄",
       "wizardStepSchedule": "設定排程",
       "wizardStepScheduleDesc": "選擇現有排程或建立新排程",
       "wizardStepJob": "建立備份任務",

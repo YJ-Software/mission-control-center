@@ -25,6 +25,13 @@ const DEFAULT_TIMEOUT_MS = 15_000
 const APPROVAL_TIMEOUT_MS = 10 * 60_000
 const STREAM_TIMEOUT_MS = 15 * 60_000
 const RECONCILE_TIMEOUT_MS = 12 * 60_000
+function isPermanentRunError(err: unknown): err is Error {
+  const status = (err as { status?: number } | null)?.status
+  // A missing or consumed stream and a run conflict can be checked with GET.
+  return typeof status === 'number' && status >= 400 && status < 500
+    && ![404, 408, 409, 429].includes(status)
+}
+
 const TERMINAL_RUN_STATES = new Set(['completed', 'failed', 'cancelled'])
 const ACTIVE_RUN_STATES = new Set(['queued', 'running', 'stopping', 'waiting_for_approval'])
 
@@ -124,11 +131,14 @@ export class HermesChatBridge {
       },
     })
     if (!res.ok) {
-      const err = new Error(`Hermes ${path}: HTTP ${res.status}`) as Error & { status: number; approvalInactive?: boolean }
+      const authError = res.status === 401 || res.status === 403 ? ' authentication failed' : ''
+      const err = new Error(`Hermes${authError}: HTTP ${res.status} (${path})`) as Error & { status: number; approvalInactive?: boolean }
       err.status = res.status
       if (res.status === 409 && path.endsWith('/approval')) {
         const body = await res.json().catch(() => null) as { code?: string; error?: { code?: string } } | null
         err.approvalInactive = (body?.error?.code ?? body?.code) === 'approval_not_active'
+      } else {
+        void res.body?.cancel().catch(() => {})
       }
       throw err
     }
@@ -217,11 +227,11 @@ export class HermesChatBridge {
         : {}),
       body: JSON.stringify({ input: message, ...(sessionKey ? { session_id: sessionKey } : {}) }),
     })
-    const body = (await res.json()) as { run_id?: string; replayed?: boolean }
+    const body = (await res.json()) as { run_id?: string }
     const runId = body.run_id ?? ''
     if (!runId) throw new Error('Hermes did not return a run_id')
     // Hermes has a single subscriber queue per run. Retries must share the pump.
-    if (!this.runSessions.has(runId)) void this.pump(runId, sessionKey, body.replayed === true)
+    void this.pump(runId, sessionKey)
     return { ok: true, runId }
   }
 
@@ -230,45 +240,49 @@ export class HermesChatBridge {
   }
 
   /** Consume the single upstream stream, then use run GET to recover from any disconnect. */
-  async pump(runId: string, sessionKey: string, replayed = false): Promise<void> {
+  async pump(runId: string, sessionKey: string): Promise<void> {
+    if (this.runSessions.has(runId)) return
     const path = `/v1/runs/${encodeURIComponent(runId)}`
     const state: RunState = { text: '', controller: new AbortController() }
     this.runSessions.set(runId, sessionKey)
     const tools = new Map<string, string[]>()
     try {
-      if (!replayed) {
-        try {
-          const signal = AbortSignal.any([
-            state.controller.signal,
-            AbortSignal.timeout(this.opts.streamTimeoutMs ?? STREAM_TIMEOUT_MS),
-          ])
-          const res = await this.http(`${path}/events`, { signal })
-          for await (const evt of readSse(res)) {
-            if (evt.event === 'message.delta') {
-              state.text += String(evt.delta ?? '')
+      try {
+        const signal = AbortSignal.any([
+          state.controller.signal,
+          AbortSignal.timeout(this.opts.streamTimeoutMs ?? STREAM_TIMEOUT_MS),
+        ])
+        const res = await this.http(`${path}/events`, { signal })
+        for await (const evt of readSse(res)) {
+          if (evt.event === 'message.delta') {
+            state.text += String(evt.delta ?? '')
+            this.emitChat(this.chatPayload(runId, sessionKey, 'delta', this.withNotice(state)))
+          } else if (evt.event === 'tool.started' || evt.event === 'tool.completed') {
+            this.emitTool(runId, sessionKey, evt, tools)
+          } else if (evt.event === 'approval.request') {
+            this.approvals.request(runId, sessionKey, evt, (accepted) => {
+              state.notice = accepted
+                ? 'Hermes 審核逾時，已自動拒絕。'
+                : 'Hermes 審核逾時，無法送出拒絕，正在停止執行。'
               this.emitChat(this.chatPayload(runId, sessionKey, 'delta', this.withNotice(state)))
-            } else if (evt.event === 'tool.started' || evt.event === 'tool.completed') {
-              this.emitTool(runId, sessionKey, evt, tools)
-            } else if (evt.event === 'approval.request') {
-              this.approvals.request(runId, sessionKey, evt, (accepted) => {
-                state.notice = accepted
-                  ? 'Hermes 審核逾時，已自動拒絕。'
-                  : 'Hermes 審核逾時，無法送出拒絕，正在停止執行。'
-                this.emitChat(this.chatPayload(runId, sessionKey, 'delta', this.withNotice(state)))
-                if (!accepted) state.controller.abort()
-              })
-            } else if (evt.event === 'approval.responded') {
-              this.approvals.responded(runId, evt.request_id)
-            } else if (typeof evt.event === 'string' && evt.event.startsWith('run.')) {
-              const status = evt.event.slice(4)
-              if (TERMINAL_RUN_STATES.has(status)) {
-                await this.approvals.waitForExpiry(runId)
-                this.emitTerminal(runId, sessionKey, status, evt, state)
-                return
-              }
+              if (!accepted) state.controller.abort()
+            })
+          } else if (evt.event === 'approval.responded') {
+            this.approvals.responded(runId, evt.request_id)
+          } else if (typeof evt.event === 'string' && evt.event.startsWith('run.')) {
+            const status = evt.event.slice(4)
+            if (TERMINAL_RUN_STATES.has(status)) {
+              await this.approvals.waitForExpiry(runId)
+              this.emitTerminal(runId, sessionKey, status, evt, state)
+              return
             }
           }
-        } catch { /* the run status endpoint remains available after the SSE queue is consumed */ }
+        }
+      } catch (err) {
+        if (isPermanentRunError(err)) {
+          this.emitError(runId, sessionKey, this.withNotice(state, err.message))
+          return
+        }
       }
       await this.reconcile(path, runId, sessionKey, state)
     } finally {
@@ -321,13 +335,16 @@ export class HermesChatBridge {
     const deadline = Date.now() + (this.opts.reconcileTimeoutMs ?? RECONCILE_TIMEOUT_MS)
     let waitingSince: number | undefined
     let lastStatus: string | undefined
+    const pollInterval = this.opts.pollIntervalMs ?? 1_000
+    let consecutiveFailures = 0
     while (Date.now() < deadline && !state.controller.signal.aborted) {
       try {
-        const timeout = Math.min(deadline - Date.now(), this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+        const timeout = Math.max(1, Math.min(deadline - Date.now(), this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS))
         const res = await this.http(path, { signal: AbortSignal.any([state.controller.signal, AbortSignal.timeout(timeout)]) })
         const run = await res.json() as Record<string, unknown>
         const status = String(run.status ?? '')
         lastStatus = status
+        consecutiveFailures = 0
         if (TERMINAL_RUN_STATES.has(status)) {
           await this.approvals.waitForExpiry(runId)
           this.emitTerminal(runId, sessionKey, status, run, state)
@@ -341,11 +358,17 @@ export class HermesChatBridge {
           waitingSince = undefined
         }
       } catch (err) {
-        if ((err as { status?: number }).status === 404) break
+        if (isPermanentRunError(err)) {
+          this.emitError(runId, sessionKey, this.withNotice(state, err.message))
+          return
+        }
+        if ((err as { status?: number } | null)?.status === 404) break
+        consecutiveFailures++
       }
       const remaining = deadline - Date.now()
       if (remaining > 0) {
-        await delay(Math.min(remaining, this.opts.pollIntervalMs ?? 1_000), undefined, { signal: state.controller.signal }).catch(() => {})
+        const interval = Math.min(pollInterval * 2 ** Math.min(consecutiveFailures, 4), Math.max(pollInterval, 10_000))
+        await delay(Math.min(remaining, interval), undefined, { signal: state.controller.signal }).catch(() => {})
       }
     }
 

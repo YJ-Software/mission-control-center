@@ -1787,7 +1787,7 @@
       "wizardStepDest": "Set Destination",
       "wizardStepDestDesc": "Select an existing destination or create a new one",
       "wizardStepSource": "Select Sources",
-      "wizardStepSourceDesc": "OpenClaw data is included by default. Optionally add extra folders.",
+      "wizardStepSourceDesc": "{backend} data is included by default. Optionally add extra folders.",
       "wizardStepSchedule": "Set Schedule",
       "wizardStepScheduleDesc": "Select an existing schedule or create a new one",
       "wizardStepJob": "Create Backup Job",

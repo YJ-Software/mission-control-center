@@ -57,7 +57,7 @@ describe('Hermes selection, provisioning and health', () => {
     expect(resolveHermesConfig()).toEqual({ baseUrl: 'http://127.0.0.1:8642', apiKey: fixtureKey })
     vi.stubEnv('HERMES_API_URL', 'http://fixture.invalid:8642/')
     vi.stubEnv('HERMES_API_KEY', 'fixture-override-0123456789')
-    expect(resolveHermesConfig()).toEqual({ baseUrl: 'http://fixture.invalid:8642', apiKey: 'fixture-override-0123456789' })
+    expect(resolveHermesConfig()).toEqual({ baseUrl: 'http://fixture.invalid:8642', apiKey: fixtureKey })
   })
 
   it('refreshes the cached runtime when native key contents rotate', async () => {
@@ -91,18 +91,73 @@ describe('Hermes selection, provisioning and health', () => {
         order.push('restart')
         done(null, '', '')
       })
-      vi.stubGlobal('fetch', vi.fn(async (url) => {
-        expect(url).toBe('http://127.0.0.1:8642/health')
-        order.push('health')
-        return Response.json(native.health)
+      vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === 'http://127.0.0.1:8642/health') {
+          order.push('health')
+          return Response.json(native.health)
+        }
+        expect(url).toBe('http://127.0.0.1:8642/health/detailed')
+        expect(new Headers(init?.headers).get('Authorization')).toBe(`Bearer ${resolveHermesConfig().apiKey}`)
+        order.push('detailed')
+        return Response.json(native.detailedHealth)
       }))
       await provisionHermesApi()
-      expect(order).toEqual(['restart', 'health'])
       expect(statSync(dotenv).mode & 0o777).toBe(0o600)
       await provisionHermesApi()
+      expect(order).toEqual(['restart', 'health', 'detailed', 'detailed'])
       expect(processMocks.execFile).toHaveBeenCalledTimes(1)
     },
   )
+
+  it('retries an unsuccessful restart on the next boot with the same provisioned key', async () => {
+    const order: string[] = []
+    const unexpectedFetch = vi.fn(async () => { throw new Error('readiness called before restart') })
+    vi.stubGlobal('fetch', unexpectedFetch)
+    processMocks.execFile
+      .mockImplementationOnce((_cmd, _args, _opts, done) => {
+        order.push('failed restart')
+        done(Object.assign(new Error('fixture failure'), { code: 1 }), '', '')
+      })
+      .mockImplementationOnce((cmd, args, _opts, done) => {
+        expect([cmd, ...args]).toEqual(['systemctl', '--user', 'restart', 'hermes-gateway.service'])
+        order.push('restart')
+        done(null, '', '')
+      })
+    await expect(provisionHermesApi()).rejects.toThrow('Hermes gateway restart failed')
+    expect(unexpectedFetch).not.toHaveBeenCalled()
+    const persisted = readFileSync(dotenv, 'utf8')
+    const apiKey = resolveHermesConfig().apiKey
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/health')) {
+        order.push('health')
+        return Response.json(native.health)
+      }
+      expect(url).toBe('http://127.0.0.1:8642/health/detailed')
+      expect(new Headers(init?.headers).get('Authorization')).toBe(`Bearer ${apiKey}`)
+      order.push('detailed')
+      return order.includes('restart') ? Response.json(native.detailedHealth) : new Response(null, { status: 401 })
+    }))
+    await provisionHermesApi()
+    expect(order).toEqual(['failed restart', 'detailed', 'restart', 'health', 'detailed'])
+    expect(readFileSync(dotenv, 'utf8')).toBe(persisted)
+    expect(processMocks.execFile).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    'PROVIDER="first\nAPI_SERVER_KEY=not-a-real-assignment\nlast"\n',
+    'PROVIDER=\x60first\nAPI_SERVER_KEY=not-a-real-assignment\nlast\x60\n',
+    "'PROVIDER'=\"first\r\nAPI_SERVER_KEY=not-a-real-assignment\r\nlast\"",
+    'PROVIDER="first\\\"\nAPI_SERVER_KEY=not-a-real-assignment\nlast"\n',
+  ])('appends a top-level key without modifying the multiline provider value %j', async (previous) => {
+    writeFileSync(join(state.hermes, 'config.yaml'), 'gateway: { api_server: { enabled: false } }\n')
+    writeFileSync(dotenv, previous)
+    await provisionHermesApi(vi.fn())
+    const key = resolveHermesConfig().apiKey
+    const nl = previous.includes('\r\n') ? '\r\n' : '\n'
+    expect(key).toMatch(/^[a-f0-9]{64}$/)
+    expect(readFileSync(dotenv, 'utf8')).toBe(`${previous}${previous.endsWith('\n') ? '' : nl}API_SERVER_KEY=${key}${nl}`)
+    expect(processMocks.execFile).not.toHaveBeenCalled()
+  })
 
   it('preserves other dotenv lines, prefixes, comments, and CRLF while honoring the YAML disable', async () => {
     const yaml = ['gateway:', '  platforms:', '    api_server:', '      enabled: true',

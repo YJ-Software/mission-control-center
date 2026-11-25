@@ -370,6 +370,76 @@ describe('native Hermes 0.21.5 run contract', () => {
     await vi.waitFor(() => expect(chatPayloads(frames).map((p) => p.state)).toEqual(['final']))
   })
 
+  it('opens SSE and delivers delta and approval when the original POST response was lost', async () => {
+    const stream = liveSse([{ event: 'message.delta', delta: 'Before approval' }, request])
+    const open = vi.fn(() => stream.response)
+    const post = vi.fn().mockRejectedValueOnce(new Error('lost original response'))
+      .mockResolvedValueOnce(json({ ...native.submitted, replayed: true }))
+    const approve = vi.fn(() => json(native.approvalResponse))
+    const { bridge, frames } = makeBridge({
+      [`${run}/events`]: open,
+      [`${run}/approval`]: approve,
+      '/v1/runs': post,
+    })
+    const params = { sessionKey: session, message: 'hello', idempotencyKey: 'fixture-browser-key' }
+    await expect(bridge.call('chat.send', params)).rejects.toThrow('lost original response')
+    expect(open).not.toHaveBeenCalled()
+    await expect(bridge.call('chat.send', params)).resolves.toMatchObject({ runId: 'fixture-run' })
+    await vi.waitFor(() => expect(frames).toContainEqual(expect.objectContaining({ event: 'exec.approval.requested' })))
+    expect(chatPayloads(frames)[0]).toMatchObject({ state: 'delta', message: { content: [{ text: 'Before approval' }] } })
+    const approvalFrame = frames.find((frame) => frame.event === 'exec.approval.requested')!
+    const approval = applyInteractionEvent([], String(approvalFrame.event), approvalFrame.payload)[0]
+    await bridge.call('exec.approval.resolve', { id: approval.id, decision: 'allow-once' })
+    expect(approve).toHaveBeenCalledOnce()
+    stream.emit(native.terminal)
+    stream.close()
+    await vi.waitFor(() => expect(chatPayloads(frames).map((p) => p.state)).toEqual(['delta', 'final']))
+    expect(open).toHaveBeenCalledOnce()
+  })
+
+  it('reconciles an idempotent replay if the SSE queue was already consumed', async () => {
+    const open = vi.fn(() => new Response(null, { status: native.streamReopenStatus }))
+    const status = vi.fn(() => json({ status: 'completed', output: native.terminal.output }))
+    const { bridge, frames } = makeBridge({
+      [`${run}/events`]: open,
+      [run]: status,
+      '/v1/runs': () => json({ ...native.submitted, replayed: true }),
+    })
+    await bridge.call('chat.send', { sessionKey: session, message: 'hello', idempotencyKey: 'fixture-browser-key' })
+    await vi.waitFor(() => expect(chatPayloads(frames)).toEqual([expect.objectContaining({ state: 'final' })]))
+    expect(open).toHaveBeenCalledOnce()
+    expect(status).toHaveBeenCalledOnce()
+  })
+
+  it.each([401, 403, 422])('emits the stream HTTP %i error immediately without status polling', async (status) => {
+    const { bridge, frames, fetchImpl } = makeBridge({
+      [`${run}/events`]: () => new Response(null, { status }),
+      [run]: () => json({ status: 'completed' }),
+    })
+    await bridge.pump('fixture-run', session)
+    expect(chatPayloads(frames)).toEqual([expect.objectContaining({
+      state: 'error', errorMessage: expect.stringContaining(`HTTP ${status}`),
+    })])
+    expect(fetchImpl).toHaveBeenCalledOnce()
+  })
+
+  it('retries transient status failures and ends immediately on a reconciliation auth failure', async () => {
+    const status = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(new Response(null, { status: 429 }))
+      .mockResolvedValueOnce(new Response(null, { status: 403 }))
+      .mockResolvedValue(json({ status: 'completed' }))
+    const { bridge, frames } = makeBridge({
+      [`${run}/events`]: () => new Response(null, { status: 409 }),
+      [run]: status,
+    }, { pollIntervalMs: 1, reconcileTimeoutMs: 500 })
+    await bridge.pump('fixture-run', session)
+    expect(chatPayloads(frames)).toEqual([expect.objectContaining({
+      state: 'error', errorMessage: expect.stringContaining('authentication failed: HTTP 403'),
+    })])
+    expect(status).toHaveBeenCalledTimes(3)
+  })
+
   it.each([['allow-once', 'once'], ['allow-always', 'always'], ['deny', 'deny']] as const)(
     'surfaces pending exec approval in the existing interaction UI and sends %s as %s',
     async (decision, choice) => {
