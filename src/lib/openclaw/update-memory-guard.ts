@@ -7,6 +7,12 @@ import { fillMessageTemplate } from './node-preflight-message'
 import { memoryBlockMessageValues, type MemoryPreflightBlockDetails } from './memory-preflight-message'
 import { jobsDir } from '../jobs/store'
 import { logTempRootFailureHint, tightenOpenclawTempRoots } from './temp-root-perms'
+import {
+  gatewayActionTimeout, gatewayStopProperties, parseSystemctlShow, parseSystemdDurationMs,
+  readGatewayActionTimeout, showGatewayUnit, stopStartedAt,
+} from './gateway-systemd'
+
+export { parseSystemctlShow } from './gateway-systemd'
 
 /**
  * 從 MCC 升級 OpenClaw 時的記憶體保護。
@@ -58,20 +64,10 @@ export function parseStatusAnonKb(text: string): number | null {
   return anon + (field('RssShmem') ?? 0)
 }
 
-/** `systemctl show -p A -p B` 的 `Key=Value` 行 → 物件 */
-export function parseSystemctlShow(text: string): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const line of text.split('\n')) {
-    const i = line.indexOf('=')
-    if (i > 0) out[line.slice(0, i).trim()] = line.slice(i + 1).trim()
-  }
-  return out
-}
-
 export interface GatewayService {
   /** systemd user unit 名稱（不含 .service） */
   unit: string
-  /** active／activating／reloading：升級前要停 */
+  /** active／activating／reloading／deactivating：升級前要等到停妥 */
   running: boolean
   /** systemd ActiveState（inactive、failed…） */
   activeState?: string
@@ -186,7 +182,7 @@ export async function inspectGatewayService(unit: string | null = resolveGateway
   const show = parseSystemctlShow(r.stdout)
   if (show.LoadState !== 'loaded') return null
   const activeState = show.ActiveState ?? ''
-  const running = RUNNING_STATES.has(activeState)
+  const running = RUNNING_STATES.has(activeState) || activeState === 'deactivating'
   return {
     unit, running, activeState,
     enabled: /^enabled/.test(show.UnitFileState ?? '') || show.UnitFileState === 'linked',
@@ -257,7 +253,8 @@ export async function recoverGatewayStoppedForUpgrade(deps: {
   log(`an OpenClaw upgrade left a gateway stop marker for ${svc} at ${marker.stoppedAt ?? '?'}; starting it now`)
   tightenOpenclawTempRoots(log)
   const since = Date.now()
-  const r = await run('systemctl', ['--user', 'start', svc], 3 * 60_000)
+  const timeout = await readGatewayActionTimeout('start', 3 * 60_000, svc)
+  const r = await run('systemctl', ['--user', 'start', svc], timeout)
   clearGatewayStopMarker(markerPath)
   if (r.code !== 0) {
     log(`systemctl --user start ${svc} failed (${r.code}): ${r.stderr.trim().slice(-300)}`)
@@ -292,8 +289,7 @@ function logMemAvailable(log: PhaseLog, prefix: string) {
 }
 
 /**
- * 升級前停 gateway 的 phase。gateway 收尾可能很久（unit TimeoutStopSec 預設 90 s，OpenClaw 自己的 unit
- * 是 5 分 30 秒，之後 systemd 會 SIGKILL），時限放寬到 7 分鐘。停不掉 → phase 失敗、不升級，收尾 phase 照跑。
+ * 升級前停 gateway 的 phase。等待 unit 設定的關閉時間。停不掉 → phase 失敗、不升級，收尾 phase 照跑。
  */
 export function stopGatewayPhase(unit: string) {
   return {
@@ -303,7 +299,8 @@ export function stopGatewayPhase(unit: string) {
       // 先寫標記再停：之後 MCC 不論怎麼死掉，下次開機都會把 gateway 啟動回來
       writeGatewayStopMarker(unit)
       log('system', `systemctl --user stop ${unit}.service — gateway is offline during the update and is started again afterwards`)
-      const r = await run('systemctl', ['--user', 'stop', `${unit}.service`], 7 * 60_000)
+      const timeout = await readGatewayActionTimeout('stop', 7 * 60_000, `${unit}.service`)
+      const r = await run('systemctl', ['--user', 'stop', `${unit}.service`], timeout)
       if (r.code !== 0) {
         log('stderr', `stop failed (${r.code}): ${r.stderr.trim().slice(-500)}`)
         return r.code
@@ -325,10 +322,9 @@ export interface StartGatewayOptions {
 }
 
 async function showGatewayState(svc: string, userUnit: boolean) {
-  const r = await run('systemctl', [
-    ...(userUnit ? ['--user'] : []), 'show', svc, '-p', 'ActiveState', '-p', 'SubState', '-p', 'NRestarts', '-p', 'NeedDaemonReload',
-  ], 10_000)
-  return parseSystemctlShow(r.stdout)
+  return showGatewayUnit(svc, userUnit, [
+    ...gatewayStopProperties, 'SubState', 'NRestarts', 'NeedDaemonReload', 'TimeoutStartUSec',
+  ])
 }
 
 async function waitForGatewayStart(svc: string, userUnit: boolean, since: number, log: PhaseLog, opts: StartGatewayOptions) {
@@ -340,6 +336,8 @@ async function waitForGatewayStart(svc: string, userUnit: boolean, since: number
   let state = await showGatewayState(svc, userUnit)
   const baseRestarts = Number(state.NRestarts) || 0
   const t0 = now()
+  let deadline = t0 + timeoutMs
+  let waitingForStop = false
   let activeSince: number | null = null
   let failure: string
   for (;;) {
@@ -358,7 +356,12 @@ async function waitForGatewayStart(svc: string, userUnit: boolean, since: number
     } else {
       activeSince = null
     }
-    if (now() - t0 >= timeoutMs) {
+    const stopMs = parseSystemdDurationMs(state.TimeoutStopUSec)
+    const stopping = state.ActiveState === 'deactivating' && stopMs !== undefined
+      && now() < (stopStartedAt(state) ?? t0) + stopMs
+    if (waitingForStop && !stopping) deadline = now() + timeoutMs
+    waitingForStop = stopping
+    if (!stopping && now() >= deadline) {
       failure = `${svc} did not stay active for ${Math.round(stableMs / 1000)}s within ${Math.round(timeoutMs / 1000)}s (state: ${state.ActiveState ?? '?'}/${state.SubState ?? '?'})`
       break
     }
@@ -387,7 +390,8 @@ export function restartGatewayPhase(opts: StartGatewayOptions = {}) {
       ]
       let code = 1
       for (const { svc, userUnit } of units) {
-        const result = await run('systemctl', [...(userUnit ? ['--user'] : []), 'restart', svc], 7 * 60_000)
+        const timeout = await readGatewayActionTimeout('restart', 3 * 60_000, svc, userUnit)
+        const result = await run('systemctl', [...(userUnit ? ['--user'] : []), 'restart', svc], timeout === 0 ? 0 : Math.max(timeout, 7 * 60_000))
         if (result.stdout.trim()) log('stdout', result.stdout.trim())
         if (result.stderr.trim()) log('stderr', result.stderr.trim())
         if (result.code === 0) return waitForGatewayStart(svc, userUnit, since, log, opts)
@@ -433,7 +437,8 @@ export function startGatewayPhase(unit: string, opts: StartGatewayOptions = {}) 
       } else {
         tightenOpenclawTempRoots(systemLog)
         log('system', `${svc} is ${state.ActiveState || 'not running'}; starting it`)
-        const r = await run('systemctl', ['--user', 'start', svc], 3 * 60_000)
+        const timeout = gatewayActionTimeout('start', 3 * 60_000, state)
+        const r = await run('systemctl', ['--user', 'start', svc], timeout)
         if (r.code !== 0) {
           log('stderr', `start failed (${r.code}): ${r.stderr.trim().slice(-500)}`)
           log('stderr', `the gateway is NOT running — start it by hand: ${manual}`)

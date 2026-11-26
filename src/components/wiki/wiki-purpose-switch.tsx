@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { Brain, Headset, Loader2, ArrowLeftRight, AlertTriangle } from 'lucide-react'
+import { GatewayStoppingNotice } from '@/components/layout/gateway-status-label'
 
 export type WikiPurpose = 'agent' | 'customer-service'
 
@@ -95,6 +96,7 @@ export function WikiPurposeSwitch({ compact = false, onSwitchedAction }: Props) 
               {t('cancel')}
             </button>
           </div>
+          {switchMutation.isPending && <GatewayStoppingNotice className="mt-2 w-full" />}
         </div>
       ) : (
         <button

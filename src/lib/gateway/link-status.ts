@@ -26,6 +26,14 @@ export type GatewayLinkState =
   | 'offline'
   /** Gateway closed us with `1013 gateway starting`; short retry until ready. */
   | 'starting'
+  /** The local systemd user unit has been deactivating for over 30 seconds. */
+  | 'stopping'
+
+export interface GatewayStopStatus {
+  since: number
+  telegram: boolean
+  remainingMinutes?: number
+}
 
 export interface GatewayLinkStatus {
   state: GatewayLinkState
@@ -39,13 +47,18 @@ export interface GatewayLinkStatus {
   nextRetryAt?: number | null
   /** Last close code / reason, for the tooltip. */
   lastClose?: { code: number; reason: string } | null
+  stop?: GatewayStopStatus
 }
 
 export const GATEWAY_STATUS_FRAME_TYPE = 'mcc:gateway-status'
 
 const STATES: ReadonlySet<string> = new Set<GatewayLinkState>([
-  'connecting', 'linked', 'pairing', 'pairing-retry', 'auth-failed', 'offline', 'starting',
+  'connecting', 'linked', 'pairing', 'pairing-retry', 'auth-failed', 'offline', 'starting', 'stopping',
 ])
+
+export function withGatewayStop(status: GatewayLinkStatus, stop: GatewayStopStatus | null): GatewayLinkStatus {
+  return stop ? { ...status, state: 'stopping', since: stop.since, stop } : status
+}
 
 export function gatewayStatusFrame(status: GatewayLinkStatus): string {
   return JSON.stringify({ type: GATEWAY_STATUS_FRAME_TYPE, payload: status })
@@ -58,6 +71,7 @@ export function parseGatewayStatusFrame(msg: unknown): GatewayLinkStatus | null 
   if (m.type !== GATEWAY_STATUS_FRAME_TYPE) return null
   const p = m.payload as Partial<GatewayLinkStatus> | undefined
   if (!p || typeof p.state !== 'string' || !STATES.has(p.state)) return null
+  const minutes = p.stop?.remainingMinutes
   return {
     state: p.state as GatewayLinkState,
     since: typeof p.since === 'number' ? p.since : Date.now(),
@@ -68,6 +82,14 @@ export function parseGatewayStatusFrame(msg: unknown): GatewayLinkStatus | null 
       && typeof p.lastClose.code === 'number' && typeof p.lastClose.reason === 'string'
       ? { code: p.lastClose.code, reason: p.lastClose.reason }
       : null,
+    ...(p.state === 'stopping' && p.stop && Number.isFinite(p.stop.since) ? {
+      stop: {
+        since: p.stop.since,
+        telegram: p.stop.telegram === true,
+        remainingMinutes: typeof minutes === 'number' && Number.isSafeInteger(minutes) && minutes >= 0
+          ? minutes : undefined,
+      },
+    } : {}),
   }
 }
 
@@ -80,6 +102,7 @@ export interface GatewayStatusView {
   labelKey:
     | 'linked' | 'connecting' | 'starting' | 'pairing' | 'pairingRetry'
     | 'authFailed' | 'offline' | 'dashboardOffline' | 'hermes'
+    | 'stopping' | 'stoppingTelegram' | 'stoppingTimed' | 'stoppingTelegramTimed'
   /** Interpolation values for the label. */
   values?: Record<string, number>
 }
@@ -100,6 +123,14 @@ export function gatewayStatusView(
     case 'linked': return { tone: 'active', labelKey: 'linked' }
     case 'connecting': return { tone: 'pending', labelKey: 'connecting' }
     case 'starting': return { tone: 'pending', labelKey: 'starting' }
+    case 'stopping': {
+      const minutes = status.stop?.remainingMinutes
+      const telegram = status.stop?.telegram
+      if (minutes !== undefined && minutes > 0) {
+        return { tone: 'pending', labelKey: telegram ? 'stoppingTelegramTimed' : 'stoppingTimed', values: { n: minutes } }
+      }
+      return { tone: 'pending', labelKey: telegram ? 'stoppingTelegram' : 'stopping' }
+    }
     case 'pairing': return { tone: 'pending', labelKey: 'pairing' }
     case 'pairing-retry':
       return { tone: 'error', labelKey: 'pairingRetry', values: { n: Math.max(1, status.pairingFailures ?? 1) } }

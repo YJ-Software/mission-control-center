@@ -23,6 +23,7 @@ import { checkRestartGate, WAIT_FOR_INSTALLS_PHASE } from '@/lib/restart-guard'
 import { runRestore } from './scripts'
 import { requestLegacyBackupCronRecheck, type LegacyCronRecheckResult } from './scheduler'
 import { logTempRootFailureHint, tightenOpenclawTempRoots } from '@/lib/openclaw/temp-root-perms'
+import { OPENCLAW_GATEWAY_UNIT, readGatewayActionTimeout, showGatewayUnit } from '@/lib/openclaw/gateway-systemd'
 
 export { BackupBusyError }
 export { LongRunBusyError }
@@ -81,20 +82,13 @@ export function defaultTar(args: string[]): Promise<string> {
   })
 }
 
-function systemctlUser(action: 'stop' | 'start'): Promise<void> {
-  // stop 可能等到 systemd 預設的 TimeoutStopSec（90 s），逾時要比它長
-  const timeout = action === 'stop' ? 120_000 : 60_000
+async function systemctlUser(action: 'stop' | 'start'): Promise<void> {
+  const timeout = await readGatewayActionTimeout(action, action === 'stop' ? 120_000 : 60_000)
   return new Promise((resolve, reject) => {
-    execFile('systemctl', ['--user', action, 'openclaw-gateway'], { timeout }, (err, _o, stderr) => {
+    execFile('systemctl', ['--user', action, OPENCLAW_GATEWAY_UNIT], { timeout }, (err, _o, stderr) => {
       if (err) reject(new Error(`systemctl --user ${action} openclaw-gateway failed: ${String(stderr).trim().slice(-300) || err.message}`))
       else resolve()
     })
-  })
-}
-
-function isGatewayUnitActive(): Promise<boolean> {
-  return new Promise((resolve) => {
-    execFile('systemctl', ['--user', 'is-active', 'openclaw-gateway'], { timeout: 15_000 }, (err) => resolve(!err))
   })
 }
 
@@ -117,7 +111,9 @@ async function waitGatewayHealthy(timeoutMs: number): Promise<boolean> {
 
 /** 動手前：unit 沒在跑但連接埠有回應，代表 gateway 不是由它管理，停不掉就不能安全換檔 */
 async function gatewayPreflight(): Promise<void> {
-  if (!(await isGatewayUnitActive()) && (await gatewayAnswers())) {
+  const unit = await showGatewayUnit(OPENCLAW_GATEWAY_UNIT, true, ['LoadState', 'ActiveState'])
+  const managed = unit.LoadState === 'loaded' && ['active', 'reloading', 'deactivating'].includes(unit.ActiveState)
+  if (!managed && (await gatewayAnswers())) {
     throw new Error('gateway 不是由 openclaw-gateway user unit 管理，無法安全還原（尚未更動任何資料）')
   }
 }

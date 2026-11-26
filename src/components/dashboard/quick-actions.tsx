@@ -1,5 +1,7 @@
 'use client'
 
+import { GatewayStoppingNotice } from '@/components/layout/gateway-status-label'
+
 import { useState, useCallback, useRef } from 'react'
 import { Zap } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -102,6 +104,7 @@ export function QuickActions() {
         <span className="text-sm font-semibold text-white/80">{t('title')}</span>
       </div>
       <div className="p-4">
+        <GatewayStoppingNotice className="mb-3" />
         <div className="grid grid-cols-2 gap-2.5">
           {actionDefs.filter(action => service.upgrade || !['restart-openclaw', 'update-openclaw', 'check-update'].includes(action.id)).map(action => {
             const isLoading = loading[action.id]

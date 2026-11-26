@@ -1,5 +1,7 @@
 'use client'
 
+import { GatewayStoppingNotice } from '@/components/layout/gateway-status-label'
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
@@ -282,6 +284,9 @@ function JobViewer({ jobId }: { jobId: string }) {
           </span>
           <h2 className="text-sm text-white/85 font-medium truncate">{meta.label}</h2>
         </div>
+        {meta.status === 'running' && ['restart-openclaw', 'upgrade-openclaw', 'backup-restore'].includes(meta.kind) && (
+          <GatewayStoppingNotice className="mt-2" />
+        )}
         <div className="font-mono text-[10px] text-white/35 mt-1 flex flex-wrap gap-x-3">
           <span>id: {meta.id}</span>
           <span>kind: {meta.kind}</span>

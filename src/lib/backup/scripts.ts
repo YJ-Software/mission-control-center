@@ -7,6 +7,7 @@ import { getScriptsDir, getBackupOutputDir, formatBytes, checkScriptsAvailable }
 import { classifyBackupFile, type BackupKind } from './archive-format'
 import { resolveInsideDirs } from './path-guard'
 import { buildCurlAuthConfig, redactSecretValues } from './secrets'
+import { readGatewayActionTimeout } from '@/lib/openclaw/gateway-systemd'
 
 const execFileAsync = promisify(execFile)
 
@@ -82,7 +83,7 @@ export async function runRestore(file: string, dryRun = false): Promise<string> 
   if (dryRun) args.push('--dry-run')
 
   const { stdout, stderr } = await execFileAsync('/bin/bash', args, {
-    timeout: 180000,
+    timeout: dryRun ? 180_000 : await readGatewayActionTimeout('restart', 180_000),
     env: { ...process.env, HOME: process.env.HOME },
   })
 

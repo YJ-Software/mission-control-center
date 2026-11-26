@@ -88,6 +88,7 @@ beforeEach(() => {
   m.memoryPreflight.mockReset()
   vi.stubEnv('HOME', m.home)
   vi.stubEnv('XDG_CACHE_HOME', path.join(m.home, '.cache'))
+  for (const key of ['XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR']) vi.stubEnv(key, m.home)
   vi.stubEnv('OPENCLAW_STATE_DIR', path.join(m.home, '.openclaw'))
 })
 
@@ -269,7 +270,7 @@ describe('gateway service detection (systemctl mocked)', () => {
  * 假的 systemd：依指令改狀態並回應；`tick` 在每次輪詢的 sleep 時呼叫，用來模擬 gateway 起來、crash 等時間變化。
  * 沒處理到的 systemctl 指令一樣走 guard（記一筆並丟錯）。
  */
-function fakeSystemd(init: { ActiveState: string; SubState?: string; NRestarts?: number; NeedDaemonReload?: string }, opts: {
+function fakeSystemd(init: { ActiveState: string; SubState?: string; NRestarts?: number; NeedDaemonReload?: string; TimeoutStopUSec?: string }, opts: {
   startCode?: number
   journal?: string
   onStart?: (st: Record<string, string | number>) => void
@@ -317,8 +318,13 @@ describe('gateway stop / start phases (systemctl mocked)', () => {
 
   it('stop phase writes the recovery marker BEFORE stopping; a failed stop fails the phase', async () => {
     let markerAtStop: unknown = 'unset'
-    processMocks.execFile.mockImplementation((file: string, args: string[], _o: unknown, cb: ExecCb) => {
+    processMocks.execFile.mockImplementation((file: string, args: string[], options: { timeout: number }, cb: ExecCb) => {
+      if (file === 'systemctl' && args[1] === 'show') {
+        queueMicrotask(() => cb(null, 'LoadState=loaded\nTimeoutStopUSec=9min', ''))
+        return {}
+      }
       if (file !== 'systemctl' || args[1] !== 'stop') return refuseExecFile(file, args)
+      expect(options.timeout).toBe(545_000)
       markerAtStop = readGatewayStopMarker()
       queueMicrotask(() => cb(null, '', ''))
       return {}
@@ -326,7 +332,10 @@ describe('gateway stop / start phases (systemctl mocked)', () => {
     expect(await stopGatewayPhase('openclaw-gateway').inline(logs().log)).toBe(0)
     expect(markerAtStop).toMatchObject({ unit: 'openclaw-gateway' })
 
-    respond([{ match: systemctl('--user', 'stop', 'openclaw-gateway.service'), code: 5, stderr: 'Unit not loaded' }])
+    respond([
+      { match: systemctl('--user', 'show', 'openclaw-gateway.service'), stdout: 'LoadState=not-found' },
+      { match: systemctl('--user', 'stop', 'openclaw-gateway.service'), code: 5, stderr: 'Unit not loaded' },
+    ])
     const l = logs()
     expect(await stopGatewayPhase('openclaw-gateway').inline(l.log)).toBe(5)
     expect(l.lines.join('\n')).toContain('Unit not loaded')
@@ -385,6 +394,15 @@ describe('gateway stop / start phases (systemctl mocked)', () => {
     expect(l.lines.join('\n')).toContain('did not stay active')
   })
 
+  it('waits through deactivation and gives the gateway its normal start window', async () => {
+    const sd = fakeSystemd({ ActiveState: 'activating', TimeoutStopUSec: '5min 30s' })
+    const clock = fakeClock(t => {
+      sd.st.ActiveState = t < 320_000 ? 'deactivating' : t < 332_000 ? 'activating' : 'active'
+    })
+    expect(await startGatewayPhase('openclaw-gateway', clock).inline(logs().log)).toBe(0)
+    expect(clock.now()).toBe(342_000)
+  })
+
   it('a failed start fails the phase, tells the user the command to run, keeps the marker', async () => {
     writeGatewayStopMarker('openclaw-gateway')
     fakeSystemd({ ActiveState: 'failed' }, { startCode: 1 })
@@ -406,10 +424,13 @@ describe('MCC startup: gateway left stopped by an interrupted upgrade (H1)', () 
 
   it('marker present → starts the unit and removes the marker', async () => {
     writeGatewayStopMarker('openclaw-gateway')
-    respond([{ match: systemctl('--user', 'start', 'openclaw-gateway.service') }])
+    respond([
+      { match: systemctl('--user', 'show', 'openclaw-gateway.service'), stdout: 'LoadState=loaded\nActiveState=deactivating\nTimeoutStopUSec=5min 30s' },
+      { match: systemctl('--user', 'start', 'openclaw-gateway.service') },
+    ])
     const lines: string[] = []
     expect(await recoverGatewayStoppedForUpgrade({ log: (t) => lines.push(t) })).toBe('started')
-    expect(processMocks.execFile).toHaveBeenCalledTimes(1)
+    expect(processMocks.execFile.mock.calls[1][2]).toEqual({ timeout: 515_000 })
     expect(existsSync(gatewayStopMarkerPath())).toBe(false)
     expect(lines.join('\n')).toContain('left a gateway stop marker')
     expect(lines.join('\n')).not.toContain('MCC exited')
@@ -417,13 +438,14 @@ describe('MCC startup: gateway left stopped by an interrupted upgrade (H1)', () 
 
   it('the legacy unit name from the marker is used as is', async () => {
     writeGatewayStopMarker('openclaw')
-    respond([{ match: systemctl('--user', 'start', 'openclaw.service') }])
+    respond([{ match: systemctl('--user', 'show', 'openclaw.service') }, { match: systemctl('--user', 'start', 'openclaw.service') }])
     expect(await recoverGatewayStoppedForUpgrade(quiet)).toBe('started')
   })
 
   it('start fails → reports it and still removes the marker (no retry loop on every boot)', async () => {
     writeGatewayStopMarker('openclaw-gateway')
     respond([
+      { match: systemctl('--user', 'show', 'openclaw-gateway.service') },
       { match: systemctl('--user', 'start', 'openclaw-gateway.service'), code: 1, stderr: 'boom' },
       { match: (file, args) => file === 'journalctl' && args.includes('openclaw-gateway.service') },
     ])
@@ -564,7 +586,9 @@ describe('/api/action update-openclaw with the memory guard', () => {
 
   it('quick restart reports a temp-root failure even when systemctl accepted the restart', async () => {
     respond([
+      { match: systemctl('show', 'openclaw.service'), code: 5 },
       { match: systemctl('restart', 'openclaw.service'), code: 5 },
+      { match: systemctl('--user', 'show', 'openclaw.service'), code: 5 },
       { match: systemctl('--user', 'restart', 'openclaw.service'), code: 5 },
       { match: systemctl('--user', 'restart', 'openclaw-gateway.service') },
       { match: systemctl('--user', 'show', 'openclaw-gateway.service'), stdout: 'ActiveState=failed\nSubState=failed\nNRestarts=0\n' },

@@ -11,6 +11,7 @@ import { TerminalFloating } from '@/components/terminal/terminal-floating'
 import { BackendCapabilitiesProvider, type BackendCapabilities } from './backend-capabilities'
 import { supportsPage } from '@/lib/agent-runtime/capabilities'
 import { UnsupportedBackend } from './unsupported-backend'
+import { GatewayStoppingNotice } from './gateway-status-label'
 
 interface MobileMenuContextValue {
   toggleDrawer: () => void
@@ -34,6 +35,7 @@ export function AppShell({ children, capabilities }: { children: React.ReactNode
           <div className="flex h-screen overflow-hidden bg-background">
             <Sidebar />
             <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+              <GatewayStoppingNotice className="shrink-0 border-b border-amber-400/20 bg-amber-500/10 px-4 py-2" />
               {supportsPage(capabilities, pathname) ? children : <UnsupportedBackend />}
             </div>
           </div>

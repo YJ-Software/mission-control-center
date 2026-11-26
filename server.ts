@@ -22,9 +22,12 @@ import { GatewayReconnectBackoff } from './src/lib/gateway-reconnect-backoff'
 import { PairingRetry, type PairingSnapshot } from './src/lib/gateway/pairing-retry'
 import {
   gatewayStatusFrame,
+  withGatewayStop,
   type GatewayLinkState,
   type GatewayLinkStatus,
+  type GatewayStopStatus,
 } from './src/lib/gateway/link-status'
+import { GATEWAY_STOP_POLL_MS, readGatewayStop } from './src/lib/openclaw/gateway-stopping'
 import { classifyGatewayClose, routeBrowserFrameToGateway } from './src/lib/gateway/routing'
 import { describeCliError, openclawCliEnv } from './src/lib/gateway/openclaw-cli'
 import { withOpenclawCli } from './src/lib/openclaw/cli-limiter'
@@ -300,6 +303,30 @@ const pendingRequests = new Map<string, { resolve: (value: unknown) => void; rej
 // -----------------------------------------------------------------------------
 let gatewayWss: WebSocketServer | null = null
 let gatewayLink: GatewayLinkStatus = { state: 'connecting', since: Date.now(), runtime: 'openclaw' }
+let gatewayStop: GatewayStopStatus | null = null
+
+function currentGatewayStatusFrame() {
+  return gatewayStatusFrame(withGatewayStop(gatewayLink, gatewayStop))
+}
+
+function monitorGatewayStop(wss: WebSocketServer, unit: string) {
+  let timer: ReturnType<typeof setTimeout>
+  let closed = false
+  const poll = async () => {
+    const stop = await readGatewayStop(unit, gatewayStop)
+    if (closed) return
+    const before = currentGatewayStatusFrame()
+    gatewayStop = stop
+    const after = currentGatewayStatusFrame()
+    if (before !== after) broadcast(wss, after)
+    timer = setTimeout(poll, GATEWAY_STOP_POLL_MS)
+  }
+  void poll()
+  return () => {
+    closed = true
+    clearTimeout(timer)
+  }
+}
 
 function setGatewayLink(state: GatewayLinkState, extra: Partial<GatewayLinkStatus> = {}) {
   // Same state: keep its details (retry count, …) unless overridden.
@@ -314,7 +341,7 @@ function setGatewayLink(state: GatewayLinkState, extra: Partial<GatewayLinkStatu
   }
   const changed = JSON.stringify(next) !== JSON.stringify(gatewayLink)
   gatewayLink = next
-  if (changed && gatewayWss) broadcast(gatewayWss, gatewayStatusFrame(gatewayLink))
+  if (changed && gatewayWss && !gatewayStop) broadcast(gatewayWss, currentGatewayStatusFrame())
 }
 
 // Self-pairing: one approval at a time, backoff retries, reset on hello-ok.
@@ -640,7 +667,7 @@ app.prepare().then(async () => {
   wss.on('connection', (ws, req) => {
     console.log('[WS] Client connected from', req.socket.remoteAddress)
     // Current MCC → Gateway link state; later changes arrive via setGatewayLink().
-    ws.send(gatewayStatusFrame(gatewayLink))
+    ws.send(currentGatewayStatusFrame())
 
     ws.on('message', (data) => {
       const raw = data.toString()
@@ -781,6 +808,9 @@ app.prepare().then(async () => {
 
   // Connect to OpenClaw gateway
   if (backend === 'openclaw') connectGateway(wss)
+  const stopGatewayMonitor = capabilities.service.upgrade
+    ? monitorGatewayStop(wss, capabilities.service.userUnit)
+    : undefined
 
   // Export terminal manager for API routes
   ;(globalThis as Record<string, unknown>).__terminalManager = terminalManager
@@ -794,6 +824,7 @@ app.prepare().then(async () => {
       () => stopTunnel(),
       () => terminalManager?.shutdown(),
       () => pairing.dispose(),
+      () => stopGatewayMonitor?.(),
     ],
     closeDb,
     exit: (code) => process.exit(code),

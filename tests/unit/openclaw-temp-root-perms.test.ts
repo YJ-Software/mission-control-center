@@ -20,11 +20,14 @@ beforeEach(() => {
   state = path.join(root, 'state')
   temp = path.join(state, 'tmp')
   for (const dir of [cache, state, temp]) fs.mkdirSync(dir, { mode: 0o755 })
-  env = { NODE_ENV: 'test', XDG_CACHE_HOME: cache, OPENCLAW_STATE_DIR: state }
+  env = { NODE_ENV: 'test', HOME: root, XDG_CACHE_HOME: cache, OPENCLAW_STATE_DIR: state }
+  for (const key of ['XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR']) env[key] = root
+  for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value)
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
   fs.rmSync(root, { recursive: true, force: true })
 })
 
@@ -38,7 +41,7 @@ describe('tightenOpenclawTempRoots', () => {
     tightenOpenclawTempRoots(log, env)
     expect([mode(cache), mode(state), mode(temp)]).toEqual([0o755, 0o755, 0o1755])
     expect(log.mock.calls.flat()).toEqual([
-      `tightened ${cache} 775→755`, `tightened ${state} 777→755`, `tightened ${temp} 1777→1755`,
+      'tightened ~/cache 775→755', 'tightened ~/state 777→755', 'tightened ~/state/tmp 1777→1755',
     ])
   })
 
@@ -77,7 +80,7 @@ describe('tightenOpenclawTempRoots', () => {
     expect(() => tightenOpenclawTempRoots(log, env, undefined, chmod)).not.toThrow()
     expect(mode(state)).toBe(0o775)
     expect(mode(temp)).toBe(0o755)
-    expect(log).toHaveBeenCalledWith(`Warning: could not tighten ${state}: EACCES`)
+    expect(log).toHaveBeenCalledWith('Warning: could not tighten ~/state: EACCES')
   })
 })
 
@@ -97,7 +100,7 @@ describe('gateway failure diagnostics', () => {
     await logTempRootFailureHint('openclaw-gateway.service', true, 12_345, log, env)
     if (expected) {
       expect(log).toHaveBeenCalledOnce()
-      expect(log.mock.calls[0][0]).toContain(`chmod go-w on writable private directories (${cache}, ${state}, ${temp})`)
+      expect(log.mock.calls[0][0]).toContain('chmod go-w on writable private directories (~/cache, ~/state, ~/state/tmp)')
     } else {
       expect(log).not.toHaveBeenCalled()
     }
@@ -107,9 +110,16 @@ describe('gateway failure diagnostics', () => {
     setMode(temp, 0o775)
     vi.spyOn(console, 'log').mockImplementation(() => {})
     processMocks.execFile.mockImplementationOnce((bin, args, options, callback) => {
+      expect(bin).toBe('systemctl')
+      expect(args.slice(0, 3)).toEqual(['--user', 'show', 'openclaw-gateway.service'])
+      expect(options.env).toBe(env)
+      callback(null, 'LoadState=loaded\nActiveState=active\nTimeoutStopUSec=5min 30s\nTimeoutStartUSec=30s', '')
+    })
+    processMocks.execFile.mockImplementationOnce((bin, args, options, callback) => {
       expect(bin).toBe('openclaw')
       expect(args).toEqual(['gateway', 'restart'])
       expect(options.env).toBe(env)
+      expect(options.timeout).toBe(395_000)
       expect(mode(temp)).toBe(0o755)
       callback(null, 'restarted', '')
     })

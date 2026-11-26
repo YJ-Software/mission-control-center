@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslations } from 'next-intl'
 import { KeyRound, ShieldCheck, ShieldAlert, Loader2, CheckCircle2, XCircle } from 'lucide-react'
+import { GatewayStoppingNotice } from '@/components/layout/gateway-status-label'
 
 interface SecretsStatus {
   plaintextCount: number
@@ -105,6 +106,7 @@ export function SetupSecrets() {
         )}
       </div>
 
+      {running && <GatewayStoppingNotice />}
       {!status?.hardened && (
         <div className="cyber-card p-5">
           <h3 className="text-sm font-semibold text-white/90 mb-2">{t('actionTitle')}</h3>

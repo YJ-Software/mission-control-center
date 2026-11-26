@@ -1,5 +1,8 @@
-import { execFileSync } from 'child_process'
+import { execFile, execFileSync } from 'child_process'
 import { readFileSync } from 'fs'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 /**
  * Shared helpers for the /system-log viewers (Linux system journal +
@@ -155,6 +158,18 @@ export function canSudoJournal(): boolean {
       timeout: 4000,
     })
     return true
+  } catch {
+    return false
+  }
+}
+
+export async function userUnitJournalMatches(unit: string, since: number, pattern: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync('journalctl', [
+      '--user', '--boot', '-u', unit, '--since', `@${(since / 1000).toFixed(3)}`,
+      '--grep', pattern, '-n', '1', '--no-pager', '-o', 'cat',
+    ], { encoding: 'utf8', timeout: 4000 })
+    return Boolean(stdout.trim())
   } catch {
     return false
   }

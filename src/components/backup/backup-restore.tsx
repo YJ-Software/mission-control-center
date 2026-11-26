@@ -9,6 +9,7 @@ import { restoreAction, systemLogJobUrl } from '@/lib/backup/ui-helpers'
 import type { BackupKind } from '@/lib/backup/archive-format'
 import { useLongRunGuard } from '@/hooks/use-long-run-guard'
 import { useBackendCapabilities } from '@/components/layout/backend-capabilities'
+import { GatewayStoppingNotice } from '@/components/layout/gateway-status-label'
 
 interface BackupFile {
   filename: string
@@ -313,6 +314,7 @@ export function BackupRestore() {
             <p className="text-xs text-white/50 font-mono mb-4 truncate">
               {modal.file.filename}
             </p>
+            {(modal.phase === 'restoring' || modal.phase === 'started') && <GatewayStoppingNotice className="mb-4" />}
 
             {/* Loading state */}
             {modal.phase === 'dry-run-loading' && (

@@ -1,6 +1,7 @@
 import { execFile } from 'child_process'
 import { promisify } from 'node:util'
 import { logTempRootFailureHint, tightenOpenclawTempRoots } from './temp-root-perms'
+import { OPENCLAW_GATEWAY_UNIT, readGatewayActionTimeout } from './gateway-systemd'
 
 const execFileAsync = promisify(execFile)
 
@@ -10,7 +11,8 @@ export async function restartOpenclawGateway(options: { timeout: number; env?: N
   tightenOpenclawTempRoots(log, options.env)
   const since = Date.now()
   try {
-    return await execFileAsync('openclaw', ['gateway', 'restart'], { ...options, encoding: 'utf8' })
+    const timeout = await readGatewayActionTimeout('restart', options.timeout, OPENCLAW_GATEWAY_UNIT, true, options.env)
+    return await execFileAsync('openclaw', ['gateway', 'restart'], { ...options, timeout, encoding: 'utf8' })
   } catch (err) {
     await logTempRootFailureHint('openclaw-gateway.service', true, since, log, options.env)
     throw err

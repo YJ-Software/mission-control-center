@@ -4,6 +4,8 @@ import { join } from 'path'
 import {
   gatewayStatusFrame,
   gatewayStatusView,
+  isGatewayReady,
+  withGatewayStop,
   parseGatewayStatusFrame,
   GATEWAY_STATUS_FRAME_TYPE,
   type GatewayLinkStatus,
@@ -26,6 +28,16 @@ describe('gateway status frame', () => {
     expect(parseGatewayStatusFrame({ type: GATEWAY_STATUS_FRAME_TYPE, payload: { state: 'bogus' } })).toBeNull()
     expect(parseGatewayStatusFrame({ type: GATEWAY_STATUS_FRAME_TYPE })).toBeNull()
     expect(parseGatewayStatusFrame(null)).toBeNull()
+  })
+
+  it('round-trips a stop with its timer and restores the latest socket state afterwards', () => {
+    const stop = { since: 50, telegram: true, remainingMinutes: 4 }
+    const status = withGatewayStop(base, stop)
+    expect(parseGatewayStatusFrame(JSON.parse(gatewayStatusFrame(status)))).toMatchObject({
+      state: 'stopping', since: 50, stop,
+    })
+    expect(isGatewayReady(status, true)).toBe(false)
+    expect(withGatewayStop(base, null)).toBe(base)
   })
 })
 
@@ -63,8 +75,18 @@ describe('gatewayStatusView', () => {
     expect(gatewayStatusView({ ...base, state: 'offline', runtime: 'hermes' }, true).labelKey).toBe('hermes')
   })
 
+  it('shows a pending stop and names Telegram only when the server detected it', () => {
+    expect(gatewayStatusView(withGatewayStop(base, { since: 1, telegram: true, remainingMinutes: 4 }), true))
+      .toEqual({ tone: 'pending', labelKey: 'stoppingTelegramTimed', values: { n: 4 } })
+    expect(gatewayStatusView(withGatewayStop(base, { since: 1, telegram: false, remainingMinutes: 2 }), true))
+      .toEqual({ tone: 'pending', labelKey: 'stoppingTimed', values: { n: 2 } })
+    expect(gatewayStatusView(withGatewayStop(base, { since: 1, telegram: false, remainingMinutes: 0 }), true))
+      .toEqual({ tone: 'pending', labelKey: 'stopping' })
+  })
+
   it('has a label for every view key in all three locales', () => {
-    const keys = ['linked', 'connecting', 'starting', 'pairing', 'pairingRetry', 'authFailed', 'offline', 'dashboardOffline', 'hermes']
+    const keys = ['linked', 'connecting', 'starting', 'stopping', 'stoppingTimed', 'stoppingTelegram',
+      'stoppingTelegramTimed', 'pairing', 'pairingRetry', 'authFailed', 'offline', 'dashboardOffline', 'hermes']
     for (const locale of ['en', 'zh-TW', 'zh-CN']) {
       const msgs = JSON.parse(readFileSync(join(__dirname, `../../messages/${locale}.json`), 'utf8'))
       for (const k of keys) {
