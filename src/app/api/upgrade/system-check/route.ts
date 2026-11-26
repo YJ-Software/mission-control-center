@@ -1,13 +1,8 @@
 import { NextResponse } from 'next/server'
-import { existsSync, readFileSync } from 'fs'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
-import { getServerEnv } from '@/lib/server-env'
-import { parseAptCheck, parseRebootPackages } from '@/lib/system-update/apt'
+import { existsSync, readFileSync } from 'node:fs'
+import { parseRebootPackages } from '@/lib/system-update/apt'
+import { pendingAptCounts } from '@/lib/system-update/check'
 
-const execFileP = promisify(execFile)
-
-const APT_CHECK = '/usr/lib/update-notifier/apt-check'
 const REBOOT_FLAG = '/var/run/reboot-required'
 const REBOOT_PKGS = '/var/run/reboot-required.pkgs'
 
@@ -18,6 +13,7 @@ const REBOOT_PKGS = '/var/run/reboot-required.pkgs'
  * to show" rather than "up to date": not knowing and being current are
  * different states and must not render the same. */
 export async function GET() {
+  const counts = await pendingAptCounts()
   const rebootRequired = existsSync(REBOOT_FLAG)
   let rebootPackages: string[] = []
   if (rebootRequired && existsSync(REBOOT_PKGS)) {
@@ -28,46 +24,11 @@ export async function GET() {
     }
   }
 
-  if (!existsSync(APT_CHECK)) {
-    return NextResponse.json({
-      manager: null,
-      updates: 0,
-      security: 0,
-      rebootRequired,
-      rebootPackages,
-    })
-  }
-
-  try {
-    // apt-check writes "<updates>;<security>" to stderr, not stdout.
-    const { stderr } = await execFileP(APT_CHECK, [], {
-      timeout: 30_000,
-      env: getServerEnv(),
-    })
-    const counts = parseAptCheck(stderr)
-    if (!counts) {
-      return NextResponse.json({
-        manager: null,
-        updates: 0,
-        security: 0,
-        rebootRequired,
-        rebootPackages,
-      })
-    }
-    return NextResponse.json({
-      manager: 'apt',
-      updates: counts.updates,
-      security: counts.security,
-      rebootRequired,
-      rebootPackages,
-    })
-  } catch {
-    return NextResponse.json({
-      manager: null,
-      updates: 0,
-      security: 0,
-      rebootRequired,
-      rebootPackages,
-    })
-  }
+  return NextResponse.json({
+    manager: counts ? 'apt' : null,
+    updates: counts?.updates ?? 0,
+    security: counts?.security ?? 0,
+    rebootRequired,
+    rebootPackages,
+  })
 }

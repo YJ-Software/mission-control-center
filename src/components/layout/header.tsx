@@ -75,6 +75,7 @@ export function Header({ title, subtitle, onMenuToggle }: HeaderProps) {
   }>({
     queryKey: ['system-update-check'],
     queryFn: () => fetch('/api/upgrade/system-check').then(r => r.json()),
+    staleTime: 300000,
     refetchInterval: 300000,
     retry: false,
   })

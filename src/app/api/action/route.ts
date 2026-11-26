@@ -367,11 +367,13 @@ const actions: Record<string, ActionHandler> = {
     // run noninteractive with --force-confold or a package shipping a changed
     // config file stops the upgrade on a prompt nobody can answer.
     const { buildSystemUpdatePhases } = await import('@/lib/system-update/apt')
+    const { invalidateAptCheck } = await import('@/lib/system-update/check')
     const meta = startJob({
       kind: 'sys-update',
       label: 'apt update + upgrade',
       triggeredBy,
       phases: buildSystemUpdatePhases(),
+      onSettled: invalidateAptCheck,
     })
     return { success: true, jobId: meta.id }
   },
@@ -380,6 +382,7 @@ const actions: Record<string, ActionHandler> = {
   // dpkg-repair 在 LONG_RUNNING_JOB_KINDS 裡，執行期間同樣擋住重啟。
   'dpkg-repair': async ({ triggeredBy }) => {
     const { dpkgRepairStrictShell, DPKG_REPAIR_LABEL } = await import('@/lib/system-update/dpkg-repair')
+    const { invalidateAptCheck } = await import('@/lib/system-update/check')
     // 另一個 apt/dpkg（或另一次修復）正在跑時，第二個 dpkg 只會撞鎖失敗，留下一筆令人困惑的失敗 job
     const running = listLongRuns()
     if (running.length > 0) {
@@ -393,6 +396,7 @@ const actions: Record<string, ActionHandler> = {
       phases: [{ name: 'dpkg --configure -a', shell: dpkgRepairStrictShell() }],
       // 修好就清掉通知；沒修好就重新通知（按鈕回來）
       onSettled: () => {
+        invalidateAptCheck()
         void import('@/lib/system-update/dpkg-boot-check').then((m) => m.recheckDpkgAfterRepair())
       },
     })

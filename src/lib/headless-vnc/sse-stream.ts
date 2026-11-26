@@ -2,6 +2,7 @@
 import { spawn } from 'child_process'
 import { registerLongRun, unregisterLongRun, updateLongRun } from '@/lib/long-running'
 import { DPKG_REPAIR_ARGS, DPKG_REPAIR_LABEL, isAptCommand, isDpkgRepairCommand, withAptNonInteractive } from '@/lib/system-update/dpkg-repair'
+import { invalidateAptCheck } from '@/lib/system-update/check'
 
 export interface InstallEvent {
   type: 'log' | 'progress' | 'done' | 'error'
@@ -83,6 +84,7 @@ export function createSSEStream(
       // 不只登記單一 spawn，因為兩步之間被重啟一樣會讓安裝停在一半。
       // MCC 即將重啟時登記會丟 RestartPendingError，在 catch 裡變成串流的 error 事件
       let longRunId: number | null = null
+      let ranApt = false
       try {
         longRunId = registerLongRun(runName)
         const runId = longRunId
@@ -94,6 +96,7 @@ export function createSSEStream(
           updateLongRun(runId, { step: label })
 
           const args = buildSpawnArgs(cmd, rawArgs)
+          ranApt ||= Boolean(opts?.aptSelfHeal) || isAptCommand(cmd, rawArgs)
 
           try {
             await new Promise<void>((resolve, reject) => {
@@ -148,6 +151,7 @@ export function createSSEStream(
         enqueue({ type: 'error', data: err.message ?? String(err) })
         await new Promise(r => setTimeout(r, 500))
       } finally {
+        if (ranApt) invalidateAptCheck()
         if (longRunId !== null) unregisterLongRun(longRunId)
         controller.close()
       }
