@@ -35,11 +35,19 @@ describe('online profile removal', () => {
     expect(processMocks.spawn).not.toHaveBeenCalled()
   })
 
-  it.each(['Gateway RPC not available', 'Gateway WebSocket not connected', 'unknown method: models.authLogout', 'RPC timeout for models.authLogout'])('falls back to the existing CLI on %s', async (message) => {
+  it.each(['Gateway RPC not available', 'Gateway WebSocket not connected', 'unknown method: models.authLogout'])('falls back to the existing CLI on %s', async (message) => {
     gatewayMock.mockRejectedValue(new Error(message))
     const run = vi.fn(async () => ({ code: 0, output: '', timedOut: false }))
     await removeProfile('sales', 'kimi:manual', { configPath, run })
     expect(run).toHaveBeenCalledWith(buildLogoutArgs('sales', 'kimi:manual'))
+  })
+
+  it.each(['RPC timeout for models.authLogout', 'Gateway disconnected'])('does not repeat logout when the gateway may have applied it (%s)', async (message) => {
+    const error = new Error(message)
+    gatewayMock.mockRejectedValue(error)
+    const run = vi.fn(async () => ({ code: 0, output: '', timedOut: false }))
+    await expect(removeProfile('main', 'kimi:manual', { configPath, run })).rejects.toBe(error)
+    expect(run).not.toHaveBeenCalled()
   })
 
   it('does not retry a rejected mutation through the CLI', async () => {

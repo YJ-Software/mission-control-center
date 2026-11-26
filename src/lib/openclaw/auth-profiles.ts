@@ -431,10 +431,11 @@ export async function removeProfile(
   opts: RemoveProfileOptions = {},
 ): Promise<void> {
   const { run = cliRunner, configPath = CONFIG_PATH } = opts
+  const method = 'models.authLogout'
 
   // RPC 與 CLI 共用 OpenClaw 的憑證及 config 清理，明確指定單一 profile，避免登出整個 provider。
   try {
-    await gatewayRequest('models.authLogout', {
+    await gatewayRequest(method, {
       provider: readAuthProfilesFromConfig(configPath)?.profiles?.[profileId]?.provider ?? profileId.split(':')[0],
       agentId,
       profileIds: [profileId],
@@ -442,7 +443,9 @@ export async function removeProfile(
     return
   } catch (err) {
     // 權限／參數／憑證清理錯誤直接回報，不能再用 CLI 繞過或重複變更。
-    if (!isGatewayRpcUnavailable(err)) throw err
+    // 請求送出後逾時或斷線時，Gateway 可能已完成登出。
+    const message = err instanceof Error ? err.message : String(err)
+    if (message === `RPC timeout for ${method}` || message === 'Gateway disconnected' || !isGatewayRpcUnavailable(err)) throw err
   }
 
   // 空的 auth.profiles 仍是新版 store；最後一筆 config 刪掉後可能還留有憑證。

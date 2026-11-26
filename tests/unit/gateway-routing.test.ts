@@ -1,9 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import { classifyGatewayClose, routeBrowserFrameToGateway } from '@/lib/gateway/routing'
+import { gatewayRpcTimeoutMs } from '@/lib/gateway-rpc'
 import { describeCliError, openclawCliEnv, CLI_ERROR_STDERR_MAX } from '@/lib/gateway/openclaw-cli'
 import { isGatewayReady, type GatewayLinkState } from '@/lib/gateway/link-status'
 
 const req = JSON.stringify({ type: 'req', id: 'rpc-1-abc', method: 'chat.send', params: {} })
+
+it('gives profile logout time to reload while keeping the ordinary RPC deadline', () => {
+  expect(gatewayRpcTimeoutMs('models.authLogout')).toBe(30_000)
+  expect(gatewayRpcTimeoutMs('models.authStatus')).toBe(10_000)
+})
 
 describe('routeBrowserFrameToGateway', () => {
   it('forwards only when the socket is open AND the handshake finished', () => {

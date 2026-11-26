@@ -19,6 +19,7 @@ import { loadEnvConfig } from '@next/env'
 import { WebSocketServer, WebSocket } from 'ws'
 import { resolveSecretRef } from './src/lib/openclaw/secret-ref'
 import { GatewayReconnectBackoff } from './src/lib/gateway-reconnect-backoff'
+import { gatewayRpcTimeoutMs } from './src/lib/gateway-rpc'
 import { PairingRetry, type PairingSnapshot } from './src/lib/gateway/pairing-retry'
 import {
   gatewayStatusFrame,
@@ -292,7 +293,7 @@ const pendingRequests = new Map<string, { resolve: (value: unknown) => void; rej
     const timer = setTimeout(() => {
       pendingRequests.delete(id)
       reject(new Error(`RPC timeout for ${method}`))
-    }, 10_000)
+    }, gatewayRpcTimeoutMs(method))
     pendingRequests.set(id, { resolve, reject, timer })
     gatewayWs.send(JSON.stringify({ type: 'req', id, method, params: params ?? {} }))
   })
