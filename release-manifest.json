@@ -1,7 +1,7 @@
 {
   "latest": {
-    "version": "0.4.10",
-    "mccVersion": "0.4.10",
+    "version": "0.5.0",
+    "mccVersion": "0.5.0",
     "openclawVersion": "2026.11.6",
     "validated": {
       "openclaw": [
@@ -13,21 +13,43 @@
         "2026.10.8",
         "2026.11.2",
         "2026.11.6"
+      ],
+      "hermes": [
+        "0.21.5",
+        "v2026.9.24"
       ]
     },
-    "releaseDate": "2026-11-23T17:41:48.097Z",
-    "notes": "- fix(openclaw): OpenClaw 11.3 起若 ~/.cache 與 ~/.openclaw/tmp 群組可寫（UMask 0002 的預設），gateway 會以 exit 78 拒絕啟動。MCC 現在在升級、重啟、還原 OpenClaw 前先收緊這些目錄的權限，openclaw update 改在 umask 022 下執行；gateway 仍起不來時，工作日誌會提示修法。\n- fix(openclaw): 開機復原訊息不再誤稱「MCC exited」。\n- 已驗證：OpenClaw 2026.11.6 throwaway smoke 23/23（先以 0.4.9 重現 exit 78，再以本版確認修復）。",
+    "releaseDate": "2026-11-26T19:20:35.386Z",
+    "notes": "- feat(hermes): 支援 Hermes Agent 原生後端（MCC_AGENT_RUNTIME=hermes）：聊天串流與中斷、審核接到既有 UI、原生備份與還原、開機自動補 API key，依後端能力隱藏不支援的頁面\n- fix(openclaw): Gateway 關閉中（例如 Telegram 收尾）時顯示說明與剩餘時間，重啟與還原依 unit 的停止逾時延長等待，上限 15 分鐘\n- perf(openclaw): 本機 systemd 的 Gateway 改用 systemctl 直接重啟，不再另起 openclaw CLI（重啟時記憶體約少 330 MiB）；系統更新檢查合併請求並快取 30 分鐘\n- fix(openclaw): Kimi 等憑證登出改等 30 秒，結果不確定時不重複執行",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.4.10/mission-control-v0.4.10-linux-x64.tar.gz",
-        "sha256": "9f31c5038664335fa1ee51ca6e12297e2b5ac281827465e86515fd40ae23ead2",
-        "size": 26938720
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.5.0/mission-control-v0.5.0-linux-x64.tar.gz",
+        "sha256": "6942d577578044c0225468e47080ff0a47f5c89402dc8b1121664abd0c7f7da0",
+        "size": 26911459
       }
     ]
   },
   "history": [
+    {
+      "version": "0.4.10",
+      "mccVersion": "0.4.10",
+      "openclawVersion": "2026.11.6",
+      "validated": {
+        "openclaw": [
+          "2026.9.9",
+          "2026.10.2",
+          "2026.10.3",
+          "2026.10.5",
+          "2026.10.7",
+          "2026.10.8",
+          "2026.11.2",
+          "2026.11.6"
+        ]
+      },
+      "releaseDate": "2026-11-23T17:41:48.097Z"
+    },
     {
       "version": "0.4.9",
       "mccVersion": "0.4.9",
@@ -153,19 +175,6 @@
         ]
       },
       "releaseDate": "2026-10-13T06:43:29.613Z"
-    },
-    {
-      "version": "0.3.93",
-      "mccVersion": "0.3.93",
-      "openclawVersion": "2026.9.8",
-      "validated": {
-        "openclaw": [
-          "2026.9.5",
-          "2026.9.6",
-          "2026.9.8"
-        ]
-      },
-      "releaseDate": "2026-10-06T07:34:54.207Z"
     }
   ]
 }
