@@ -319,22 +319,27 @@ export interface StartGatewayOptions {
   pollMs?: number
   sleep?: (ms: number) => Promise<void>
   now?: () => number
+  /** Configuration restarts also wait for the gateway to accept requests. */
+  isReady?: () => Promise<boolean>
+  /** reset-failed clears the counter before the restart command. */
+  restartCount?: number
+  env?: NodeJS.ProcessEnv
 }
 
-async function showGatewayState(svc: string, userUnit: boolean) {
+async function showGatewayState(svc: string, userUnit: boolean, env?: NodeJS.ProcessEnv) {
   return showGatewayUnit(svc, userUnit, [
     ...gatewayStopProperties, 'SubState', 'NRestarts', 'NeedDaemonReload', 'TimeoutStartUSec',
-  ])
+  ], env)
 }
 
-async function waitForGatewayStart(svc: string, userUnit: boolean, since: number, log: PhaseLog, opts: StartGatewayOptions) {
+export async function waitForGatewayStart(svc: string, userUnit: boolean, since: number, log: PhaseLog, opts: StartGatewayOptions) {
   const stableMs = opts.stableMs ?? 10_000
   const timeoutMs = opts.timeoutMs ?? 30_000
   const pollMs = opts.pollMs ?? 2_000
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)))
   const now = opts.now ?? Date.now
-  let state = await showGatewayState(svc, userUnit)
-  const baseRestarts = Number(state.NRestarts) || 0
+  let state = await showGatewayState(svc, userUnit, opts.env)
+  const baseRestarts = opts.restartCount ?? (Number(state.NRestarts) || 0)
   const t0 = now()
   let deadline = t0 + timeoutMs
   let waitingForStop = false
@@ -352,7 +357,7 @@ async function waitForGatewayStart(svc: string, userUnit: boolean, since: number
     }
     if (state.ActiveState === 'active') {
       activeSince ??= now()
-      if (now() - activeSince >= stableMs) return 0
+      if (now() - activeSince >= stableMs && (!opts.isReady || await opts.isReady())) return 0
     } else {
       activeSince = null
     }
@@ -362,16 +367,17 @@ async function waitForGatewayStart(svc: string, userUnit: boolean, since: number
     if (waitingForStop && !stopping) deadline = now() + timeoutMs
     waitingForStop = stopping
     if (!stopping && now() >= deadline) {
-      failure = `${svc} did not stay active for ${Math.round(stableMs / 1000)}s within ${Math.round(timeoutMs / 1000)}s (state: ${state.ActiveState ?? '?'}/${state.SubState ?? '?'})`
+      const expected = opts.isReady ? 'become ready' : `stay active for ${Math.round(stableMs / 1000)}s`
+      failure = `${svc} did not ${expected} within ${Math.round(timeoutMs / 1000)}s (state: ${state.ActiveState ?? '?'}/${state.SubState ?? '?'})`
       break
     }
     await sleep(pollMs)
-    state = await showGatewayState(svc, userUnit)
+    state = await showGatewayState(svc, userUnit, opts.env)
   }
   const scope = userUnit ? '--user ' : ''
   log('stderr', failure)
   log('stderr', `check: systemctl ${scope}start ${svc}; journalctl ${scope}-u ${svc} -n 50`)
-  await logTempRootFailureHint(svc, userUnit, since, (text) => log('system', text))
+  await logTempRootFailureHint(svc, userUnit, since, (text) => log('system', text), opts.env)
   return 1
 }
 

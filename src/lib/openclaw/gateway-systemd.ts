@@ -1,9 +1,37 @@
 import { execFile } from 'node:child_process'
+import { homedir } from 'node:os'
+import path from 'node:path'
 import { promisify } from 'node:util'
+import { capabilitiesFor } from '../agent-runtime/capabilities'
 
 const execFileAsync = promisify(execFile)
-export const OPENCLAW_GATEWAY_UNIT = 'openclaw-gateway.service'
+export const OPENCLAW_GATEWAY_UNIT = capabilitiesFor('openclaw').service.userUnit
+export const LEGACY_OPENCLAW_GATEWAY_UNIT = 'openclaw.service'
 const COMMAND_GRACE_MS = 5_000
+
+export function gatewayUserUnits(env: Record<string, string | undefined> = process.env): string[] {
+  const override = env.OPENCLAW_SYSTEMD_UNIT?.trim()
+  if (override) {
+    if (!/^[A-Za-z0-9_][A-Za-z0-9@._-]*$/.test(override)) return []
+    return [override.endsWith('.service') ? override : `${override}.service`]
+  }
+  const profile = env.OPENCLAW_PROFILE?.trim()
+  if (!profile || profile.toLowerCase() === 'default') {
+    return [OPENCLAW_GATEWAY_UNIT, LEGACY_OPENCLAW_GATEWAY_UNIT]
+  }
+  if (!/^[A-Za-z0-9_][A-Za-z0-9._-]*$/.test(profile)) return []
+  const units = [`${OPENCLAW_GATEWAY_UNIT.slice(0, -8)}-${profile}.service`]
+  if (profile !== 'node' && profile !== 'gateway' && !profile.startsWith('gateway-')) {
+    units.push(`openclaw-${profile}.service`)
+  }
+  return units
+}
+
+/** Unit-file paths shared by the runtime status monitor and Node preflight. */
+export function gatewayUnitCandidates(env: Record<string, string | undefined> = process.env, home = homedir()): string[] {
+  const configHome = env.XDG_CONFIG_HOME?.trim() || path.join(home, '.config')
+  return gatewayUserUnits(env).map(name => path.join(configHome, 'systemd', 'user', name))
+}
 
 export function parseSystemctlShow(text: string): Record<string, string> {
   const out: Record<string, string> = {}

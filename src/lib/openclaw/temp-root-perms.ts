@@ -77,7 +77,7 @@ export async function logTempRootFailureHint(
     execFile('journalctl', [
       ...(userUnit ? ['--user'] : []), '-u', unit,
       `--since=@${Math.floor(since / 1000)}`, '-n', '60', '--no-pager', '-o', 'cat',
-    ], { timeout: 5_000, maxBuffer: 256 * 1024 }, (_err, stdout) => resolve(stdout ?? ''))
+    ], { timeout: 5_000, maxBuffer: 256 * 1024, env }, (_err, stdout) => resolve(stdout ?? ''))
   }).catch(() => '')
   if (!/without sticky protection|No safe OpenClaw temp root/i.test(journal)) return
   const dirs = [...new Set(Object.values(tempRootCandidates(env)))].map(displayPath).join(', ')

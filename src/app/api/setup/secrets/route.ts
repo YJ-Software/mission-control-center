@@ -99,6 +99,7 @@ export async function POST() {
       await restartOpenclawGateway({
         timeout: 120_000,
         env: getServerEnv(),
+        useCli: true,
       })
     } catch (err) {
       restarted = false

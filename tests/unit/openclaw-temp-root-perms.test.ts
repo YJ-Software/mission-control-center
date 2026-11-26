@@ -93,7 +93,7 @@ describe('gateway failure diagnostics', () => {
     processMocks.execFile.mockImplementationOnce((bin, args, options, callback) => {
       expect(bin).toBe('journalctl')
       expect(args).toEqual(['--user', '-u', 'openclaw-gateway.service', '--since=@12', '-n', '60', '--no-pager', '-o', 'cat'])
-      expect(options).toEqual({ timeout: 5000, maxBuffer: 256 * 1024 })
+      expect(options).toEqual({ timeout: 5000, maxBuffer: 256 * 1024, env })
       callback(null, output, '')
     })
     const log = vi.fn()

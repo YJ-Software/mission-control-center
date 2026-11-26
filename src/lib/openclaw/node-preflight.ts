@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process'
 import { accessSync, constants, existsSync, readFileSync, realpathSync } from 'node:fs'
-import { homedir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import zhTW from '../../../messages/zh-TW.json'
+import { gatewayUnitCandidates } from './gateway-systemd'
 import {
   NODE_BLOCK_MESSAGE_KEY,
   fillMessageTemplate,
@@ -253,14 +253,7 @@ async function nodeRuntimeAt(nodePath: string): Promise<NodeRuntime | null> {
   return v ? { version: v.join('.'), path: nodePath } : null
 }
 
-/**
- * gateway user unit 的候選路徑，順序照 OpenClaw 的 resolveGatewaySystemdServiceNameCandidates
- * （`openclaw-gateway`，舊安裝是 `openclaw`），目錄依 XDG_CONFIG_HOME（未設時 ~/.config）
- */
-export function gatewayUnitCandidates(env: Record<string, string | undefined> = process.env, home: string = homedir()): string[] {
-  const configHome = env.XDG_CONFIG_HOME?.trim() || path.join(home, '.config')
-  return ['openclaw-gateway', 'openclaw'].map(name => path.join(configHome, 'systemd', 'user', `${name}.service`))
-}
+export { gatewayUnitCandidates } from './gateway-systemd'
 
 function splitExecArgs(line: string): string[] {
   const args: string[] = []

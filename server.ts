@@ -12,7 +12,7 @@ import {
 } from 'crypto'
 import type { UrlWithParsedQuery } from 'url'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { homedir } from 'os'
 import next from 'next'
 import { loadEnvConfig } from '@next/env'
@@ -28,6 +28,7 @@ import {
   type GatewayStopStatus,
 } from './src/lib/gateway/link-status'
 import { GATEWAY_STOP_POLL_MS, readGatewayStop } from './src/lib/openclaw/gateway-stopping'
+import { gatewayUnitCandidates } from './src/lib/openclaw/gateway-systemd'
 import { classifyGatewayClose, routeBrowserFrameToGateway } from './src/lib/gateway/routing'
 import { describeCliError, openclawCliEnv } from './src/lib/gateway/openclaw-cli'
 import { withOpenclawCli } from './src/lib/openclaw/cli-limiter'
@@ -808,8 +809,10 @@ app.prepare().then(async () => {
 
   // Connect to OpenClaw gateway
   if (backend === 'openclaw') connectGateway(wss)
+  const gatewayUnits = capabilities.service.upgrade ? gatewayUnitCandidates() : []
+  const monitoredUnitPath = gatewayUnits.find(unit => existsSync(unit)) ?? gatewayUnits[0]
   const stopGatewayMonitor = capabilities.service.upgrade
-    ? monitorGatewayStop(wss, capabilities.service.userUnit)
+    ? monitorGatewayStop(wss, monitoredUnitPath ? basename(monitoredUnitPath) : capabilities.service.userUnit)
     : undefined
 
   // Export terminal manager for API routes
