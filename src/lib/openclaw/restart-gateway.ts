@@ -14,7 +14,7 @@ import { waitForGatewayStart } from './update-memory-guard'
 const execFileAsync = promisify(execFile)
 const actionProperties = ['LoadState', 'ActiveState', 'TimeoutStopUSec', 'TimeoutStartUSec']
 
-/** Verify the generated launcher and the local config before skipping the CLI's repair path. */
+/** Check launcher and port drift before restarting the loaded definition in place. */
 function nativeReadinessUrl(unit: Record<string, string>, env: NodeJS.ProcessEnv): URL | undefined {
   const uid = process.getuid?.()
   if (!['active', 'activating', 'reloading', 'deactivating'].includes(unit.ActiveState) ||
@@ -95,6 +95,7 @@ export async function restartOpenclawGateway(options: {
   let result
   try {
     if (!readiness) return await execFileAsync('openclaw', ['gateway', 'restart'], { env, timeout, encoding: 'utf8' })
+    // Match the CLI's order so a unit that hit its start limit can restart.
     await execFileAsync('systemctl', ['--user', 'reset-failed', unit], { env, timeout: 5_000, encoding: 'utf8' })
     result = await execFileAsync('systemctl', ['--user', 'restart', unit], { env, timeout, encoding: 'utf8' })
   } catch (err) {
@@ -110,9 +111,11 @@ export async function restartOpenclawGateway(options: {
   }, {
     env, stableMs: 0, restartCount: 0,
     timeoutMs: gatewayActionTimeout('start', normalMs, { TimeoutStartUSec: state.TimeoutStartUSec }),
-    isReady: async () => {
+    isReady: async timeoutMs => {
       try {
-        const response = await fetch(url, { method: 'HEAD', redirect: 'error', signal: AbortSignal.timeout(3_000) })
+        const response = await fetch(url, {
+          method: 'HEAD', redirect: 'error', signal: AbortSignal.timeout(Math.ceil(Math.min(3_000, timeoutMs))),
+        })
         return response.status === 200
       } catch {
         return false

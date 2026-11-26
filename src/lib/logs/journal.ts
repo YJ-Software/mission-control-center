@@ -163,15 +163,17 @@ export function canSudoJournal(): boolean {
   }
 }
 
-export async function userUnitJournalMatches(unit: string, since: number, pattern: string): Promise<boolean> {
+export async function userUnitJournalMatches(unit: string, since: number, pattern: string): Promise<boolean | undefined> {
   try {
     const { stdout } = await execFileAsync('journalctl', [
       '--user', '--boot', '-u', unit, '--since', `@${(since / 1000).toFixed(3)}`,
-      '--grep', pattern, '-n', '1', '--no-pager', '-o', 'cat',
+      '--grep', pattern, '-n', '1', '--quiet', '--no-pager', '-o', 'cat',
     ], { encoding: 'utf8', timeout: 4000 })
     return Boolean(stdout.trim())
-  } catch {
-    return false
+  } catch (error) {
+    // journalctl --grep uses exit status 1 for a clean search with no match.
+    const { code, stderr, stdout } = error as { code?: number | string; stderr?: string; stdout?: string }
+    return code === 1 && !stderr?.trim() && !stdout?.trim() ? false : undefined
   }
 }
 

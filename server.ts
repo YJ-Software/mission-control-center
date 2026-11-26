@@ -27,7 +27,7 @@ import {
   type GatewayLinkStatus,
   type GatewayStopStatus,
 } from './src/lib/gateway/link-status'
-import { GATEWAY_STOP_POLL_MS, readGatewayStop } from './src/lib/openclaw/gateway-stopping'
+import { monitorGatewayStop } from './src/lib/openclaw/gateway-stopping'
 import { gatewayUnitCandidates } from './src/lib/openclaw/gateway-systemd'
 import { classifyGatewayClose, routeBrowserFrameToGateway } from './src/lib/gateway/routing'
 import { describeCliError, openclawCliEnv } from './src/lib/gateway/openclaw-cli'
@@ -308,25 +308,6 @@ let gatewayStop: GatewayStopStatus | null = null
 
 function currentGatewayStatusFrame() {
   return gatewayStatusFrame(withGatewayStop(gatewayLink, gatewayStop))
-}
-
-function monitorGatewayStop(wss: WebSocketServer, unit: string) {
-  let timer: ReturnType<typeof setTimeout>
-  let closed = false
-  const poll = async () => {
-    const stop = await readGatewayStop(unit, gatewayStop)
-    if (closed) return
-    const before = currentGatewayStatusFrame()
-    gatewayStop = stop
-    const after = currentGatewayStatusFrame()
-    if (before !== after) broadcast(wss, after)
-    timer = setTimeout(poll, GATEWAY_STOP_POLL_MS)
-  }
-  void poll()
-  return () => {
-    closed = true
-    clearTimeout(timer)
-  }
 }
 
 function setGatewayLink(state: GatewayLinkState, extra: Partial<GatewayLinkStatus> = {}) {
@@ -812,7 +793,12 @@ app.prepare().then(async () => {
   const gatewayUnits = capabilities.service.upgrade ? gatewayUnitCandidates() : []
   const monitoredUnitPath = gatewayUnits.find(unit => existsSync(unit)) ?? gatewayUnits[0]
   const stopGatewayMonitor = capabilities.service.upgrade
-    ? monitorGatewayStop(wss, monitoredUnitPath ? basename(monitoredUnitPath) : capabilities.service.userUnit)
+    ? monitorGatewayStop(monitoredUnitPath ? basename(monitoredUnitPath) : capabilities.service.userUnit, stop => {
+      const before = currentGatewayStatusFrame()
+      gatewayStop = stop
+      const after = currentGatewayStatusFrame()
+      if (before !== after) broadcast(wss, after)
+    })
     : undefined
 
   // Export terminal manager for API routes

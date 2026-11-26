@@ -63,13 +63,13 @@ afterEach(() => {
   fs.rmSync(home, { recursive: true, force: true })
 })
 
-function userUnit({ port = configPort, found = true } = {}) {
+function userUnit({ port = configPort, found = true, activeState = 'active' } = {}) {
   processMocks.execFile.mockImplementationOnce((bin, args, options, cb) => {
     expect([bin, ...args.slice(0, 3)]).toEqual(['systemctl', '--user', 'show', unit])
     expect(options.env).toBe(env)
     const uid = process.getuid?.()
     const output = [
-      'LoadState=loaded', 'ActiveState=active', 'TimeoutStopUSec=5min 30s', 'TimeoutStartUSec=30s',
+      'LoadState=loaded', `ActiveState=${activeState}`, 'TimeoutStopUSec=5min 30s', 'TimeoutStartUSec=30s',
       `ControlGroup=/user.slice/user-${uid}.slice/user@${uid}.service/app.slice/${unit}`,
       `ExecStart={ path=${node} ; argv[]=${node} ${launcher} gateway --port ${port} ; ignore_errors=no ; }`,
     ].join('\n')
@@ -129,11 +129,34 @@ describe('restartOpenclawGateway', () => {
     { found: false, timeout: 60_000, useCli: false },
     { found: true, port: 18800, timeout: 395_000, useCli: false },
     { found: true, timeout: 395_000, useCli: true },
+    { found: true, activeState: 'failed', timeout: 395_000, useCli: false },
   ])('falls back when detection fails, the definition needs repair, or CLI diagnostics are requested (%j)', async ({ timeout, useCli, ...unitOptions }) => {
     userUnit(unitOptions)
     cli(timeout)
     await expect(restartOpenclawGateway({ timeout: 60_000, env, useCli })).resolves.toMatchObject({ stdout: 'CLI restarted' })
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('clears the start limit if the verified unit fails between detection and restart', async () => {
+    userUnit()
+    scopeCheck()
+    let startLimitHit = true
+    processMocks.execFile
+      .mockImplementationOnce((bin, args, _options, cb) => {
+        expect([bin, ...args]).toEqual(['systemctl', '--user', 'reset-failed', unit])
+        startLimitHit = false
+        cb(null, '', '')
+      })
+      .mockImplementationOnce((bin, args, _options, cb) => {
+        expect([bin, ...args]).toEqual(['systemctl', '--user', 'restart', unit])
+        cb(startLimitHit ? new Error('start-limit-hit') : null, '', '')
+      })
+    systemctl('show')
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }))
+
+    await expect(restartOpenclawGateway({ timeout: 60_000, env })).resolves.toMatchObject({
+      stdout: `Restarted systemd service: ${unit}\n`,
+    })
   })
 
   it('surfaces a native restart failure and queries its journal without attempting a second restart', async () => {

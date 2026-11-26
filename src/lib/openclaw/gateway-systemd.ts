@@ -8,6 +8,8 @@ const execFileAsync = promisify(execFile)
 export const OPENCLAW_GATEWAY_UNIT = capabilitiesFor('openclaw').service.userUnit
 export const LEGACY_OPENCLAW_GATEWAY_UNIT = 'openclaw.service'
 const COMMAND_GRACE_MS = 5_000
+/** MCC caps each gateway command (stop + start together) and readiness observer at 15 minutes. */
+export const MAX_GATEWAY_WAIT_MS = 15 * 60_000
 
 export function gatewayUserUnits(env: Record<string, string | undefined> = process.env): string[] {
   const override = env.OPENCLAW_SYSTEMD_UNIT?.trim()
@@ -47,27 +49,27 @@ const timeUnits: Record<string, number> = {
   s: 1_000, ms: 1, us: 0.001, 'µs': 0.001,
 }
 
-/** systemctl formats TimeoutStopUSec as a timespan (e.g. "5min 30s"). */
+/** Read a usable systemd timespan (e.g. "5min 30s"). Infinite or over-limit values are unknown. */
 export function parseSystemdDurationMs(raw?: string): number | undefined {
   if (!raw) return undefined
-  if (raw === 'infinity') return Infinity
   let ms = 0
   for (const token of raw.split(/\s+/)) {
     const match = /^(\d+(?:\.\d+)?)(min|ms|us|µs|w|d|h|s)$/.exec(token)
     if (!match) return undefined
     ms += Number(match[1]) * timeUnits[match[2]]
   }
-  return Number.isFinite(ms) ? ms : undefined
+  return ms > 0 && ms <= MAX_GATEWAY_WAIT_MS ? ms : undefined
 }
 
 export async function showGatewayUnit(
   unit: string, userUnit: boolean, properties: string[], env?: NodeJS.ProcessEnv,
+  timeoutMs = COMMAND_GRACE_MS,
 ): Promise<Record<string, string>> {
   try {
     const { stdout } = await execFileAsync('systemctl', [
       ...(userUnit ? ['--user'] : []), 'show', unit,
       '--timestamp=us+utc', ...properties.flatMap(p => ['-p', p]),
-    ], { encoding: 'utf8', timeout: COMMAND_GRACE_MS, env })
+    ], { encoding: 'utf8', timeout: Math.min(COMMAND_GRACE_MS, Math.max(1, Math.ceil(timeoutMs))), env })
     return parseSystemctlShow(stdout)
   } catch {
     return {}
@@ -80,7 +82,8 @@ export function stopStartedAt(unit: Record<string, string>): number | undefined 
   const activating = Date.parse(unit.InactiveExitTimestamp)
   // StateChangeTimestamp also advances between stop substates. An ActiveExit
   // in the current invocation anchors the whole stop, including stop-sigterm.
-  const start = exited >= activating ? exited : Date.parse(unit.StateChangeTimestamp)
+  const start = Number.isFinite(exited) && (!Number.isFinite(activating) || exited >= activating)
+    ? exited : Date.parse(unit.StateChangeTimestamp)
   return Number.isFinite(start) ? start : undefined
 }
 
@@ -94,18 +97,21 @@ type GatewayAction = 'stop' | 'start' | 'restart'
 export function gatewayActionTimeout(
   action: GatewayAction, normalMs: number, unit: Record<string, string>,
 ): number {
-  const startMs = parseSystemdDurationMs(unit.TimeoutStartUSec)
-  const startBudget = Math.max(normalMs, startMs !== undefined && Number.isFinite(startMs) ? startMs + COMMAND_GRACE_MS : 0)
+  const baseline = Number.isFinite(normalMs) && normalMs > 0
+    ? Math.min(MAX_GATEWAY_WAIT_MS, Math.ceil(normalMs)) : MAX_GATEWAY_WAIT_MS
+  const startBudget = Math.max(baseline, systemdCommandBudget(unit.TimeoutStartUSec))
   // A start submitted during a stop also waits for systemd to finish stopping.
-  if (action === 'start' && unit.ActiveState !== 'deactivating') return startBudget
-  const stopMs = parseSystemdDurationMs(unit.TimeoutStopUSec)
-  if (stopMs === undefined) return action === 'stop' ? normalMs : startBudget
-  // execFile's timeout of 0 leaves the unbounded stop to systemd.
-  if (stopMs === Infinity) return 0
-  const stopBudget = Math.ceil(stopMs) + COMMAND_GRACE_MS
-  const budget = action === 'stop' ? Math.max(normalMs, stopBudget) : stopBudget + startBudget
-  // Node timers above the signed 32-bit limit fire after 1 ms.
-  return budget > 2_147_483_647 ? 0 : budget
+  const stopBudget = action === 'start' && unit.ActiveState !== 'deactivating'
+    ? 0 : systemdCommandBudget(unit.TimeoutStopUSec)
+  return action === 'stop'
+    ? Math.max(baseline, stopBudget)
+    : Math.min(MAX_GATEWAY_WAIT_MS, stopBudget + startBudget)
+}
+
+function systemdCommandBudget(raw?: string): number {
+  if (!raw) return 0
+  const time = parseSystemdDurationMs(raw)
+  return time === undefined ? MAX_GATEWAY_WAIT_MS : Math.min(MAX_GATEWAY_WAIT_MS, Math.ceil(time) + COMMAND_GRACE_MS)
 }
 
 export async function readGatewayActionTimeout(

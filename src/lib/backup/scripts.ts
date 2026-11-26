@@ -82,6 +82,9 @@ export async function runRestore(file: string, dryRun = false): Promise<string> 
   const args = [restoreScript, file]
   if (dryRun) args.push('--dry-run')
 
+  // The operator supplies restore.sh (by default from myclaw-backup). MCC
+  // controls the Bash deadline. The script and its gateway helpers own any inner
+  // stop/start deadlines, so long stops still depend on the installed script.
   const { stdout, stderr } = await execFileAsync('/bin/bash', args, {
     timeout: dryRun ? 180_000 : await readGatewayActionTimeout('restart', 180_000),
     env: { ...process.env, HOME: process.env.HOME },
