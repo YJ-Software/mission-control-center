@@ -63,15 +63,16 @@ afterEach(() => {
   fs.rmSync(home, { recursive: true, force: true })
 })
 
-function userUnit({ port = configPort, found = true, activeState = 'active' } = {}) {
+function userUnit({ port = configPort, found = true, activeState = 'active', nodeArgs = [] as string[] } = {}) {
   processMocks.execFile.mockImplementationOnce((bin, args, options, cb) => {
     expect([bin, ...args.slice(0, 3)]).toEqual(['systemctl', '--user', 'show', unit])
     expect(options.env).toBe(env)
     const uid = process.getuid?.()
+    const argv = [node, ...nodeArgs, launcher, 'gateway', '--port', port].join(' ')
     const output = [
       'LoadState=loaded', `ActiveState=${activeState}`, 'TimeoutStopUSec=5min 30s', 'TimeoutStartUSec=30s',
       `ControlGroup=/user.slice/user-${uid}.slice/user@${uid}.service/app.slice/${unit}`,
-      `ExecStart={ path=${node} ; argv[]=${node} ${launcher} gateway --port ${port} ; ignore_errors=no ; }`,
+      `ExecStart={ path=${node} ; argv[]=${argv} ; ignore_errors=no ; }`,
     ].join('\n')
     cb(null, found ? output : 'LoadState=not-found', '')
   })
@@ -105,9 +106,12 @@ function cli(timeout: number) {
 }
 
 describe('restartOpenclawGateway', () => {
-  it('hardens temp roots and restarts the detected user unit with its stop budget, then waits for readiness', async () => {
+  it.each([
+    { nodeArgs: [] },
+    { nodeArgs: ['--max-old-space-size=2048'] },
+  ])('hardens temp roots and restarts the detected user unit with its stop budget, then waits for readiness (%j)', async ({ nodeArgs }) => {
     vi.useFakeTimers()
-    userUnit()
+    userUnit({ nodeArgs })
     scopeCheck()
     systemctl('reset-failed')
     systemctl('restart')
@@ -130,6 +134,7 @@ describe('restartOpenclawGateway', () => {
     { found: true, port: 18800, timeout: 395_000, useCli: false },
     { found: true, timeout: 395_000, useCli: true },
     { found: true, activeState: 'failed', timeout: 395_000, useCli: false },
+    { found: true, nodeArgs: ['--require', '/opt/mcc-test/bootstrap.cjs'], timeout: 395_000, useCli: false },
   ])('falls back when detection fails, the definition needs repair, or CLI diagnostics are requested (%j)', async ({ timeout, useCli, ...unitOptions }) => {
     userUnit(unitOptions)
     cli(timeout)

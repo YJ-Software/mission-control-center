@@ -22,7 +22,8 @@ function nativeReadinessUrl(unit: Record<string, string>, env: NodeJS.ProcessEnv
     !unit.ControlGroup?.startsWith(`/user.slice/user-${uid}.slice/user@${uid}.service/`)) return
   // Only recognize the ordinary Node package launcher. Recovery of custom
   // launchers, missing binaries and temporary upgrade paths belongs to OpenClaw.
-  const launcher = /^\{ path=(\S+) ; argv\[\]=\1 (\S+\/dist\/index\.js) gateway --port (\d+) ;/.exec(unit.ExecStart ?? '')
+  // The OCD-managed launcher can include a Node heap limit.
+  const launcher = /^\{ path=(\S+) ; argv\[\]=\1(?: --max-old-space-size=[1-9]\d*)? (\S+\/dist\/index\.js) gateway --port (\d+) ;/.exec(unit.ExecStart ?? '')
   if (!launcher || path.basename(launcher[1]) !== 'node') return
   if (env.OPENCLAW_HOME || env.OPENCLAW_SUPERVISOR_MODE?.trim().toLowerCase() === 'external' ||
     env.OPENCLAW_UPDATE_IN_PROGRESS || env.OPENCLAW_SERVICE_KIND === 'node') return
