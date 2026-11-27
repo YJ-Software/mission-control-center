@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { test, expect } from '../fixtures/login'
-import { expectJobSuccess, native, requireHermes, unitPid } from './target'
+import { expectJobSuccess, native, onHermes, requireHermes, unitPid } from './target'
 
 test.beforeEach(async ({ request, baseURL }) => requireHermes(request, baseURL))
 
 test('logs in and opens the Hermes home', async ({ loggedInPage: page }) => {
-  await expect(page).toHaveURL(/\/dashboard$/)
+  // OCD can configure the customer chat as the post-login landing page.
+  await page.goto('/dashboard')
   await expect(page.getByRole('heading', { name: '任務管制中心' })).toBeVisible()
   await expect(page.getByText('Hermes Mission Control', { exact: true })).toBeVisible()
   await expect(page.getByText('System Health', { exact: true })).toBeVisible()
@@ -28,9 +29,25 @@ test('lists a native Hermes session and opens its detail', async ({ loggedInPage
 })
 
 test('shows the Hermes cost estimate label', async ({ loggedInPage: page }) => {
-  await page.goto('/costs')
-  await expect(page.getByRole('heading', { name: '花費分析' })).toBeVisible()
-  await expect(page.getByText('依公開 API 牌價估算', { exact: true })).toBeVisible()
+  const id = `mcc-e2e-cost-${randomUUID()}`
+  const model = 'deepseek-v4.1-flash'
+  await native('POST', '/api/sessions', 201, { id, title: id })
+  try {
+    const changed = await onHermes<number>(`
+import pathlib, sqlite3, sys
+with sqlite3.connect(pathlib.Path.home() / '.hermes' / 'state.db') as db:
+    cursor = db.execute('UPDATE sessions SET model = ?, input_tokens = ? WHERE id = ?',
+                        (sys.argv[2], 1_000_000, sys.argv[1]))
+print(cursor.rowcount)
+`, [id, model])
+    expect(changed).toBe(1)
+    await page.goto('/costs')
+    await expect(page.getByRole('heading', { name: '花費分析' })).toBeVisible()
+    await expect(page.getByText(model, { exact: true })).toBeVisible()
+    await expect(page.getByText('依公開 API 牌價估算', { exact: true })).toBeVisible()
+  } finally {
+    await native('DELETE', `/api/sessions/${id}`)
+  }
 })
 
 test('shows and restarts hermes-gateway from Services Status', async ({ loggedInPage: page }) => {
@@ -53,6 +70,7 @@ test('shows and restarts hermes-gateway from Services Status', async ({ loggedIn
 })
 
 test('hides OpenClaw pages in both menus and rejects direct URLs', async ({ loggedInPage: page }) => {
+  await page.goto('/dashboard')
   const paths = [
     '/agents', '/customer-service', '/live-feed', '/cron-jobs', '/morning-report',
     '/second-brain', '/llm-auth', '/setup',

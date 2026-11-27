@@ -14,6 +14,7 @@ export function makeClient({ apiId, apiHash, session }) {
  * DM `botUsername` with `text`, then return the bot's reply (text only) received
  * within `timeoutMs`. Returns the NEWEST incoming reply (so a re-sent `/start`
  * yields the latest pairing code).
+ * Pass acceptReply to wait for a particular reply while ignoring notices.
  *
  * A freshly-deployed bot can miss the very first message while its polling
  * ingress is still starting up (the Phase-5 race we hit: bot "starting provider"
@@ -23,7 +24,7 @@ export function makeClient({ apiId, apiHash, session }) {
  */
 export async function dmBotAndAwaitReply(
   client,
-  { botUsername, text, timeoutMs = 120_000, resendEveryMs = 20_000 },
+  { botUsername, text, timeoutMs = 120_000, resendEveryMs = 20_000, acceptReply = () => true },
 ) {
   await client.connect()
   const lastIdBefore = await getLastMessageId(client, botUsername)
@@ -35,7 +36,7 @@ export async function dmBotAndAwaitReply(
     await new Promise(r => setTimeout(r, 1_500))
     const messages = await client.getMessages(botUsername, { limit: 5 })
     const replies = messages
-      .filter(m => m.id > lastIdBefore && !m.out && m.message)
+      .filter(m => m.id > lastIdBefore && !m.out && m.message && acceptReply(m.message))
       .sort((a, b) => b.id - a.id)
     if (replies.length) return replies[0].message
     // Re-send if the bot hasn't answered yet — covers the polling-startup race.

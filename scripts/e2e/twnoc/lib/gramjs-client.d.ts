@@ -12,6 +12,8 @@ export interface DmBotInput {
   botUsername: string
   text: string
   timeoutMs?: number
+  resendEveryMs?: number
+  acceptReply?: (reply: string) => boolean
 }
 
 export function dmBotAndAwaitReply(client: TelegramClient, input: DmBotInput): Promise<string>
