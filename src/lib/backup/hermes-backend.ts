@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { cleanupHermesDbImportSidecars } from '@/lib/agent-runtime/hermes-dbimport-cleanup'
 import { getHermesVersion, hermesService, runHermesCli, waitForHermesHealth } from '@/lib/agent-runtime/hermes-host'
 
 const NATIVE_BACKUP_TIMEOUT_MS = 30 * 60_000
@@ -39,7 +40,11 @@ export async function restoreHermesBackup(
   let failure: unknown
   try {
     await hermesService('stop')
-    await runHermesCli(['import', archive, '--force'], NATIVE_BACKUP_TIMEOUT_MS)
+    try {
+      await runHermesCli(['import', archive, '--force'], NATIVE_BACKUP_TIMEOUT_MS)
+    } finally {
+      cleanupHermesDbImportSidecars((level, message) => log(level === 'warn' ? 'stderr' : 'system', message))
+    }
     stageMcc()
     staged = true
   } catch (err) {

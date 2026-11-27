@@ -39,6 +39,7 @@ afterEach(async () => {
   setRunningLogId(null)
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
+  vi.restoreAllMocks()
   state.cleanup()
 })
 
@@ -147,6 +148,17 @@ describe('Hermes native backup and restore through MCC', () => {
     }
 
     expect((await describeBackup(file, { tar })).manifest?.backend).toBe('hermes')
+    const orphans = ['.state.db.a1.dbimport-wal', 'cron/.executions.db.b2.dbimport-shm']
+    const retained = [
+      '.kanban.db.c3.dbimport', '.kanban.db.c3.dbimport-wal', '.unrelated',
+      '.state.db.d_4.dbimport-wal', 'skills/.state.db.e5.dbimport-shm',
+      'a/b/c/d/.state.db.f6.dbimport-wal',
+    ]
+    const outside = path.join(state.home, '.openclaw')
+    const outsideSidecar = path.join(outside, '.state.db.g7.dbimport-shm')
+    fs.writeFileSync(outsideSidecar, '')
+    fs.symlinkSync(outside, path.join(state.hermes, 'linked-dir'))
+    fs.symlinkSync(outsideSidecar, path.join(state.hermes, '.state.db.h8.dbimport-wal'))
     processMocks.execFile
       .mockImplementationOnce(mockSystemctl('stop'))
       .mockImplementationOnce((cmd, args, opts, done) => {
@@ -155,6 +167,11 @@ describe('Hermes native backup and restore through MCC', () => {
         expect(opts.env.HERMES_HOME).toBe(state.hermes)
         expect(fs.readFileSync(args[1])).toEqual(zip)
         fs.writeFileSync(dotenv, `API_SERVER_KEY=${restoredKey}\n`)
+        for (const name of [...orphans, ...retained]) {
+          const file = path.join(state.hermes, name)
+          fs.mkdirSync(path.dirname(file), { recursive: true })
+          fs.writeFileSync(file, '')
+        }
         order.push('import')
         done(null, '', '')
       })
@@ -169,6 +186,11 @@ describe('Hermes native backup and restore through MCC', () => {
     })
     expect(await runPhases()).toBe(0)
     expect(order).toEqual(['stop', 'import', 'stage-mcc', 'start', 'health', 'detailed'])
+    for (const name of orphans) expect(fs.existsSync(path.join(state.hermes, name)), name).toBe(false)
+    for (const name of retained) expect(fs.existsSync(path.join(state.hermes, name)), name).toBe(true)
+    expect(fs.existsSync(outsideSidecar)).toBe(true)
+    expect(fs.lstatSync(path.join(state.hermes, '.state.db.h8.dbimport-wal')).isSymbolicLink()).toBe(true)
+    expect(jobLogs.join('\n')).toContain('已移除 2 個')
     expect(fs.statSync(`${DB_PATH}.restore-pending`).mode & 0o777).toBe(0o600)
     expect(jobLogs.join('\n')).toContain('健康檢查均已通過')
     expect(jobLogs.join('\n')).toContain('需手動重啟 MCC')
@@ -211,12 +233,14 @@ describe('Hermes native backup and restore through MCC', () => {
   it('starts Hermes after a failed import and leaves MCC unstaged', async () => {
     const { restoreHermesBackup } = await import('@/lib/backup/hermes-backend')
     const archive = path.join(state.home, 'hermes.zip')
+    const sidecar = path.join(state.hermes, '.state.db.a1.dbimport-wal')
     fs.writeFileSync(archive, zip)
     mockHealth(liveKey)
     processMocks.execFile
       .mockImplementationOnce(mockSystemctl('stop'))
       .mockImplementationOnce((cmd, args, _opts, done) => {
         expect([cmd, ...args]).toEqual([bin, 'import', archive, '--force'])
+        fs.writeFileSync(sidecar, '')
         order.push('failed-import')
         done(Object.assign(new Error('redacted fixture'), { code: 1 }), '', 'private fixture output')
       })
@@ -225,8 +249,43 @@ describe('Hermes native backup and restore through MCC', () => {
     const undo = vi.fn()
     await expect(restoreHermesBackup(archive, stage, undo, vi.fn())).rejects.toThrow('MCC 資料庫尚未還原')
     expect(order).toEqual(['stop', 'failed-import', 'start', 'health', 'detailed'])
+    expect(fs.existsSync(sidecar)).toBe(false)
     expect(stage).not.toHaveBeenCalled()
     expect(undo).not.toHaveBeenCalled()
+  })
+
+  it('logs cleanup errors and completes a successful restore', async () => {
+    const { restoreHermesBackup } = await import('@/lib/backup/hermes-backend')
+    const archive = path.join(state.home, 'hermes.zip')
+    const blocked = path.join(state.hermes, '.state.db.a1.dbimport-wal')
+    const orphan = path.join(state.hermes, '.state.db.a1.dbimport-shm')
+    fs.writeFileSync(archive, zip)
+    mockHealth(liveKey)
+    const unlink = fs.unlinkSync
+    vi.spyOn(fs, 'unlinkSync').mockImplementation((file) => {
+      if (file === blocked) throw Object.assign(new Error('fixture permission failure'), { code: 'EACCES' })
+      unlink(file)
+    })
+    processMocks.execFile
+      .mockImplementationOnce(mockSystemctl('stop'))
+      .mockImplementationOnce((cmd, args, _opts, done) => {
+        expect([cmd, ...args]).toEqual([bin, 'import', archive, '--force'])
+        fs.writeFileSync(blocked, '')
+        fs.writeFileSync(orphan, '')
+        done(null, '', '')
+      })
+      .mockImplementationOnce(mockSystemctl('start'))
+
+    const stage = vi.fn()
+    const undo = vi.fn()
+    const log = vi.fn()
+    await expect(restoreHermesBackup(archive, stage, undo, log)).resolves.toBeUndefined()
+    expect(stage).toHaveBeenCalledOnce()
+    expect(undo).not.toHaveBeenCalled()
+    expect(fs.existsSync(blocked)).toBe(true)
+    expect(fs.existsSync(orphan)).toBe(false)
+    expect(log).toHaveBeenCalledWith('system', expect.stringContaining('已移除 1 個'))
+    expect(log).toHaveBeenCalledWith('stderr', expect.stringContaining('清理 Hermes 匯入暫存檔案時發生 1 個錯誤'))
   })
 
   it.each([{ code: 1 }, { code: null, signal: 'SIGTERM', killed: true }])(

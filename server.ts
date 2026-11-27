@@ -43,6 +43,7 @@ import { bootstrapEnvLocal } from './src/lib/agent-runtime/bootstrap'
 import { agentRuntimeKind, unsupportedGatewayRpc } from './src/lib/agent-runtime/selection'
 import { capabilitiesFor } from './src/lib/agent-runtime/capabilities'
 import { hermesBaseUrl, resolveHermesConfig } from './src/lib/agent-runtime/hermes-config'
+import { cleanupHermesDbImportSidecars } from './src/lib/agent-runtime/hermes-dbimport-cleanup'
 
 // Load backend selection before first-run configuration and any gateway work.
 loadEnvConfig(process.cwd())
@@ -622,6 +623,10 @@ app.prepare().then(async () => {
   let hermesRes: ChatBridgeModule['rpcResponseFrame'] | null = null
   if (backend === 'hermes') {
     gatewayLink = { ...gatewayLink, runtime: 'hermes' }
+    cleanupHermesDbImportSidecars((level, message) => {
+      if (level === 'warn') console.warn('[Hermes]', message)
+      else console.log('[Hermes]', message)
+    })
     const { provisionHermesApi } = await import('./src/lib/agent-runtime/hermes-host')
     try {
       await provisionHermesApi()

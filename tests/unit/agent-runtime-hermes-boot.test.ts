@@ -74,13 +74,18 @@ afterEach(() => {
 
 it('boots Hermes before accepting browser RPC and skips OpenClaw-only boot work', async () => {
   const bootOrder: string[] = []
+  const sidecar = join(state.hermes, '.state.db.a1.dbimport-shm')
+  writeFileSync(sidecar, '')
   const authHeaders: Array<string | null> = []
   const legacyKey = 'fixture-legacy-override-0123456789'
   vi.stubEnv('HERMES_API_KEY', legacyKey)
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   let gatewayKey: string
   m.bootstrap.mockReturnValue(false)
-  m.listens.mockImplementation(() => bootOrder.push('listen'))
+  m.listens.mockImplementation(() => {
+    expect(existsSync(sidecar)).toBe(false)
+    bootOrder.push('listen')
+  })
   processMocks.execFile.mockImplementationOnce((cmd, args, opts, done) => {
     expect([cmd, ...args]).toEqual(['systemctl', '--user', 'restart', 'hermes-gateway.service'])
     expect(opts.env.HOME).toBe(state.home)
