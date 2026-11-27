@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { setTimeout } from 'node:timers/promises'
 import type { Page } from '@playwright/test'
 import { test, expect } from '../fixtures/login'
 import { approvalCommand, approvalFixture, approvalPrompt, approvalSize, manualApprovals, removeApprovalFixture, restoreApprovals, waitForHermesApi } from './approvals'
@@ -42,7 +43,11 @@ test('sends and streams a real reply after the API key repair', async ({ loggedI
     expect(final).toBeDefined()
     expect(frames.filter(frame => frame.runId === final!.runId && frame.state === 'delta').length).toBeGreaterThan(0)
   } finally {
-    await hermesApi('DELETE', `/api/sessions/${session}`)
+    await page.close()
+    await native('DELETE', `/api/sessions/${session}`)
+    await setTimeout(1_000)
+    const sessions = await native<{ data: { id: string }[] }>('GET', '/api/sessions?limit=200&offset=0')
+    expect(sessions.data.some(row => row.id === session), 'streaming fixture stays deleted').toBe(false)
   }
 })
 

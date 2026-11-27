@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { makeClient } from '../../../scripts/e2e/twnoc/lib/gramjs-client.mjs'
 import { openDeployForm } from './whmcs-form'
-import { verifyHermesWhmcsUi } from './whmcs-hermes-ui'
+import { verifyHermesWhmcsUi, verifyLiveMccPassword } from './whmcs-hermes-ui'
 
 const evidence = process.env.HERMES_E2E_RUN
 const run = process.env.HERMES_E2E_DEPLOY
@@ -36,7 +36,6 @@ async function pageFeatures(page: Page) {
     const shown = (el: Element) => el.getClientRects().length > 0
     return {
       page: location.pathname.split('/').at(-1),
-      mccPassword: Array.from(document.querySelectorAll('#mcc-auth-password')).some(shown),
       mccInfo: /Mission Control Center|任務管制中心|\bMCC\b/i.test(document.body.innerText.replace(/TASK \[[\s\S]*/, '')),
       broker: Array.from(document.querySelectorAll('a[href*="open-mcc.php"]')).some(shown),
       controls: Array.from(document.querySelectorAll('button, a.btn, input'))
@@ -108,7 +107,7 @@ async function configureTelegram(page: Page) {
 test.skip(!evidence || !/^[12]$/.test(run ?? ''), 'Set HERMES_E2E_RUN and select deployment 1 or 2')
 test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 
-test('WHMCS Hermes deployment and same-session Telegram wizard', async ({ page }) => {
+test('WHMCS Hermes deployment with optional UI and Telegram checks', async ({ page }) => {
   test.setTimeout(45 * 60_000)
   mkdirSync(evidence!, { recursive: true, mode: 0o700 })
   let logUrl: string | undefined
@@ -135,6 +134,7 @@ test('WHMCS Hermes deployment and same-session Telegram wizard', async ({ page }
 
   let deployList: Awaited<ReturnType<typeof openDeployForm>> | undefined
   let succeeded = false
+  let passwordMatches = false
   let uiStatus: string | undefined
   try {
     deployList = await openDeployForm(page, 'hermes')
@@ -149,6 +149,7 @@ test('WHMCS Hermes deployment and same-session Telegram wizard', async ({ page }
     await expect(success.or(failure).first()).toBeVisible({ timeout: deployTimeout })
     succeeded = await success.isVisible()
     uiStatus = (await (succeeded ? success : failure).first().innerText()).trim()
+    if (succeeded && verifyUi) passwordMatches = await verifyLiveMccPassword(page, evidence!)
   } finally {
     page.off('response', captureResponse)
     if (logUrl) {
@@ -164,19 +165,18 @@ test('WHMCS Hermes deployment and same-session Telegram wizard', async ({ page }
   }
   expect(succeeded, 'WHMCS Hermes deployment succeeded').toBe(true)
 
-  let uiPassed = true
   if (verifyUi) {
-    await expect.poll(() => existsSync(join(evidence!, 'pre-ui.json')), {
-      timeout: 15 * 60_000, intervals: [1_000],
-    }).toBe(true)
-    uiPassed = await verifyHermesWhmcsUi(page, deployList!, evidence!, redact)
+    expect.soft(passwordMatches, 'live WHMCS MCC password SHA-256 matches the box').toBe(true)
+    const { panelPassed, deployingBrokerPassed, detailsBrokerPassed } = await verifyHermesWhmcsUi(page, deployList!, evidence!, redact)
+    expect.soft(panelPassed, 'WHMCS Hermes MCC panel shows the Hermes tunnel account and download bundle').toBe(true)
+    expect.soft(deployingBrokerPassed, 'WHMCS deploying.php opens authenticated Hermes MCC through the broker').toBe(true)
+    expect.soft(detailsBrokerPassed, 'WHMCS deploy-info.php opens authenticated Hermes MCC through the broker').toBe(true)
   }
-  if (run === '1' || verifyUi) {
+  if ((run === '1' || verifyUi) && process.env.HERMES_E2E_SKIP_TELEGRAM !== '1') {
     // Leave the original PHP session open while the operator verifies MCC through SSH.
     await expect.poll(() => existsSync(join(evidence!, 'start-telegram')), {
       timeout: 15 * 60_000, intervals: [1_000],
     }).toBe(true)
     await configureTelegram(page)
   }
-  expect(uiPassed, 'WHMCS Hermes MCC panel and independent broker logins').toBe(true)
 })

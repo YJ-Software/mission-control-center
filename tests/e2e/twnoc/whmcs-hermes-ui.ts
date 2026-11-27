@@ -1,9 +1,45 @@
 import { createHash } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Page, Request, Response } from '@playwright/test'
+import { expect, type Page, type Request, type Response } from '@playwright/test'
+import { onHermes } from '../hermes/target'
 
 type Redact = (value: string) => string
+
+export async function verifyLiveMccPassword(page: Page, evidence: string) {
+  const result = { disclosureOpened: false, passwordFieldVisible: false, passwordPopulated: false, passwordMatches: false }
+  const password = page.locator('#mcc-auth-password:visible')
+  try {
+    // The deploy WebSocket delivers the credential once, to this page.
+    const disclosure = page.locator('details:has(#mcc-auth-password)')
+    await disclosure.locator('> summary').filter({ hasText: '進階：自行以 SSH 通道連線' }).click({ timeout: 10_000 })
+    result.disclosureOpened = true
+    await password.waitFor({ state: 'visible', timeout: 10_000 })
+    result.passwordFieldVisible = true
+
+    let actualHash: string | undefined
+    await expect.poll(async () => {
+      const value = await password.inputValue({ timeout: 1_000 })
+      if (value) actualHash = createHash('sha256').update(value).digest('hex')
+      return !!actualHash
+    }, { timeout: 15_000 }).toBe(true)
+    result.passwordPopulated = true
+
+    const expectedHash = await onHermes<string | null>(`
+import hashlib, json
+from pathlib import Path
+from dotenv import dotenv_values
+password = dotenv_values(Path.home() / '.mission-control/.env.local').get('AUTH_PASSWORD')
+print(json.dumps(hashlib.sha256(password.encode()).hexdigest() if password else None))
+`)
+    result.passwordMatches = !!expectedHash && actualHash === expectedHash
+  } catch (error) {
+    // Playwright errors can include rendered values. Record only the error class.
+    Object.assign(result, { errorType: error instanceof Error ? error.name : 'unknown' })
+  }
+  writeFileSync(join(evidence, 'deploying-password.json'), JSON.stringify(result, null, 2) + '\n', { mode: 0o600 })
+  return result.passwordMatches
+}
 
 function safeUrl(value: string) {
   const url = new URL(value)
@@ -168,12 +204,8 @@ export async function verifyHermesWhmcsUi(
   const persist = (name: string, value: unknown) =>
     writeFileSync(join(evidence, name + '.json'), JSON.stringify(value, null, 2) + '\n', { mode: 0o600 })
   const report: Record<string, unknown> = {}
+  const checks = { panelPassed: false, deployingBrokerPassed: false, detailsBrokerPassed: false }
   try {
-    const password = page.locator('#mcc-auth-password')
-    const passwordFieldVisible = await password.isVisible()
-    const value = passwordFieldVisible ? await password.inputValue({ timeout: 5_000 }) : ''
-    const expected = JSON.parse(readFileSync(join(evidence, 'pre-ui.json'), 'utf8')).mccEnv.trackedKeys.AUTH_PASSWORD
-    const passwordMatches = expected.present && !!value && createHash('sha256').update(value).digest('hex') === expected.sha256
     const features = await page.evaluate(() => {
       const fields = [...document.querySelectorAll('input, textarea, code, pre')]
       const commands = fields.flatMap(el => {
@@ -193,7 +225,8 @@ export async function verifyHermesWhmcsUi(
     })
     const panelScreenshot = await screenshot(page, join(evidence, 'deploying-panel.png'))
     const bundle = await verifyBundle(page).catch(() => ({ offered: true, downloaded: false, includesMcc: false }))
-    Object.assign(report, { passwordFieldVisible, passwordPopulated: !!value, passwordMatches, ...features, panelScreenshot, bundle })
+    checks.panelPassed = features.tunnelAccounts.includes('hermes') && bundle.includesMcc
+    Object.assign(report, { ...features, panelScreenshot, bundle })
     persist('whmcs-ui', report)
 
     // Carry forward the WHMCS cookies from before the first broker login.
@@ -203,6 +236,7 @@ export async function verifyHermesWhmcsUi(
       const deployId = new URL(page.url()).searchParams.get('id')
       const deploying = await followBroker(page, evidence, 'deploying', redact)
       persist('deploying-broker', deploying)
+      checks.deployingBrokerPassed = deploying.loggedIn
       const details = await fresh.newPage()
       await details.goto(deployListUrl)
       const rows = await details.locator('tr[data-href*="deploy-info.php"]').filter({ hasText: /hermes/i })
@@ -215,21 +249,20 @@ export async function verifyHermesWhmcsUi(
       const row = rows.find(row => deployId && row.id === deployId) ?? (newRows.length === 1 ? newRows[0] : undefined)
       if (!row) {
         persist('deploy-info-broker', { offered: false, loggedIn: false, reason: 'matching deployment details row missing' })
-        return false
+        return checks
       }
       await details.goto(row.href)
       report.detailsScreenshot = await screenshot(details, join(evidence, 'deploy-info-panel.png'))
       const deployInfo = await followBroker(details, evidence, 'deploy-info', redact)
       persist('deploy-info-broker', deployInfo)
-      return passwordFieldVisible && passwordMatches && features.tunnelAccounts.includes('hermes') &&
-        bundle.includesMcc && deploying.loggedIn && deployInfo.loggedIn
+      checks.detailsBrokerPassed = deployInfo.loggedIn
     } finally {
       await fresh.close()
     }
   } catch (error) {
     report.errorType = error instanceof Error ? error.name : 'unknown'
-    return false
   } finally {
     persist('whmcs-ui', report)
   }
+  return checks
 }
