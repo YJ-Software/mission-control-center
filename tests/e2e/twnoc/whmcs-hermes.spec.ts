@@ -1,11 +1,14 @@
 import { test, expect, type Page } from '@playwright/test'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { makeClient } from '../../../scripts/e2e/twnoc/lib/gramjs-client.mjs'
 import { openDeployForm } from './whmcs-form'
+import { verifyHermesWhmcsUi } from './whmcs-hermes-ui'
 
 const evidence = process.env.HERMES_E2E_RUN
 const run = process.env.HERMES_E2E_DEPLOY
+const verifyUi = process.env.HERMES_E2E_WHMCS_UI === '1'
 const deployTimeout = 20 * 60_000
 const telegramEndpoint = /\/ajax\/hermes-telegram-setup\.php$/
 
@@ -57,6 +60,15 @@ async function configureTelegram(page: Page) {
     await client.disconnect()
   }
 
+  if (verifyUi) {
+    const snapshot = JSON.parse(readFileSync(join(evidence!, 'B.json'), 'utf8'))
+    const hash = (value: string) => createHash('sha256').update(value).digest('hex')
+    expect(hash(TEST_TELEGRAM_BOT_TOKEN!) === snapshot.nativeEnv.trackedKeys.TELEGRAM_BOT_TOKEN.sha256,
+      'the wizard uses the existing Telegram bot token').toBe(true)
+    expect(hash(userId) === snapshot.nativeEnv.trackedKeys.TELEGRAM_ALLOWED_USERS.sha256,
+      'the wizard uses the existing allowed Telegram user').toBe(true)
+  }
+
   let startedAt: string | undefined
   let start: number | undefined
   let status: number | null = null
@@ -77,7 +89,7 @@ async function configureTelegram(page: Page) {
       .or(page.getByRole('button', { name: /^設定(?:\s*Telegram)?$/i })).first()
     const pending = page.waitForResponse(response =>
       response.request().method() === 'POST' && telegramEndpoint.test(new URL(response.url()).pathname),
-    { timeout: 75_000 })
+    { timeout: verifyUi ? 210_000 : 75_000 })
     const [response] = await Promise.all([pending, button.click()])
     status = response.status()
     const body = await response.text()
@@ -96,7 +108,7 @@ async function configureTelegram(page: Page) {
 test.skip(!evidence || !/^[12]$/.test(run ?? ''), 'Set HERMES_E2E_RUN and select deployment 1 or 2')
 test.use({ trace: 'off', screenshot: 'off', video: 'off' })
 
-test('WHMCS Hermes deploy and first-deploy Telegram wizard in the same browser session', async ({ page }) => {
+test('WHMCS Hermes deployment and same-session Telegram wizard', async ({ page }) => {
   test.setTimeout(45 * 60_000)
   mkdirSync(evidence!, { recursive: true, mode: 0o700 })
   let logUrl: string | undefined
@@ -121,10 +133,11 @@ test('WHMCS Hermes deploy and first-deploy Telegram wizard in the same browser s
     }
   }
 
+  let deployList: Awaited<ReturnType<typeof openDeployForm>> | undefined
   let succeeded = false
   let uiStatus: string | undefined
   try {
-    await openDeployForm(page, 'hermes')
+    deployList = await openDeployForm(page, 'hermes')
     if (!process.env.E2E_REBUILD_PASSWORD) throw new Error('Set E2E_REBUILD_PASSWORD')
     // Opening the form may acknowledge earlier deploys in this page. Only
     // collect polling responses after the form for the new deploy has opened.
@@ -151,11 +164,19 @@ test('WHMCS Hermes deploy and first-deploy Telegram wizard in the same browser s
   }
   expect(succeeded, 'WHMCS Hermes deployment succeeded').toBe(true)
 
-  if (run === '1') {
+  let uiPassed = true
+  if (verifyUi) {
+    await expect.poll(() => existsSync(join(evidence!, 'pre-ui.json')), {
+      timeout: 15 * 60_000, intervals: [1_000],
+    }).toBe(true)
+    uiPassed = await verifyHermesWhmcsUi(page, deployList!, evidence!, redact)
+  }
+  if (run === '1' || verifyUi) {
     // Leave the original PHP session open while the operator verifies MCC through SSH.
     await expect.poll(() => existsSync(join(evidence!, 'start-telegram')), {
       timeout: 15 * 60_000, intervals: [1_000],
     }).toBe(true)
     await configureTelegram(page)
   }
+  expect(uiPassed, 'WHMCS Hermes MCC panel and independent broker logins').toBe(true)
 })
