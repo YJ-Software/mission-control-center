@@ -38,9 +38,12 @@ with call(method, path, data) as response:
 `
 
 export async function requireHermes(request: APIRequestContext, baseURL: string | undefined) {
-  const { E2E_SSH_HOST } = process.env
-  if (!E2E_SSH_HOST || !baseURL || new URL(baseURL).hostname !== E2E_SSH_HOST) {
-    throw new Error('Set E2E_SSH_HOST and PLAYWRIGHT_BASE_URL to the same Hermes throwaway')
+  const { E2E_SSH_HOST, HERMES_E2E_TUNNEL_PORT } = process.env
+  const url = baseURL ? new URL(baseURL) : undefined
+  const isTunnel = url?.protocol === 'http:' && url.hostname === 'localhost' &&
+    !!HERMES_E2E_TUNNEL_PORT && url.port === HERMES_E2E_TUNNEL_PORT && url.port !== '3737'
+  if (!E2E_SSH_HOST || (url?.hostname !== E2E_SSH_HOST && !isTunnel)) {
+    throw new Error('Set PLAYWRIGHT_BASE_URL to the Hermes throwaway or its explicit localhost SSH tunnel port')
   }
   const health = await request.get('/api/health')
   expect(health.status()).toBe(200)

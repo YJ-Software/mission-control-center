@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { resolve } from 'node:path'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { updateEnvFile } from '../../../scripts/e2e/twnoc/lib/env-writer.mjs'
-import { ackLeftoverDeploys } from '../../../scripts/e2e/twnoc/lib/whmcs-deploy-list.mjs'
+import { openDeployForm } from './whmcs-form'
 import { sshExec } from '../../../scripts/e2e/twnoc/lib/ssh.mjs'
 import { CHAT_TURN_FAILED } from '../utils/chat-turn'
 
@@ -41,39 +41,9 @@ test('whmcs deploy → capture AUTH_PASSWORD → open /talk from the deploy page
   const user = process.env.WHMCS_USER
   const pwd = process.env.WHMCS_PASSWORD
   const loginUrl = process.env.WHMCS_LOGIN_URL
-  const rebuildPwd = process.env.E2E_REBUILD_PASSWORD
   test.skip(!user || !pwd || !loginUrl, 'set WHMCS_USER / WHMCS_PASSWORD / WHMCS_LOGIN_URL')
 
-  // Auto-accept the 開始部署 confirm dialog
-  page.on('dialog', d => { d.accept().catch(() => {}) })
-
-  // Login
-  await page.goto(loginUrl!)
-  await page.getByRole('textbox', { name: /Email/i }).fill(user!)
-  await page.getByRole('textbox', { name: /密碼|Password/i }).fill(pwd!)
-  await page.getByRole('button', { name: /登入|Log\s*In/i }).click()
-  await page.waitForLoadState('networkidle')
-
-  // Navigate to deployer
-  await page.getByRole('button', { name: /檢視詳情/ }).first().click()
-  await page.getByRole('link', { name: /OpenClaw 部署/ }).click()
-
-  // A deploy left 執行中 by an earlier run (ours or a previous release) makes
-  // WHMCS refuse 新增部署, so the form below never renders. Clear leftovers in
-  // this browser context first.
-  await ackLeftoverDeploys(page)
-
-  await page.getByRole('button', { name: /新增部署/ }).click()
-
-  // Phase 1 reinstall set a new root password (E2E_REBUILD_PASSWORD). Tell the
-  // deployer about it by selecting "已變更" and filling the password box; the
-  // default "未變更 (開通)" path expects the original provisioning password,
-  // which we no longer have after our Virtualizor API reinstall.
-  if (rebuildPwd) {
-    await page.getByRole('radio', { name: /已變更/ }).check()
-    await page.getByRole('textbox', { name: /SSH 密碼/ }).fill(rebuildPwd)
-  }
-
+  await openDeployForm(page)
   await page.getByRole('button', { name: /開始部署/ }).click()
 
   // Wait for success
