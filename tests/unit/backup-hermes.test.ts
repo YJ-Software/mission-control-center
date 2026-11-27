@@ -148,10 +148,10 @@ describe('Hermes native backup and restore through MCC', () => {
     }
 
     expect((await describeBackup(file, { tar })).manifest?.backend).toBe('hermes')
-    const orphans = ['.state.db.a1.dbimport-wal', 'cron/.executions.db.b2.dbimport-shm']
+    const orphans = ['.state.db.a1.dbimport-wal', 'cron/.executions.db.b2.dbimport-shm', '.state.db.d_4.dbimport-wal']
     const retained = [
       '.kanban.db.c3.dbimport', '.kanban.db.c3.dbimport-wal', '.unrelated',
-      '.state.db.d_4.dbimport-wal', 'skills/.state.db.e5.dbimport-shm',
+      '.state.db.d-4.dbimport-wal', 'skills/.state.db.e5.dbimport-shm',
       'a/b/c/d/.state.db.f6.dbimport-wal',
     ]
     const outside = path.join(state.home, '.openclaw')
@@ -190,7 +190,7 @@ describe('Hermes native backup and restore through MCC', () => {
     for (const name of retained) expect(fs.existsSync(path.join(state.hermes, name)), name).toBe(true)
     expect(fs.existsSync(outsideSidecar)).toBe(true)
     expect(fs.lstatSync(path.join(state.hermes, '.state.db.h8.dbimport-wal')).isSymbolicLink()).toBe(true)
-    expect(jobLogs.join('\n')).toContain('已移除 2 個')
+    expect(jobLogs.join('\n')).toContain('已移除 3 個')
     expect(fs.statSync(`${DB_PATH}.restore-pending`).mode & 0o777).toBe(0o600)
     expect(jobLogs.join('\n')).toContain('健康檢查均已通過')
     expect(jobLogs.join('\n')).toContain('需手動重啟 MCC')

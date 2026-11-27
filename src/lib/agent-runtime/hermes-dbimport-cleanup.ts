@@ -2,7 +2,8 @@ import fs from 'node:fs'
 import { join, resolve } from 'node:path'
 import { hermesHome } from './hermes-config'
 
-const sidecarName = /^\..+\.[A-Za-z0-9]+\.dbimport-(wal|shm)$/
+// Python tempfile 的隨機字元含底線（例：.state.db.k_3x9a.dbimport-wal）
+const sidecarName = /^\..+\.[A-Za-z0-9_]+\.dbimport-(wal|shm)$/
 const skippedDirs = new Set(['.cache', '.git', '.venv', 'node_modules', 'sandboxes', 'skills'])
 const maxDepth = 3
 
