@@ -6,11 +6,13 @@ import { writePhaseRecord } from './lib/phase-record.mjs'
 import { request } from 'node:http'
 
 // IPs always allowed past ufw:
-// - 202.12.76.145: WHMCS deployer (Ansible) — verified from sshd journal.
-//   Without this, deploy / redeploy / Telegram pair (which need a fresh
-//   SSH session from WHMCS to read state on the dashboard) all fail.
+// - 202.12.76.145: OCD controller (Ansible) — verified from sshd journal.
+//   Without this, deploy / redeploy fail.
+// - 103.129.168.86: WHMCS web host egress. The client-area Telegram and
+//   Tailscale wizards SSH as root straight from WHMCS (not via OCD); without
+//   it they hang until the proxy cuts the request (2026-11-27).
 // - 122.146.90.137: legacy operator IP, kept for backward compatibility.
-const ALWAYS_ALLOW = ['202.12.76.145', '122.146.90.137']
+const ALWAYS_ALLOW = ['202.12.76.145', '103.129.168.86', '122.146.90.137']
 
 function loadEnv(file) {
   const env = {}
