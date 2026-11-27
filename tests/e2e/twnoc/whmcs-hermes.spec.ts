@@ -109,7 +109,7 @@ test('WHMCS Hermes deploy and first-deploy Telegram wizard in the same browser s
   }
   let status: { status?: string; resolved_version?: string; requested_version?: string } = {}
   const startedAt = new Date().toISOString()
-  page.on('response', async response => {
+  const captureResponse = async (response: import('@playwright/test').Response) => {
     const path = new URL(response.url()).pathname
     if (path.endsWith('/ajax/get-deploy-logs.php') && response.ok()) {
       logUrl = response.url()
@@ -119,13 +119,16 @@ test('WHMCS Hermes deploy and first-deploy Telegram wizard in the same browser s
     if (path.endsWith('/ajax/check-deploy-status.php') && response.ok()) {
       status = await response.json().catch(() => status)
     }
-  })
+  }
 
   let succeeded = false
   let uiStatus: string | undefined
   try {
     await openDeployForm(page, 'hermes')
     if (!process.env.E2E_REBUILD_PASSWORD) throw new Error('Set E2E_REBUILD_PASSWORD')
+    // Opening the form may acknowledge earlier deploys in this page. Only
+    // collect polling responses after the form for the new deploy has opened.
+    page.on('response', captureResponse)
     await page.getByRole('button', { name: /開始部署/ }).click()
     await expect(page).toHaveURL(/\/deploying\.php\b/)
     const success = page.locator('.label-success').filter({ hasText: '成功' })
@@ -134,6 +137,7 @@ test('WHMCS Hermes deploy and first-deploy Telegram wizard in the same browser s
     succeeded = await success.isVisible()
     uiStatus = (await (succeeded ? success : failure).first().innerText()).trim()
   } finally {
+    page.off('response', captureResponse)
     if (logUrl) {
       const response = await page.request.get(logUrl, { timeout: 15_000 }).catch(() => undefined)
       if (response?.ok()) saveLog(await response.text())
@@ -142,7 +146,7 @@ test('WHMCS Hermes deploy and first-deploy Telegram wizard in the same browser s
     put(`deploy${run}-result.json`, {
       startedAt, finishedAt: new Date().toISOString(), succeeded, uiStatus, polledStatus: status.status,
       resolvedVersion: status.resolved_version, requestedVersion: status.requested_version,
-      hasLog: existsSync(join(evidence!, `deploy${run}.log`)),
+      hasLog: logSize > 0,
     })
   }
   expect(succeeded, 'WHMCS Hermes deployment succeeded').toBe(true)
