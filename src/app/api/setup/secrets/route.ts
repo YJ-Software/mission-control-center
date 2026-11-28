@@ -90,6 +90,7 @@ export async function POST() {
     writeFileSync(BUNDLE_PATH, JSON.stringify(bundle, null, 2), { mode: 0o600 })
     chmodSync(BUNDLE_PATH, 0o600)
 
+    const configWrittenAt = Date.now()
     writeFileSync(OPENCLAW_CONFIG, JSON.stringify(next, null, 2), { mode: 0o600 })
     chmodSync(OPENCLAW_CONFIG, 0o600)
 
@@ -100,6 +101,7 @@ export async function POST() {
         timeout: 120_000,
         env: getServerEnv(),
         useCli: true,
+        configWrittenAt,
       })
     } catch (err) {
       restarted = false

@@ -27,10 +27,12 @@ import { restartOpenclawGateway } from '@/lib/openclaw/restart-gateway'
 import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { homedir } from 'os'
+import { isDeepStrictEqual } from 'node:util'
 import { db } from '@/lib/db'
 import { settings } from '@/lib/schema'
 import { eq } from 'drizzle-orm'
 import { getServerEnv } from '@/lib/server-env'
+import { gatewayRequest } from '@/lib/gateway-rpc'
 import { allowPlugins } from '@/lib/plugins/allowlist'
 import {
   ensurePluginConsented,
@@ -70,13 +72,15 @@ function readOpenclawJson(): Record<string, any> {
   return JSON.parse(readFileSync(OPENCLAW_JSON, 'utf-8'))
 }
 
-function writeOpenclawJson(obj: Record<string, any>): void {
+function writeOpenclawJson(obj: Record<string, any>): number {
   if (existsSync(OPENCLAW_JSON)) {
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     copyFileSync(OPENCLAW_JSON, `${OPENCLAW_JSON}.bak.mcc-purpose-${ts}`)
   }
   mkdirSync(dirname(OPENCLAW_JSON), { recursive: true })
+  const configWrittenAt = Date.now()
   writeFileSync(OPENCLAW_JSON, JSON.stringify(obj, null, 2))
+  return configWrittenAt
 }
 
 /**
@@ -200,23 +204,53 @@ export function getPurpose(): WikiPurpose {
   return inferred
 }
 
-async function restartGateway(): Promise<string> {
-  try {
-    const r = await restartOpenclawGateway({ timeout: 60_000, env: getServerEnv() })
-    return (r.stdout || '') + (r.stderr || '')
-  } catch (err: any) {
-    return err?.stderr ?? err?.message ?? 'gateway restart failed'
-  }
+/** OpenClaw redacts credential strings in config.get, including the embedding API key. */
+function matchesPluginConfig(written: unknown, reported: unknown): boolean {
+  if (isDeepStrictEqual(written, reported)) return true
+  if (reported === '__OPENCLAW_REDACTED__') return typeof written === 'string'
+  if (!written || !reported || typeof written !== 'object' || typeof reported !== 'object' ||
+    Array.isArray(written) !== Array.isArray(reported)) return false
+  const actual = reported as Record<string, unknown>
+  const entries = Object.entries(written)
+  return entries.length === Object.keys(actual).length &&
+    entries.every(([key, value]) => Object.hasOwn(actual, key) && matchesPluginConfig(value, actual[key]))
 }
 
-/**
- * Switch the wiki purpose: persist the choice, rewrite openclaw.json's plugin
- * block coherently, and restart the gateway so it takes effect.
- *
- * Customer-service mode ALSO needs the mem0 AGENTS.md block applied — that lives
- * in customer-service/memory-backend. Callers that switch to customer-service
- * should invoke that step too (the customer-service API route does).
- */
+type ConfigSnapshot = {
+  valid?: boolean
+  configRevisionHash?: string | null
+  appliedConfigHash?: string | null
+  sourceConfig?: { gateway?: { reload?: { mode?: string } }; plugins?: unknown }
+}
+
+async function waitForAppliedPurpose(config: Record<string, any>): Promise<boolean> {
+  if (config.gateway?.reload?.mode === 'off') return false
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      const snapshot = await Promise.race([
+        gatewayRequest('config.get', {}) as Promise<ConfigSnapshot | null>,
+        new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), deadline - Date.now()) }),
+      ])
+      // Older gateways lack the revision fields. A null revision on a supported
+      // gateway can be transient, so keep polling while the candidate is valid.
+      if (!snapshot || snapshot.valid === false ||
+        snapshot.configRevisionHash === undefined || snapshot.appliedConfigHash === undefined ||
+        snapshot.sourceConfig?.gateway?.reload?.mode === 'off') return false
+      if (typeof snapshot.configRevisionHash === 'string' && snapshot.configRevisionHash &&
+        snapshot.configRevisionHash === snapshot.appliedConfigHash &&
+        matchesPluginConfig(config.plugins, snapshot.sourceConfig?.plugins)) return true
+    } catch {
+      return false
+    } finally {
+      clearTimeout(timer)
+    }
+    await new Promise<void>(resolve => setTimeout(resolve, Math.max(0, Math.min(500, deadline - Date.now()))))
+  }
+  return false
+}
+
 /** The EXTERNAL plugin a purpose needs before its config can be applied.
  *
  * memory-wiki ships with OpenClaw (stock:memory-wiki/index.js), so only the
@@ -245,12 +279,14 @@ export async function ensurePurposePlugins(
   return ensurePluginConsented(required.id, required.pkg, probe, log)
 }
 
-export async function setPurpose(purpose: WikiPurpose): Promise<{ output: string }> {
+export async function setPurpose(purpose: WikiPurpose): Promise<{
+  output: string
+  application: 'hot-applied' | 'restarted'
+}> {
   if (!existsSync(OPENCLAW_JSON)) throw new Error('openclaw.json missing — run the wiki install wizard first')
 
-  // Before anything is written: the config below enables an external plugin and
-  // then restarts the gateway. If the plugin is not consented, that restart
-  // never comes back.
+  // Consent must precede the write so hot reload and a fallback restart can
+  // both activate the external plugin.
   const notes: string[] = []
   const consent = await ensurePurposePlugins(purpose, realPluginProbe, (_s, t) => notes.push(t))
   if (consent !== 0) {
@@ -270,8 +306,11 @@ export async function setPurpose(purpose: WikiPurpose): Promise<{ output: string
     delete cfg.memory.backend
     if (Object.keys(cfg.memory).length === 0) delete cfg.memory
   }
-  writeOpenclawJson(cfg)
+  const configWrittenAt = writeOpenclawJson(cfg)
 
-  const restart = await restartGateway()
-  return { output: `wiki.purpose = ${purpose}; openclaw.json updated\n${restart}` }
+  const output = `wiki.purpose = ${purpose}; openclaw.json updated\n`
+  if (await waitForAppliedPurpose(cfg)) return { output, application: 'hot-applied' }
+
+  const restart = await restartOpenclawGateway({ timeout: 60_000, env: getServerEnv(), configWrittenAt })
+  return { output: output + (restart.stdout || '') + (restart.stderr || ''), application: 'restarted' }
 }

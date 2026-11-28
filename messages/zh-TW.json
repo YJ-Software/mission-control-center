@@ -2658,7 +2658,7 @@
     "confirm": "確認切換",
     "cancel": "取消",
     "switching": "切換中…",
-    "restartNote": "切換會改寫 openclaw.json 並重啟 gateway，約需數秒。"
+    "restartNote": "切換會更新 openclaw.json，gateway 可能需要重啟。"
   },
   "talk": {
     "title": "AI 助理",

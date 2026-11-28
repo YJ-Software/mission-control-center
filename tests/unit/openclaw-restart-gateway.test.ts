@@ -63,7 +63,7 @@ afterEach(() => {
   fs.rmSync(home, { recursive: true, force: true })
 })
 
-function userUnit({ port = configPort, found = true, activeState = 'active', nodeArgs = [] as string[] } = {}) {
+function userUnit({ port = configPort, found = true, activeState = 'active', nodeArgs = [] as string[], mainPid = 0 } = {}) {
   processMocks.execFile.mockImplementationOnce((bin, args, options, cb) => {
     expect([bin, ...args.slice(0, 3)]).toEqual(['systemctl', '--user', 'show', unit])
     expect(options.env).toBe(env)
@@ -71,6 +71,7 @@ function userUnit({ port = configPort, found = true, activeState = 'active', nod
     const argv = [node, ...nodeArgs, launcher, 'gateway', '--port', port].join(' ')
     const output = [
       'LoadState=loaded', `ActiveState=${activeState}`, 'TimeoutStopUSec=5min 30s', 'TimeoutStartUSec=30s',
+      `MainPID=${mainPid}`,
       `ControlGroup=/user.slice/user-${uid}.slice/user@${uid}.service/app.slice/${unit}`,
       `ExecStart={ path=${node} ; argv[]=${argv} ; ignore_errors=no ; }`,
     ].join('\n')
@@ -127,6 +128,7 @@ describe('restartOpenclawGateway', () => {
     await expect(restart).resolves.toEqual({ stdout: `Restarted systemd service: ${unit}\n`, stderr: '' })
     expect(fetchMock).toHaveBeenLastCalledWith(new URL('http://127.0.0.1:18789/readyz'), expect.objectContaining({ method: 'HEAD' }))
     expect(processMocks.execFile.mock.calls.some(([bin]) => bin === 'openclaw')).toBe(false)
+    expect(processMocks.execFile.mock.calls.some(([bin]) => bin === 'journalctl')).toBe(false)
   })
 
   it.each([
@@ -191,5 +193,107 @@ describe('restartOpenclawGateway', () => {
     })
     await expect(restartOpenclawGateway({ timeout: 60_000, env })).rejects.toThrow('was restarted by systemd 1 time(s)')
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  function telegramWrite() {
+    vi.useFakeTimers()
+    fs.writeFileSync(path.join(state, 'openclaw.json'), JSON.stringify({
+      gateway: { port: configPort },
+      channels: { telegram: { enabled: true } },
+    }))
+    const configWrittenAt = Date.now()
+    const entry = (offset: number, message: string) => JSON.stringify({
+      MESSAGE: message, __REALTIME_TIMESTAMP: String((configWrittenAt + offset) * 1_000),
+    })
+    return {
+      configWrittenAt,
+      start: (offset: number) => entry(offset, '[telegram] [default] starting provider (@example)'),
+      ingress: (offset: number) => entry(offset, '[telegram] [diag] isolated polling ingress started account=default'),
+    }
+  }
+
+  function telegramJournal(...entries: string[]) {
+    processMocks.execFile.mockImplementationOnce((bin, args, _options, cb) => {
+      expect([bin, ...args.slice(0, 3)]).toEqual(['journalctl', '--user', '-u', unit])
+      expect(args).toContain('_PID=123')
+      cb(null, entries.join('\n'), '')
+    })
+  }
+
+  it('dispatches the diagnostic CLI when Telegram ingress followed the newest start after the write', async () => {
+    const { configWrittenAt, start, ingress } = telegramWrite()
+    userUnit({ mainPid: 123 })
+    telegramJournal(start(1), ingress(2))
+    systemctl('show', null, 'MainPID=123')
+    cli(395_000)
+
+    await expect(restartOpenclawGateway({ timeout: 60_000, env, configWrittenAt, useCli: true }))
+      .resolves.toMatchObject({ stdout: 'CLI restarted' })
+  })
+
+  it('holds the native restart until the newest start settles, even if an older ingress exists', async () => {
+    const { configWrittenAt, start, ingress } = telegramWrite()
+    userUnit({ mainPid: 123 })
+    scopeCheck()
+    telegramJournal(start(-20), ingress(-10), start(1))
+    systemctl('show', null, 'LoadState=loaded\nActiveState=active\nMainPID=123')
+    telegramJournal(start(-20), ingress(-10), start(1), ingress(2))
+    systemctl('show', null, 'MainPID=123')
+    systemctl('reset-failed')
+    systemctl('restart')
+    systemctl('show')
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }))
+
+    const restart = restartOpenclawGateway({ timeout: 60_000, env, configWrittenAt })
+    await vi.advanceTimersByTimeAsync(499)
+    expect(processMocks.execFile.mock.calls.some(([, args]) => args.includes('restart'))).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(restart).resolves.toMatchObject({ stdout: `Restarted systemd service: ${unit}\n` })
+  })
+
+  it('fails open at the deadline when there is no new ingress for the write', async () => {
+    const { configWrittenAt, start, ingress } = telegramWrite()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    userUnit({ mainPid: 123 })
+    for (let elapsed = 0; elapsed < 20_000; elapsed += 500) {
+      if (elapsed > 0) systemctl('show', null, 'LoadState=loaded\nActiveState=active\nMainPID=123')
+      telegramJournal(start(-20), ingress(-10))
+    }
+    cli(395_000)
+
+    const restart = restartOpenclawGateway({ timeout: 60_000, env, configWrittenAt, useCli: true })
+    await vi.advanceTimersByTimeAsync(19_999)
+    expect(processMocks.execFile.mock.calls.some(([bin]) => bin === 'openclaw')).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(restart).resolves.toMatchObject({ stdout: 'CLI restarted' })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('timed out after 20s'))
+  })
+
+  it('keeps polling when journalctl reports no startup events yet', async () => {
+    const { configWrittenAt, start, ingress } = telegramWrite()
+    userUnit({ mainPid: 123 })
+    processMocks.execFile.mockImplementationOnce((bin, args, _options, cb) => {
+      expect(bin).toBe('journalctl')
+      expect(args).toContain('_PID=123')
+      cb(Object.assign(new Error('no matches'), { code: 1, stdout: '', stderr: '' }), '', '')
+    })
+    systemctl('show', null, 'LoadState=loaded\nActiveState=active\nMainPID=123')
+    telegramJournal(start(1), ingress(2))
+    systemctl('show', null, 'MainPID=123')
+    cli(395_000)
+
+    const restart = restartOpenclawGateway({ timeout: 60_000, env, configWrittenAt, useCli: true })
+    await vi.advanceTimersByTimeAsync(499)
+    expect(processMocks.execFile.mock.calls.some(([bin]) => bin === 'openclaw')).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(restart).resolves.toMatchObject({ stdout: 'CLI restarted' })
+  })
+
+  it('skips the barrier when Telegram is not configured', async () => {
+    userUnit({ mainPid: 123 })
+    cli(395_000)
+    await expect(restartOpenclawGateway({ timeout: 60_000, env, configWrittenAt: Date.now(), useCli: true }))
+      .resolves.toMatchObject({ stdout: 'CLI restarted' })
+    expect(processMocks.execFile.mock.calls.some(([bin]) => bin === 'journalctl')).toBe(false)
   })
 })

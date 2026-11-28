@@ -3,8 +3,8 @@ import { test, expect } from './fixtures/login'
 /**
  * Wiki purpose switch (二選一: Agent 知識庫 ↔ 客服知識庫).
  *
- * Switching rewrites ~/.openclaw/openclaw.json and restarts the OpenClaw
- * gateway, so a single switch can take tens of seconds. This spec reads the
+ * Switching rewrites ~/.openclaw/openclaw.json and waits for OpenClaw to
+ * apply it, with a restart fallback. This spec reads the
  * current purpose, flips to the other — verifying the About-tab badge flips and
  * the Manage-tab lock toggles — then flips back so the box is left as it
  * started. An afterEach restores the original purpose even if the body throws.
@@ -17,7 +17,7 @@ type Purpose = 'agent' | 'customer-service'
 
 const LABEL: Record<Purpose, string> = { agent: 'Agent 專用', 'customer-service': '客服專用' }
 const CS_LOCK_TITLE = '目前 Wiki 用途為「客服專用」'
-// A switch restarts the gateway — give the badge plenty of time to flip.
+// A switch can fall back to restarting the gateway.
 const SWITCH_TIMEOUT = 120_000
 
 const purposeUrl = (baseURL: string) => `${baseURL}/api/second-brain/wiki?type=purpose`
@@ -61,7 +61,18 @@ test('wiki purpose switch toggles the manage-tab lock (二選一)', async ({
     const opposite: Purpose = target === 'agent' ? 'customer-service' : 'agent'
     await openWikiSub('關於')
     await page.getByRole('button', { name: `切換為「${LABEL[target]}」` }).click({ timeout: 30_000 })
+    const response = page.waitForResponse(r =>
+      r.url().endsWith('/api/second-brain/wiki?action=purpose') && r.request().method() === 'POST',
+    { timeout: SWITCH_TIMEOUT })
     await page.getByRole('button', { name: '確認切換' }).click()
+    const applied = await response
+    expect(applied.ok()).toBe(true)
+    const { application } = await applied.json()
+    expect(['hot-applied', 'restarted']).toContain(application)
+    await test.info().attach('wiki purpose application', {
+      body: JSON.stringify({ purpose: target, application }),
+      contentType: 'application/json',
+    })
     await expect(
       page.getByRole('button', { name: `切換為「${LABEL[opposite]}」` }),
     ).toBeVisible({ timeout: SWITCH_TIMEOUT })

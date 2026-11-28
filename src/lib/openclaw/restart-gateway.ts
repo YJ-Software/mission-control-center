@@ -10,6 +10,7 @@ import {
   gatewayActionTimeout, gatewayUserUnits, OPENCLAW_GATEWAY_UNIT, showGatewayUnit,
 } from './gateway-systemd'
 import { waitForGatewayStart } from './update-memory-guard'
+import { telegramBarrierProperties, waitForTelegramStartup } from './telegram-restart-barrier'
 
 const execFileAsync = promisify(execFile)
 const actionProperties = ['LoadState', 'ActiveState', 'TimeoutStopUSec', 'TimeoutStartUSec']
@@ -68,18 +69,19 @@ export async function restartOpenclawGateway(options: {
   env?: NodeJS.ProcessEnv
   /** Credential changes need OpenClaw's own SecretRef and service-env diagnostics. */
   useCli?: boolean
+  /** Wall-clock time immediately before writing a config that may hot-reload. */
+  configWrittenAt?: number
 }) {
-  const { timeout: normalMs, env = process.env, useCli } = options
+  const { timeout: normalMs, env = process.env, useCli, configWrittenAt } = options
   const log = (text: string) => console.log(`[OpenClawRestart] ${text}`)
   tightenOpenclawTempRoots(log, env)
-  const since = Date.now()
   const units = gatewayUserUnits(env)
   let unit = units[0] ?? OPENCLAW_GATEWAY_UNIT
   let state: Record<string, string> = {}
   if (process.platform === 'linux') {
     for (const candidate of units) {
       const current = await showGatewayUnit(candidate, true, [
-        ...actionProperties, 'ControlGroup', 'ExecStart', 'NeedDaemonReload',
+        ...actionProperties, 'ControlGroup', 'ExecStart', 'NeedDaemonReload', ...telegramBarrierProperties,
       ], env)
       if (current.LoadState !== 'loaded') continue
       unit = candidate
@@ -93,6 +95,8 @@ export async function restartOpenclawGateway(options: {
     if (systemUnits.some(s => s.LoadState === 'loaded')) readiness = undefined
   }
   const timeout = gatewayActionTimeout('restart', normalMs, state)
+  await waitForTelegramStartup(unit, state, env, configWrittenAt)
+  const since = Date.now()
   let result
   try {
     if (!readiness) return await execFileAsync('openclaw', ['gateway', 'restart'], { env, timeout, encoding: 'utf8' })

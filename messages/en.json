@@ -2658,7 +2658,7 @@
     "confirm": "Confirm switch",
     "cancel": "Cancel",
     "switching": "Switching…",
-    "restartNote": "Switching rewrites openclaw.json and restarts the gateway; takes a few seconds."
+    "restartNote": "Switching updates openclaw.json. The gateway may need to restart."
   },
   "talk": {
     "title": "AI Assistant",

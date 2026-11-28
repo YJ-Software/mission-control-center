@@ -107,6 +107,7 @@ describe('gateway failure diagnostics', () => {
   })
 
   it('normalizes the restart environment before invoking the OpenClaw CLI', async () => {
+    fs.writeFileSync(path.join(state, 'openclaw.json'), '{}')
     setMode(temp, 0o775)
     vi.spyOn(console, 'log').mockImplementation(() => {})
     processMocks.execFile.mockImplementationOnce((bin, args, options, callback) => {
