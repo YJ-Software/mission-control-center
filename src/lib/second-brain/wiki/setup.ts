@@ -192,7 +192,7 @@ export async function detect(): Promise<DetectResult> {
 /** Install + capability-consent the external memory-lancedb plugin. Idempotent
  *  — skips when OpenClaw already lists the plugin. A newly installed plugin
  *  only loads after a gateway restart, so we restart on fresh install. */
-async function ensureLancedbPlugin(progress: Progress): Promise<void> {
+async function ensureLancedbPlugin(progress: Progress, configWrittenAt?: number): Promise<void> {
   // The npm project dir is NOT proof the plugin is usable: OpenClaw's startup
   // repair npm-installs a configured-but-missing plugin on its own, so the dir
   // can exist while the plugin is still absent from `plugins list` and still
@@ -202,7 +202,13 @@ async function ensureLancedbPlugin(progress: Progress): Promise<void> {
   const code = await ensurePluginConsented(
     'memory-lancedb',
     '@openclaw/memory-lancedb',
-    realPluginProbe,
+    {
+      ...realPluginProbe,
+      install: (pluginPackage) => {
+        configWrittenAt = Date.now()
+        return realPluginProbe.install(pluginPackage)
+      },
+    },
     (_stream, text) => progress('install-lancedb-plugin', text),
   )
   if (code !== 0) {
@@ -212,7 +218,7 @@ async function ensureLancedbPlugin(progress: Progress): Promise<void> {
   }
   // Plugin code is only picked up after a gateway restart.
   try {
-    await restartOpenclawGateway({ timeout: 60_000 })
+    await restartOpenclawGateway({ timeout: 60_000, configWrittenAt })
     progress('install-lancedb-plugin', 'memory-lancedb 已安裝，gateway 已重啟')
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
@@ -301,7 +307,7 @@ async function pullBgeM3(progress: Progress): Promise<void> {
   await execFileAsync('ollama', ['pull', 'bge-m3'], { timeout: 600_000 })
 }
 
-function editOpenclawJson(progress: Progress): void {
+function editOpenclawJson(progress: Progress): number {
   const c = readOpenclawJson() as any
 
   // The plugin block (allow + slots + entries) is owned by the shared purpose
@@ -317,8 +323,10 @@ function editOpenclawJson(progress: Progress): void {
     if (Object.keys(memObj).length === 0) delete c.memory
   }
 
+  const configWrittenAt = Date.now()
   writeOpenclawJson(c)
   progress('edit-openclaw-json', `寫入 ~/.openclaw/openclaw.json (purpose=${purpose})`)
+  return configWrittenAt
 }
 
 async function initWikiVault(progress: Progress): Promise<void> {
@@ -412,15 +420,16 @@ async function runSetupSteps(progress: Progress): Promise<DetectResult> {
   }
   progress('verify-embedding', 'bge-m3 /v1/embeddings 1024d ✓')
 
+  let configWrittenAt: number | undefined
   if (!before.openclawConfigured) {
-    editOpenclawJson(progress)
+    configWrittenAt = editOpenclawJson(progress)
   } else {
     progress('edit-openclaw-json', 'openclaw.json 已配置完成')
   }
 
   // Always ensure the external lancedb plugin is actually installed — config
   // alone isn't enough, and existing installs predating this step need healing.
-  await ensureLancedbPlugin(progress)
+  await ensureLancedbPlugin(progress, configWrittenAt)
 
   await initWikiVault(progress)
   registerObsidianVault(progress)

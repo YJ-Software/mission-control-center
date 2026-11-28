@@ -75,7 +75,7 @@ export function getProviderStatus(): ProviderStatus {
   }
 }
 
-export async function setProvider(input: ProviderConfig): Promise<{ output: string }> {
+export async function setProvider(input: ProviderConfig): Promise<{ output: string; configWrittenAt: number }> {
   if (!existsSync(OPENCLAW_CONFIG)) {
     throw new Error('openclaw.json not found')
   }
@@ -109,7 +109,8 @@ export async function setProvider(input: ProviderConfig): Promise<{ output: stri
   }
 
   const value = { ...existing, env }
-  return { output: await writeMem0McpConfig(value) }
+  const configWrittenAt = Date.now()
+  return { output: await writeMem0McpConfig(value), configWrittenAt }
 }
 
 export async function testProvider(): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
@@ -188,9 +189,9 @@ function maskApiKey(key: string): string {
   return key.slice(0, 6) + '***' + key.slice(-4)
 }
 
-export async function restartGateway(): Promise<string> {
+export async function restartGateway(configWrittenAt: number): Promise<string> {
   try {
-    const out = await restartOpenclawGateway({ timeout: 60000, env: getServerEnv() })
+    const out = await restartOpenclawGateway({ timeout: 60000, env: getServerEnv(), configWrittenAt })
     return (out.stdout || '') + (out.stderr || '')
   } catch (err: any) {
     return err?.stderr ?? err?.message ?? 'gateway restart failed'

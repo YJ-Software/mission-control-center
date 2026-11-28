@@ -52,7 +52,7 @@ beforeEach(() => {
   fetchMock.mockReset()
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(console, 'log').mockImplementation(() => {})
-  processMocks.execFile.mockClear()
+  processMocks.execFile.mockReset()
 })
 
 afterEach(() => {
@@ -195,20 +195,23 @@ describe('restartOpenclawGateway', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  function telegramWrite() {
+  function telegramWrite(rawConfig = JSON.stringify({
+    gateway: { port: configPort },
+    channels: { telegram: { enabled: true } },
+  })) {
     vi.useFakeTimers()
-    fs.writeFileSync(path.join(state, 'openclaw.json'), JSON.stringify({
-      gateway: { port: configPort },
-      channels: { telegram: { enabled: true } },
-    }))
     const configWrittenAt = Date.now()
+    const configPath = path.join(state, 'openclaw.json')
+    fs.writeFileSync(configPath, rawConfig)
+    const written = new Date(configWrittenAt)
+    fs.utimesSync(configPath, written, written)
     const entry = (offset: number, message: string) => JSON.stringify({
       MESSAGE: message, __REALTIME_TIMESTAMP: String((configWrittenAt + offset) * 1_000),
     })
     return {
       configWrittenAt,
-      start: (offset: number) => entry(offset, '[telegram] [default] starting provider (@example)'),
-      ingress: (offset: number) => entry(offset, '[telegram] [diag] isolated polling ingress started account=default'),
+      start: (offset: number, id = 'default') => entry(offset, `[telegram] [${id}] starting provider (@example)`),
+      ingress: (offset: number, id = 'default') => entry(offset, `[telegram] [diag] isolated polling ingress started account=${id}`),
     }
   }
 
@@ -249,6 +252,52 @@ describe('restartOpenclawGateway', () => {
     expect(processMocks.execFile.mock.calls.some(([, args]) => args.includes('restart'))).toBe(false)
     await vi.advanceTimersByTimeAsync(1)
     await expect(restart).resolves.toMatchObject({ stdout: `Restarted systemd service: ${unit}\n` })
+  })
+
+  it.each([true, false])('waits for every enabled account after the write (second account has old logs: %s)', async hasOldLogs => {
+    const { configWrittenAt, start, ingress } = telegramWrite(JSON.stringify({
+      channels: { telegram: { accounts: { Alpha: {}, beta: {}, disabled: { enabled: false } } } },
+    }))
+    const firstPoll = [start(1, 'alpha'), ingress(2, 'alpha')]
+    if (hasOldLogs) firstPoll.unshift(start(-20, 'beta'), ingress(-10, 'beta'))
+    userUnit({ mainPid: 123 })
+    telegramJournal(...firstPoll)
+    systemctl('show', null, 'LoadState=loaded\nActiveState=active\nMainPID=123')
+    telegramJournal(...firstPoll, start(3, 'beta'), ingress(4, 'beta'))
+    systemctl('show', null, 'MainPID=123')
+    cli(395_000)
+
+    const restart = restartOpenclawGateway({ timeout: 60_000, env, configWrittenAt, useCli: true })
+    void restart.catch(() => {})
+    await vi.advanceTimersByTimeAsync(499)
+    expect(processMocks.execFile.mock.calls.some(([, args]) => args.includes('restart'))).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(restart).resolves.toMatchObject({ stdout: 'CLI restarted' })
+  })
+
+  it.each([
+    { raw: '{"$include":"channels.json"}', explicit: true },
+    { raw: '{"$include":"channels.json"}', explicit: false },
+    { raw: '{"channels":', explicit: false },
+    { raw: '{"channels":{"telegram":{"enabled":true}}}', explicit: false },
+  ])('waits for fresh ingress with config $raw and explicit timestamp $explicit', async ({ raw, explicit }) => {
+    const { configWrittenAt, start, ingress } = telegramWrite(raw)
+    const oldPair = [start(-20), ingress(-10)]
+    userUnit({ mainPid: 123 })
+    telegramJournal(...oldPair)
+    systemctl('show', null, 'LoadState=loaded\nActiveState=active\nMainPID=123')
+    telegramJournal(...oldPair, start(1), ingress(2))
+    systemctl('show', null, 'MainPID=123')
+    cli(395_000)
+
+    const restart = restartOpenclawGateway({
+      timeout: 60_000, env, useCli: true, ...(explicit ? { configWrittenAt } : {}),
+    })
+    void restart.catch(() => {})
+    await vi.advanceTimersByTimeAsync(499)
+    expect(processMocks.execFile.mock.calls.some(([, args]) => args.includes('restart'))).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(restart).resolves.toMatchObject({ stdout: 'CLI restarted' })
   })
 
   it('fails open at the deadline when there is no new ingress for the write', async () => {

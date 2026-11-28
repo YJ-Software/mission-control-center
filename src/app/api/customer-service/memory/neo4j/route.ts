@@ -31,19 +31,19 @@ export async function POST(req: Request) {
   try {
     if (action === 'install') {
       const { output } = await installAndStart(body.password)
-      const bind = await bindToMcp(body.password)
-      const restart = await restartGateway()
-      return NextResponse.json({ ok: true, output: output + '\n' + bind + '\n' + restart })
+      const { output: bindOutput, configWrittenAt } = await bindToMcp(body.password)
+      const restart = await restartGateway(configWrittenAt)
+      return NextResponse.json({ ok: true, output: output + '\n' + bindOutput + '\n' + restart })
     }
     if (action === 'enable') {
-      const out = await bindToMcp(body.password)
-      const restart = await restartGateway()
-      return NextResponse.json({ ok: true, output: out + '\n' + restart })
+      const { output, configWrittenAt } = await bindToMcp(body.password)
+      const restart = await restartGateway(configWrittenAt)
+      return NextResponse.json({ ok: true, output: output + '\n' + restart })
     }
     if (action === 'disable') {
-      const out = await unbindFromMcp()
-      const restart = await restartGateway()
-      return NextResponse.json({ ok: true, output: out + '\n' + restart })
+      const { output, configWrittenAt } = await unbindFromMcp()
+      const restart = await restartGateway(configWrittenAt)
+      return NextResponse.json({ ok: true, output: output + '\n' + restart })
     }
     if (action === 'stop') {
       const r = await stop()
@@ -51,9 +51,9 @@ export async function POST(req: Request) {
     }
     if (action === 'remove') {
       const r = await remove()
-      const out = await unbindFromMcp()
-      const restart = await restartGateway()
-      return NextResponse.json({ ok: true, output: r.output + '\n' + out + '\n' + restart })
+      const { output, configWrittenAt } = await unbindFromMcp()
+      const restart = await restartGateway(configWrittenAt)
+      return NextResponse.json({ ok: true, output: r.output + '\n' + output + '\n' + restart })
     }
     return NextResponse.json({ error: `unknown action: ${action}` }, { status: 400 })
   } catch (err: any) {

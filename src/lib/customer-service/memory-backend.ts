@@ -155,8 +155,8 @@ const MEM0_DENY_PATTERN = 'openclaw-mem0__*'
 // On top of the shared plugin block, customer-service also clears the legacy
 // mem0 deny pattern from the bound agent's sandbox so it regains the
 // openclaw-mem0__* tools.
-function patchOpenclawConfig(agentId: string): string {
-  if (!existsSync(OPENCLAW_CONFIG)) return 'openclaw.json missing — skipped'
+function patchOpenclawConfig(agentId: string): { output: string; configWrittenAt?: number } {
+  if (!existsSync(OPENCLAW_CONFIG)) return { output: 'openclaw.json missing — skipped' }
   const raw = readFileSync(OPENCLAW_CONFIG, 'utf-8')
   const cfg = JSON.parse(raw) as Record<string, any>
 
@@ -180,6 +180,7 @@ function patchOpenclawConfig(agentId: string): string {
     }
   }
 
+  const configWrittenAt = Date.now()
   writeFileSync(OPENCLAW_CONFIG, JSON.stringify(cfg, null, 2) + '\n', 'utf-8')
 
   // Persist the choice so the rest of the app (and the second-brain Wiki page)
@@ -189,7 +190,10 @@ function patchOpenclawConfig(agentId: string): string {
     .onConflictDoUpdate({ target: settings.key, set: { value: 'customer-service' } })
     .run()
 
-  return 'openclaw.json updated (purpose=customer-service: lancedb auto-recall off, mem0 deny cleared)'
+  return {
+    output: 'openclaw.json updated (purpose=customer-service: lancedb auto-recall off, mem0 deny cleared)',
+    configWrittenAt,
+  }
 }
 
 export async function setMode(): Promise<{ output: string; agentId: string | null }> {
@@ -221,11 +225,11 @@ export async function setMode(): Promise<{ output: string; agentId: string | nul
 
   writeFileSync(status.agentsMdPath, content, 'utf-8')
 
-  const cfgOut = patchOpenclawConfig(status.agentId)
+  const { output: cfgOut, configWrittenAt } = patchOpenclawConfig(status.agentId)
 
   let restartOut = ''
   try {
-    const r = await restartOpenclawGateway({ timeout: 60000, env: getServerEnv() })
+    const r = await restartOpenclawGateway({ timeout: 60000, env: getServerEnv(), configWrittenAt })
     restartOut = (r.stdout || '') + (r.stderr || '')
   } catch (err: any) {
     restartOut = err?.stderr ?? err?.message ?? ''

@@ -282,6 +282,7 @@ async function runInstallSteps(progress: ProgressCallback): Promise<void> {
     }
   }
 
+  let configWrittenAt: number | undefined
   if (!initial.find((c) => c.id === 'mcp')!.ready) {
     progress({ stage: 'install', step: 'mcp', message: 'registering openclaw-mem0 MCP server in openclaw.json…' })
     try {
@@ -297,6 +298,7 @@ async function runInstallSteps(progress: ProgressCallback): Promise<void> {
           OPENAI_API_KEY: apiKey ?? 'set-me-on-llm-provider-tab',
         },
       }
+      configWrittenAt = Date.now()
       await writeMem0McpConfig(value)
       progress({ stage: 'install', step: 'mcp', message: 'MCP server registered', ready: true })
     } catch (err: any) {
@@ -307,7 +309,7 @@ async function runInstallSteps(progress: ProgressCallback): Promise<void> {
 
   progress({ stage: 'install', step: 'mcp', message: 'restarting gateway to load MCP…' })
   try {
-    await restartOpenclawGateway({ timeout: 60000, env: getServerEnv() })
+    await restartOpenclawGateway({ timeout: 60000, env: getServerEnv(), configWrittenAt })
   } catch (err: any) {
     progress({ stage: 'log', message: `gateway restart returned: ${err?.stderr ?? err?.message}` })
   }

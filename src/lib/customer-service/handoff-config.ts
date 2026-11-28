@@ -124,11 +124,12 @@ export function saveConfig(input: HandoffConfig): HandoffConfig {
   return next
 }
 
-export async function restartGateway(): Promise<string> {
+export async function restartGateway(configWrittenAt: number): Promise<string> {
   try {
     const r = await restartOpenclawGateway({
       timeout: 60000,
       env: getServerEnv(),
+      configWrittenAt,
     })
     return (r.stdout || '') + (r.stderr || '')
   } catch (err: any) {

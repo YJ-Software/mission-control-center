@@ -33,13 +33,13 @@ export async function POST(req: Request) {
   try {
     switch (action) {
       case 'install': {
-        const { output } = await installPlugin()
-        const restartOutput = await restartGateway()
+        const { output, configWrittenAt } = await installPlugin()
+        const restartOutput = await restartGateway(configWrittenAt)
         return NextResponse.json({ ok: true, output: output + '\n' + restartOutput })
       }
       case 'uninstall': {
-        const { output } = await uninstallPlugin()
-        const restartOutput = await restartGateway()
+        const { output, configWrittenAt } = await uninstallPlugin()
+        const restartOutput = await restartGateway(configWrittenAt)
         return NextResponse.json({ ok: true, output: output + '\n' + restartOutput })
       }
       case 'save': {
@@ -47,8 +47,9 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, config })
       }
       case 'save-and-restart': {
+        const configWrittenAt = Date.now()
         const config = saveConfig(body.config as GateConfig)
-        const restartOutput = await restartGateway()
+        const restartOutput = await restartGateway(configWrittenAt)
         return NextResponse.json({ ok: true, config, output: restartOutput })
       }
       default:

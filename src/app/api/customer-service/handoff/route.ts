@@ -34,8 +34,9 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, config })
       }
       case 'save-and-restart': {
+        const configWrittenAt = Date.now()
         const config = saveConfig(body.config as HandoffConfig)
-        const output = await restartGateway()
+        const output = await restartGateway(configWrittenAt)
         return NextResponse.json({ ok: true, config, output })
       }
       default:

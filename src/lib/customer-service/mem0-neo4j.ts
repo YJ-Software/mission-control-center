@@ -139,7 +139,7 @@ export async function remove(): Promise<{ output: string }> {
   return { output: rm.stdout || rm.stderr || '' }
 }
 
-export async function bindToMcp(password = DEFAULT_PASSWORD): Promise<string> {
+export async function bindToMcp(password = DEFAULT_PASSWORD): Promise<{ output: string; configWrittenAt: number }> {
   if (!existsSync(OPENCLAW_CONFIG)) throw new Error('openclaw.json missing')
   const cfg = JSON.parse(readFileSync(OPENCLAW_CONFIG, 'utf-8')) as Record<string, any>
   const entry = cfg?.mcp?.servers?.['openclaw-mem0'] ?? cfg?.mcpServers?.['openclaw-mem0']
@@ -152,25 +152,27 @@ export async function bindToMcp(password = DEFAULT_PASSWORD): Promise<string> {
     MEM0_NEO4J_PASSWORD: password,
   }
   const value = { ...entry, env }
-  return writeMem0McpConfig(value)
+  const configWrittenAt = Date.now()
+  return { output: await writeMem0McpConfig(value), configWrittenAt }
 }
 
-export async function unbindFromMcp(): Promise<string> {
+export async function unbindFromMcp(): Promise<{ output: string; configWrittenAt?: number }> {
   if (!existsSync(OPENCLAW_CONFIG)) throw new Error('openclaw.json missing')
   const cfg = JSON.parse(readFileSync(OPENCLAW_CONFIG, 'utf-8')) as Record<string, any>
   const entry = cfg?.mcp?.servers?.['openclaw-mem0'] ?? cfg?.mcpServers?.['openclaw-mem0']
-  if (!entry) return 'mem0 mcp not registered'
+  if (!entry) return { output: 'mem0 mcp not registered' }
   const env = { ...(entry.env ?? {}) }
   delete env.MEM0_NEO4J_URL
   delete env.MEM0_NEO4J_USER
   delete env.MEM0_NEO4J_PASSWORD
   const value = { ...entry, env }
-  return writeMem0McpConfig(value)
+  const configWrittenAt = Date.now()
+  return { output: await writeMem0McpConfig(value), configWrittenAt }
 }
 
-export async function restartGateway(): Promise<string> {
+export async function restartGateway(configWrittenAt?: number): Promise<string> {
   try {
-    const out = await restartOpenclawGateway({ timeout: 60000, env: getServerEnv() })
+    const out = await restartOpenclawGateway({ timeout: 60000, env: getServerEnv(), configWrittenAt })
     return (out.stdout || '') + (out.stderr || '')
   } catch (err: any) {
     return err?.stderr ?? err?.message ?? 'gateway restart failed'

@@ -2654,7 +2654,7 @@
     "agentDesc": "Wiki as an agent's personal/enterprise knowledge base: full semantic memory with auto-recall in conversation.",
     "customerServiceDesc": "Wiki as the customer-service agent's business knowledge base: its knowledge digest is injected into the agent's prompt (slot=memory-wiki); customer memory goes through mem0.",
     "switchTo": "Switch to \"{target}\"",
-    "confirmBody": "Switch to \"{target}\"? This rewrites OpenClaw config and restarts the gateway; the other purpose is disabled.",
+    "confirmBody": "Switch to \"{target}\"? This rewrites the OpenClaw config and disables the other purpose. The gateway may restart.",
     "confirm": "Confirm switch",
     "cancel": "Cancel",
     "switching": "Switching…",

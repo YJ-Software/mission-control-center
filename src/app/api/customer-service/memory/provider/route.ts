@@ -38,9 +38,9 @@ export async function POST(req: Request) {
       if (!cfg || !cfg.mode) {
         return NextResponse.json({ error: 'config required' }, { status: 400 })
       }
-      const { output } = await setProvider(cfg)
+      const { output, configWrittenAt } = await setProvider(cfg)
       let restartOut = ''
-      if (action === 'save-and-restart') restartOut = await restartGateway()
+      if (action === 'save-and-restart') restartOut = await restartGateway(configWrittenAt)
       return NextResponse.json({ ok: true, output: output + '\n' + restartOut })
     }
 

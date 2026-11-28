@@ -99,6 +99,7 @@ export async function POST(req: Request) {
       enabled: true,
     }
 
+    const configWrittenAt = Date.now()
     writeConfig(config)
 
     // Restart gateway
@@ -107,6 +108,7 @@ export async function POST(req: Request) {
       const result = await restartOpenclawGateway({
         timeout: 15000,
         env: getServerEnv(),
+        configWrittenAt,
       })
       restartOutput = result.stdout || result.stderr || ''
     } catch (err: any) {

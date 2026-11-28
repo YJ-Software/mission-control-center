@@ -183,26 +183,31 @@ const LOCAL_INSTALL_FLAGS = ['--force', '--accept-capabilities']
 
 /** Run an openclaw plugins subcommand, retrying without the 2026.8.2 trust
  *  flags if this OpenClaw is too old to recognise them. */
-async function runPluginCmd(args: string[], flags: string[], timeoutMs: number): Promise<string> {
+async function runPluginCmd(args: string[], flags: string[], timeoutMs: number): Promise<{ output: string; configWrittenAt: number }> {
+  const configWrittenAt = Date.now()
   try {
-    return await runOpenclaw([...args, ...flags], timeoutMs)
+    return { output: await runOpenclaw([...args, ...flags], timeoutMs), configWrittenAt }
   } catch (err: any) {
     const text = `${err?.stderr ?? ''}${err?.stdout ?? ''}${err?.message ?? ''}`
     // Older OpenClaw: unknown option. Retry bare so existing installs keep working.
     if (flags.length > 0 && /unknown option|not recognize option|unknown argument/i.test(text)) {
-      return await runOpenclaw(args, timeoutMs)
+      const configWrittenAt = Date.now()
+      return { output: await runOpenclaw(args, timeoutMs), configWrittenAt }
     }
     throw err
   }
 }
 
-export async function installPlugin(): Promise<{ output: string }> {
+export async function installPlugin(): Promise<{ output: string; configWrittenAt?: number }> {
   if (!existsSync(PLUGIN_SOURCE_DIR)) {
     throw new Error(`Plugin source not found at ${PLUGIN_SOURCE_DIR}`)
   }
   let output = ''
+  let configWrittenAt: number | undefined
   try {
-    output += await runPluginCmd(['plugins', 'install', '-l', PLUGIN_SOURCE_DIR], LOCAL_INSTALL_FLAGS, 60000)
+    const result = await runPluginCmd(['plugins', 'install', '-l', PLUGIN_SOURCE_DIR], LOCAL_INSTALL_FLAGS, 60000)
+    output += result.output
+    configWrittenAt = result.configWrittenAt
   } catch (err: any) {
     const stderr = err?.stderr ?? ''
     if (!/already installed/i.test(stderr) && !/already exists/i.test(stderr)) {
@@ -212,7 +217,9 @@ export async function installPlugin(): Promise<{ output: string }> {
   }
 
   try {
-    output += '\n' + (await runPluginCmd(['plugins', 'enable', PLUGIN_ID], ['--accept-capabilities'], OPENCLAW_WRITE_TIMEOUT_MS))
+    const result = await runPluginCmd(['plugins', 'enable', PLUGIN_ID], ['--accept-capabilities'], OPENCLAW_WRITE_TIMEOUT_MS)
+    output += '\n' + result.output
+    configWrittenAt = result.configWrittenAt
   } catch (err: any) {
     output += '\n' + (err?.stderr ?? err?.message ?? '')
   }
@@ -224,7 +231,9 @@ export async function installPlugin(): Promise<{ output: string }> {
   try {
     if (existsSync(ID_INJECTOR_SOURCE_DIR)) {
       try {
-        output += '\n[id-injector] ' + (await runPluginCmd(['plugins', 'install', '-l', ID_INJECTOR_SOURCE_DIR], LOCAL_INSTALL_FLAGS, 60000)).trim()
+        const result = await runPluginCmd(['plugins', 'install', '-l', ID_INJECTOR_SOURCE_DIR], LOCAL_INSTALL_FLAGS, 60000)
+        output += '\n[id-injector] ' + result.output.trim()
+        configWrittenAt = result.configWrittenAt
       } catch (err: any) {
         const stderr = err?.stderr ?? ''
         if (!/already installed/i.test(stderr) && !/already exists/i.test(stderr)) {
@@ -234,7 +243,9 @@ export async function installPlugin(): Promise<{ output: string }> {
         }
       }
       try {
-        output += '\n[id-injector] ' + (await runPluginCmd(['plugins', 'enable', ID_INJECTOR_PLUGIN_ID], ['--accept-capabilities'], OPENCLAW_WRITE_TIMEOUT_MS)).trim()
+        const result = await runPluginCmd(['plugins', 'enable', ID_INJECTOR_PLUGIN_ID], ['--accept-capabilities'], OPENCLAW_WRITE_TIMEOUT_MS)
+        output += '\n[id-injector] ' + result.output.trim()
+        configWrittenAt = result.configWrittenAt
       } catch (err: any) {
         output += '\n[id-injector] WARN: enable failed: ' + (err?.stderr ?? err?.message ?? '')
       }
@@ -245,20 +256,25 @@ export async function installPlugin(): Promise<{ output: string }> {
     output += '\n[id-injector] WARN: ' + (err?.message ?? String(err))
   }
 
-  return { output }
+  return { output, configWrittenAt }
 }
 
-export async function uninstallPlugin(): Promise<{ output: string }> {
+export async function uninstallPlugin(): Promise<{ output: string; configWrittenAt?: number }> {
   let output = ''
+  let configWrittenAt: number | undefined
 
   try {
-    output += await runOpenclaw(['plugins', 'disable', PLUGIN_ID], OPENCLAW_WRITE_TIMEOUT_MS)
+    const result = await runPluginCmd(['plugins', 'disable', PLUGIN_ID], [], OPENCLAW_WRITE_TIMEOUT_MS)
+    output += result.output
+    configWrittenAt = result.configWrittenAt
   } catch (err: any) {
     output += err?.stderr ?? ''
   }
 
   try {
-    output += '\n' + (await runOpenclaw(['plugins', 'remove', PLUGIN_ID], OPENCLAW_WRITE_TIMEOUT_MS))
+    const result = await runPluginCmd(['plugins', 'remove', PLUGIN_ID], [], OPENCLAW_WRITE_TIMEOUT_MS)
+    output += '\n' + result.output
+    configWrittenAt = result.configWrittenAt
   } catch (err: any) {
     output += '\n' + (err?.stderr ?? err?.message ?? '')
   }
@@ -266,10 +282,11 @@ export async function uninstallPlugin(): Promise<{ output: string }> {
   const config = readOpenclawConfig()
   if (config?.plugins?.entries && PLUGIN_ID in config.plugins.entries) {
     delete config.plugins.entries[PLUGIN_ID]
+    configWrittenAt = Date.now()
     writeOpenclawConfig(config)
   }
 
-  return { output }
+  return { output, configWrittenAt }
 }
 
 export function saveConfig(input: GateConfig): GateConfig {
@@ -287,9 +304,9 @@ export function saveConfig(input: GateConfig): GateConfig {
   return merged
 }
 
-export async function restartGateway(): Promise<string> {
+export async function restartGateway(configWrittenAt?: number): Promise<string> {
   try {
-    const result = await restartOpenclawGateway({ timeout: 60_000, env: getServerEnv() })
+    const result = await restartOpenclawGateway({ timeout: 60_000, env: getServerEnv(), configWrittenAt })
     return (result.stdout || '') + (result.stderr || '')
   } catch (err: any) {
     return err?.stderr ?? err?.message ?? 'gateway restart failed'

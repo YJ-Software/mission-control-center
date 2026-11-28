@@ -2654,7 +2654,7 @@
     "agentDesc": "Wiki 作為 Agent 的個人／企業知識庫：完整語意記憶，對話中自動 recall。",
     "customerServiceDesc": "Wiki 作為客服 Agent 的商業知識庫：知識摘要會注入對話 context（slot=memory-wiki），客戶記憶走 mem0。",
     "switchTo": "切換為「{target}」",
-    "confirmBody": "確定要切換為「{target}」？這會改寫 OpenClaw 設定並重啟 gateway，另一個用途會停用。",
+    "confirmBody": "確定要切換為「{target}」？這會改寫 OpenClaw 設定並停用另一個用途。gateway 可能會重啟。",
     "confirm": "確認切換",
     "cancel": "取消",
     "switching": "切換中…",
