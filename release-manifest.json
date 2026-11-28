@@ -2,7 +2,7 @@
   "latest": {
     "version": "0.5.3",
     "mccVersion": "0.5.3",
-    "openclawVersion": "2026.11.10",
+    "openclawVersion": "2026.11.11",
     "validated": {
       "openclaw": [
         "2026.9.9",
@@ -13,7 +13,8 @@
         "2026.10.8",
         "2026.11.2",
         "2026.11.6",
-        "2026.11.10"
+        "2026.11.10",
+        "2026.11.11"
       ],
       "hermes": [
         "0.21.5",
@@ -21,7 +22,7 @@
       ]
     },
     "releaseDate": "2026-11-28T06:10:26.055Z",
-    "notes": "- fix(openclaw): 切換 wiki 用途改走 OpenClaw 熱套用，確認生效就不重啟閘道\n- fix(openclaw): 重啟閘道前先等 Telegram 啟動完成，避免 OpenClaw 2026.11.10 停機卡住約 5.5 分鐘\n- validated 新增 OpenClaw 2026.11.10",
+    "notes": "- fix(openclaw): 切換 wiki 用途改走 OpenClaw 熱套用，確認生效就不重啟閘道\n- fix(openclaw): 重啟閘道前先等 Telegram 啟動完成，避免 OpenClaw 2026.11.10 停機卡住約 5.5 分鐘\n- validated 新增 OpenClaw 2026.11.10\n- validated 新增 OpenClaw 2026.11.11",
     "artifacts": [
       {
         "platform": "linux",
