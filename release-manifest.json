@@ -1,8 +1,8 @@
 {
   "latest": {
-    "version": "0.5.1",
-    "mccVersion": "0.5.1",
-    "openclawVersion": "2026.11.6",
+    "version": "0.5.3",
+    "mccVersion": "0.5.3",
+    "openclawVersion": "2026.11.10",
     "validated": {
       "openclaw": [
         "2026.9.9",
@@ -12,26 +12,49 @@
         "2026.10.7",
         "2026.10.8",
         "2026.11.2",
-        "2026.11.6"
+        "2026.11.6",
+        "2026.11.10"
       ],
       "hermes": [
         "0.21.5",
         "v2026.9.24"
       ]
     },
-    "releaseDate": "2026-11-27T12:02:22.398Z",
-    "notes": "- fix(hermes): 開機與每次還原後清除 `hermes import` 遺留的 SQLite 附屬檔（.dbimport-wal／-shm），避免 ~/.hermes 持續累積\n- test(e2e): 新增 WHMCS Hermes 部署、重新部署保留與 Telegram 驗證；Hermes spec 適應 OCD 預設聊天首頁",
+    "releaseDate": "2026-11-28T06:10:26.055Z",
+    "notes": "- fix(openclaw): 切換 wiki 用途改走 OpenClaw 熱套用，確認生效就不重啟閘道\n- fix(openclaw): 重啟閘道前先等 Telegram 啟動完成，避免 OpenClaw 2026.11.10 停機卡住約 5.5 分鐘\n- validated 新增 OpenClaw 2026.11.10",
     "artifacts": [
       {
         "platform": "linux",
         "arch": "x64",
-        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.5.1/mission-control-v0.5.1-linux-x64.tar.gz",
-        "sha256": "6449c1b3a6874da99c14ae32550a524885ec5a2879781f5a11426df9481cb8cf",
-        "size": 26915218
+        "url": "https://github.com/YJ-Software/mission-control-center/releases/download/v0.5.3/mission-control-v0.5.3-linux-x64.tar.gz",
+        "sha256": "a0d411395f3e5aaf9477afb45b3c12673a3ec5c1e7f314312531e69a552636f2",
+        "size": 26925113
       }
     ]
   },
   "history": [
+    {
+      "version": "0.5.1",
+      "mccVersion": "0.5.1",
+      "openclawVersion": "2026.11.6",
+      "validated": {
+        "openclaw": [
+          "2026.9.9",
+          "2026.10.2",
+          "2026.10.3",
+          "2026.10.5",
+          "2026.10.7",
+          "2026.10.8",
+          "2026.11.2",
+          "2026.11.6"
+        ],
+        "hermes": [
+          "0.21.5",
+          "v2026.9.24"
+        ]
+      },
+      "releaseDate": "2026-11-27T12:02:22.398Z"
+    },
     {
       "version": "0.5.0",
       "mccVersion": "0.5.0",
@@ -173,18 +196,6 @@
         ]
       },
       "releaseDate": "2026-10-13T15:19:51.795Z"
-    },
-    {
-      "version": "0.4.1",
-      "mccVersion": "0.4.1",
-      "openclawVersion": "2026.10.2",
-      "validated": {
-        "openclaw": [
-          "2026.9.9",
-          "2026.10.2"
-        ]
-      },
-      "releaseDate": "2026-10-13T12:47:02.365Z"
     }
   ]
 }
